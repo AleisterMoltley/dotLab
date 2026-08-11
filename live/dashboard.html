@@ -3,167 +3,306 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gamemaster Live</title>
+  <title>Gamemaster — Play</title>
   <style>
     :root {
-      --bg: #0a0a0f;
-      --panel: #12121a;
+      --bg: #050508;
+      --panel: #0e0e14;
       --border: #27272f;
-      --text: #e8eaef;
-      --muted: #8b92a5;
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
       --accent: #6ee7b7;
       --warn: #fbbf24;
-      --danger: #f87171;
       --info: #38bdf8;
+      --danger: #f87171;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
-      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
-    body { display: grid; grid-template-rows: 52px 1fr; }
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; overflow: hidden; }
+    body { display: grid; grid-template-rows: 48px 1fr; }
+
     header {
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      padding: 0 14px; border-bottom: 1px solid var(--border);
-      background: rgba(10,10,15,.95); backdrop-filter: blur(10px);
+      z-index: 20;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 0 12px; border-bottom: 1px solid var(--border);
+      background: rgba(5,5,8,.92); backdrop-filter: blur(12px);
     }
-    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .logo {
-      width: 28px; height: 28px; border-radius: 8px;
+      width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
       background: linear-gradient(135deg, var(--accent), var(--info));
-      color: #042f1c; display: grid; place-items: center; font-size: 11px; font-weight: 900;
+      color: #042f1c; display: grid; place-items: center; font-size: 10px; font-weight: 900;
     }
-    .meta { color: var(--muted); font-size: 12px; }
-    .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .brand h1 { margin: 0; font-size: 13px; font-weight: 700; }
+    .brand p { margin: 1px 0 0; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42vw; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
     button {
       appearance: none; border: 1px solid var(--border); background: #18181f;
-      color: var(--text); border-radius: 8px; padding: 7px 12px; font-size: 12px;
-      font-weight: 600; cursor: pointer;
+      color: var(--text); border-radius: 8px; padding: 6px 10px; font-size: 11px;
+      font-weight: 650; cursor: pointer;
     }
     button.primary { background: var(--accent); color: #042f1c; border-color: transparent; }
+    button.ghost { background: transparent; }
     button:hover { border-color: #3f3f46; }
+    button.active { border-color: var(--accent); color: var(--accent); }
     .pill {
-      font-size: 11px; padding: 4px 10px; border-radius: 999px;
-      border: 1px solid var(--border); color: var(--muted);
+      font-size: 10px; padding: 3px 8px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--muted); font-variant-numeric: tabular-nums;
     }
-    .pill.live { color: var(--accent); border-color: rgba(110,231,183,.4); }
-    .pill.busy { color: var(--warn); }
-    main {
-      min-height: 0; display: grid;
-      grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+    .pill.ok { color: var(--accent); border-color: rgba(110,231,183,.35); }
+    .pill.busy { color: var(--warn); border-color: rgba(251,191,36,.35); }
+
+    /* PLAY SURFACE fills the tool */
+    #stage {
+      position: relative; min-height: 0; background: #000;
+      display: grid; grid-template-columns: 1fr;
     }
-    .game-pane {
-      position: relative; border-right: 1px solid var(--border);
-      background: #000; min-width: 0;
+    #stage.with-log { grid-template-columns: 1fr minmax(260px, 320px); }
+    .play-wrap {
+      position: relative; min-width: 0; min-height: 0; background: #000;
     }
-    .game-pane iframe {
+    #game {
       position: absolute; inset: 0; width: 100%; height: 100%;
-      border: 0; background: #000;
+      border: 0; background: #000; display: block;
     }
-    .game-overlay {
-      position: absolute; left: 10px; top: 10px; z-index: 2;
-      display: flex; gap: 8px; pointer-events: none;
+    /* Click-to-play: required for keyboard/mouse in iframe */
+    #playGate {
+      position: absolute; inset: 0; z-index: 5;
+      display: grid; place-items: center;
+      background: radial-gradient(ellipse at center, rgba(10,20,18,.55), rgba(0,0,0,.82));
+      cursor: pointer; user-select: none;
     }
-    .game-overlay .pill { pointer-events: auto; background: rgba(0,0,0,.55); }
-    .side {
-      display: grid; grid-template-rows: auto 1fr auto;
-      min-height: 0; background: var(--panel);
+    #playGate.hidden { display: none; }
+    #playGate .card {
+      text-align: center; padding: 28px 32px; border-radius: 18px;
+      border: 1px solid rgba(110,231,183,.35);
+      background: rgba(12,14,18,.9);
+      box-shadow: 0 20px 60px rgba(0,0,0,.5);
+      max-width: min(420px, 92vw);
     }
-    .side-head {
-      padding: 12px 14px; border-bottom: 1px solid var(--border);
-      font-size: 12px; color: var(--muted);
+    #playGate h2 { margin: 0 0 8px; font-size: 22px; letter-spacing: -.02em; }
+    #playGate p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    #playGate .big {
+      margin-top: 16px; display: inline-block; padding: 12px 22px; border-radius: 12px;
+      background: var(--accent); color: #042f1c; font-weight: 800; font-size: 14px;
     }
-    .side-head strong { color: var(--text); display: block; font-size: 14px; margin-bottom: 4px; }
+    #updateToast {
+      position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+      z-index: 6; display: none; gap: 10px; align-items: center;
+      padding: 10px 12px 10px 16px; border-radius: 999px;
+      background: rgba(12,14,18,.92); border: 1px solid var(--border);
+      box-shadow: 0 10px 40px rgba(0,0,0,.45); font-size: 12px;
+    }
+    #updateToast.show { display: flex; }
+    #updateToast strong { color: var(--accent); }
+    .hud-tl {
+      position: absolute; top: 10px; left: 10px; z-index: 4;
+      display: flex; gap: 6px; flex-wrap: wrap; pointer-events: none;
+    }
+    .hud-tl .pill { pointer-events: auto; background: rgba(0,0,0,.55); }
+
+    /* Activity drawer */
+    #drawer {
+      display: none; border-left: 1px solid var(--border);
+      background: var(--panel); min-height: 0;
+      grid-template-rows: auto 1fr;
+    }
+    #stage.with-log #drawer { display: grid; }
+    #drawer header.dhead {
+      position: static; padding: 10px 12px; border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+    #drawer header.dhead strong { display: block; font-size: 13px; }
+    #drawer header.dhead span { color: var(--muted); font-size: 11px; }
     #log {
-      overflow: auto; padding: 10px 12px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+      overflow: auto; padding: 10px;
+      font: 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
     }
     .ev {
-      margin: 0 0 10px; padding: 10px 12px; border-radius: 10px;
-      border: 1px solid var(--border); background: #0e0e14;
+      margin: 0 0 8px; padding: 8px 10px; border-radius: 10px;
+      border: 1px solid var(--border); background: #0a0a10;
     }
-    .ev .t { color: var(--muted); font-size: 10px; margin-bottom: 4px; }
-    .ev .role { font-weight: 700; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+    .ev .t { color: var(--muted); font-size: 10px; }
+    .ev .role { font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
     .ev.director .role { color: #c4b5fd; }
     .ev.architect .role { color: var(--info); }
     .ev.coder .role, .ev.agent .role { color: var(--accent); }
     .ev.critic .role { color: var(--warn); }
-    .ev.system .role { color: var(--muted); }
     .ev.file .role { color: #f9a8d4; }
-    .ev .msg { white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
-    .side-foot {
-      border-top: 1px solid var(--border); padding: 10px 12px;
-      font-size: 11px; color: var(--muted);
+    .ev.system .role { color: var(--muted); }
+    .ev .msg { margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+    .empty { color: var(--muted); text-align: center; padding: 24px 8px; }
+
+    /* soft flash when updated without hard reload */
+    .flash::after {
+      content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 3;
+      background: rgba(110,231,183,.12); animation: flash .45s ease-out forwards;
     }
-    .empty { color: var(--muted); padding: 20px 8px; text-align: center; }
-    @media (max-width: 900px) {
-      main { grid-template-columns: 1fr; grid-template-rows: 50vh 1fr; }
-      .game-pane { border-right: 0; border-bottom: 1px solid var(--border); }
-    }
+    @keyframes flash { to { opacity: 0; } }
+
+    body.play-focus header { opacity: .35; transition: opacity .2s; }
+    body.play-focus header:hover { opacity: 1; }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
       <div class="logo">GM</div>
-      <div>
-        <div>Gamemaster Live</div>
-        <div class="meta" id="projectPath">—</div>
+      <div style="min-width:0">
+        <h1>Gamemaster Play</h1>
+        <p id="projectPath">Loading project…</p>
       </div>
     </div>
     <div class="actions">
       <span class="pill" id="conn">connecting…</span>
       <span class="pill" id="phase">idle</span>
-      <button type="button" id="btn-reload" class="primary">Reload game</button>
-      <button type="button" id="btn-open">Open game only</button>
-      <button type="button" id="btn-clear">Clear log</button>
+      <button type="button" id="btn-play" class="primary" title="Focus game for keyboard">Play</button>
+      <button type="button" id="btn-apply" title="Apply pending file updates now">Apply updates</button>
+      <button type="button" id="btn-auto" class="active" title="Auto-apply updates while building">Auto-update: ON</button>
+      <button type="button" id="btn-log" class="ghost">AI log</button>
+      <button type="button" id="btn-newtab" class="ghost">Pop-out game</button>
     </div>
   </header>
-  <main>
-    <section class="game-pane">
-      <div class="game-overlay">
-        <span class="pill live" id="reloadBadge">auto-reload on</span>
+
+  <div id="stage">
+    <div class="play-wrap" id="playWrap">
+      <div class="hud-tl">
+        <span class="pill ok" id="playState">click game to play</span>
+        <span class="pill" id="updPill" style="display:none">0 pending</span>
       </div>
-      <iframe id="game" title="Game preview" allow="gamepad *;"></iframe>
-    </section>
-    <aside class="side">
-      <div class="side-head">
-        <strong id="headline">Waiting for Gamemaster…</strong>
-        <span id="subhead">Steps and file writes appear here live. Play in the left panel anytime.</span>
+      <iframe
+        id="game"
+        title="Game"
+        allow="fullscreen; gamepad; autoplay; clipboard-read; clipboard-write"
+        allowfullscreen
+      ></iframe>
+      <div id="playGate">
+        <div class="card">
+          <h2>Play here</h2>
+          <p>This is your game — not a screenshot. Click to capture keyboard & mouse, then test the shooter, jump, aim, everything.</p>
+          <p style="margin-top:8px">Updates from Gamemaster apply live while you play (or queue until you hit Apply).</p>
+          <div class="big">Click to start playing</div>
+        </div>
       </div>
-      <div id="log"><div class="empty">No events yet.</div></div>
-      <div class="side-foot" id="foot">Tip: keep this window open while Studio/Agent runs.</div>
+      <div id="updateToast">
+        <span><strong id="updCount">0</strong> game update(s) ready</span>
+        <button type="button" class="primary" id="btn-toast-apply">Apply & keep playing</button>
+        <button type="button" class="ghost" id="btn-toast-dismiss">Later</button>
+      </div>
+    </div>
+    <aside id="drawer">
+      <header class="dhead">
+        <strong id="headline">AI activity</strong>
+        <span id="subhead">Director / Coder / file writes appear here. The game stays playable.</span>
+      </header>
+      <div id="log"><div class="empty">No activity yet — start a Studio build or agent with --live.</div></div>
     </aside>
-  </main>
+  </div>
+
   <script>
     const params = new URLSearchParams(location.search);
-    const gameUrl = params.get('game') || 'http://127.0.0.1:5173/';
-    const qs = location.search;
+    let gameUrl = params.get('game') || 'http://127.0.0.1:5173/';
     const iframe = document.getElementById('game');
+    const playGate = document.getElementById('playGate');
+    const playWrap = document.getElementById('playWrap');
+    const stage = document.getElementById('stage');
     const logEl = document.getElementById('log');
     const conn = document.getElementById('conn');
     const phaseEl = document.getElementById('phase');
+    const playState = document.getElementById('playState');
+    const updPill = document.getElementById('updPill');
+    const updateToast = document.getElementById('updateToast');
+    const updCount = document.getElementById('updCount');
     const headline = document.getElementById('headline');
     const subhead = document.getElementById('subhead');
-    const foot = document.getElementById('foot');
     const projectPath = document.getElementById('projectPath');
-    let reloadToken = 0;
-    let autoReload = true;
-    let lastEventId = 0;
+    const btnAuto = document.getElementById('btn-auto');
+    const btnLog = document.getElementById('btn-log');
 
-    function setGameSrc(force) {
+    let lastEventId = 0;
+    let autoApply = true;      // while building: apply reloads automatically
+    let playing = false;       // user has focused the game
+    let pendingUpdates = 0;
+    let reloadTimer = 0;
+    let lastReloadSeq = 0;
+    let softOnly = false;      // if true, flash only (vite HMR)
+
+    function setGameSrc(hard) {
       const u = new URL(gameUrl);
-      if (force || autoReload) u.searchParams.set('_gm', String(Date.now()));
+      // cache bust only on hard reload so Vite HMR can work on soft path
+      if (hard) u.searchParams.set('_gm', String(Date.now()));
       iframe.src = u.toString();
+      playWrap.classList.remove('flash');
+      void playWrap.offsetWidth;
+      playWrap.classList.add('flash');
+      pendingUpdates = 0;
+      renderPending();
     }
+
+    function renderPending() {
+      if (pendingUpdates > 0 && !autoApply) {
+        updPill.style.display = '';
+        updPill.textContent = pendingUpdates + ' pending';
+        updateToast.classList.add('show');
+        updCount.textContent = String(pendingUpdates);
+      } else {
+        updPill.style.display = 'none';
+        updateToast.classList.remove('show');
+      }
+    }
+
+    function queueOrApplyUpdate(reason) {
+      if (autoApply || !playing) {
+        // Hard reload so non-HMR games still show changes
+        clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(() => setGameSrc(true), playing ? 700 : 350);
+        return;
+      }
+      pendingUpdates += 1;
+      renderPending();
+    }
+
+    function enterPlay() {
+      playing = true;
+      playGate.classList.add('hidden');
+      playState.textContent = 'playing — keyboard active';
+      playState.className = 'pill ok';
+      document.body.classList.add('play-focus');
+      // focus iframe so keys go to game
+      try { iframe.contentWindow && iframe.contentWindow.focus(); } catch (_) {}
+      iframe.focus();
+    }
+
+    playGate.addEventListener('click', enterPlay);
+    document.getElementById('btn-play').onclick = enterPlay;
+    document.getElementById('btn-apply').onclick = () => setGameSrc(true);
+    document.getElementById('btn-toast-apply').onclick = () => setGameSrc(true);
+    document.getElementById('btn-toast-dismiss').onclick = () => {
+      updateToast.classList.remove('show');
+    };
+    document.getElementById('btn-newtab').onclick = () => window.open(gameUrl, '_blank');
+    btnAuto.onclick = () => {
+      autoApply = !autoApply;
+      btnAuto.textContent = autoApply ? 'Auto-update: ON' : 'Auto-update: OFF';
+      btnAuto.classList.toggle('active', autoApply);
+      if (autoApply && pendingUpdates) setGameSrc(true);
+    };
+    btnLog.onclick = () => {
+      stage.classList.toggle('with-log');
+      btnLog.classList.toggle('active', stage.classList.contains('with-log'));
+    };
+    // start with log open so process is visible, but game is still huge
+    stage.classList.add('with-log');
+    btnLog.classList.add('active');
+
+    // first load
     setGameSrc(true);
 
-    document.getElementById('btn-reload').onclick = () => setGameSrc(true);
-    document.getElementById('btn-open').onclick = () => window.open(gameUrl, '_blank');
-    document.getElementById('btn-clear').onclick = () => {
-      logEl.innerHTML = '<div class="empty">Log cleared (new events still stream).</div>';
-    };
-    document.getElementById('reloadBadge').onclick = () => {
-      autoReload = !autoReload;
-      document.getElementById('reloadBadge').textContent = autoReload ? 'auto-reload on' : 'auto-reload off';
-    };
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
     function addEvent(ev) {
       if (logEl.querySelector('.empty')) logEl.innerHTML = '';
@@ -178,40 +317,42 @@
       logEl.prepend(div);
       if (ev.phase) {
         phaseEl.textContent = ev.phase;
-        phaseEl.className = 'pill ' + (ev.phase === 'done' ? 'live' : 'busy');
+        phaseEl.className = 'pill ' + (ev.phase === 'done' || ev.phase === 'ready' ? 'ok' : 'busy');
       }
       if (ev.headline) headline.textContent = ev.headline;
       if (ev.detail) subhead.textContent = ev.detail;
-      if (ev.reload || role === 'file' || /wrote|write_file|saved/i.test(ev.message || '')) {
-        if (autoReload) {
-          clearTimeout(reloadToken);
-          reloadToken = setTimeout(() => setGameSrc(true), 400);
+
+      const msg = (ev.message || '');
+      if (
+        ev.reload ||
+        role === 'file' ||
+        /wrote|write_file|files changed|saved/i.test(msg)
+      ) {
+        queueOrApplyUpdate(msg);
+      }
+      if (ev.phase === 'done') {
+        // finished build — nudge user to play
+        if (!playing) {
+          playState.textContent = 'build done — click to play';
         }
       }
-    }
-
-    function escapeHtml(s) {
-      return String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
     }
 
     async function poll() {
       try {
         const r = await fetch('/api/status?' + Date.now());
-        if (!r.ok) throw new Error('status ' + r.status);
+        if (!r.ok) throw new Error('bad status');
         const data = await r.json();
         conn.textContent = 'live';
-        conn.className = 'pill live';
+        conn.className = 'pill ok';
         if (data.project) projectPath.textContent = data.project;
         if (data.game_url && data.game_url !== gameUrl) {
-          // keep iframe on query game url unless empty
+          gameUrl = data.game_url;
+          if (!playing) setGameSrc(true);
         }
         if (data.phase) {
           phaseEl.textContent = data.phase;
-          phaseEl.className = 'pill ' + (data.phase === 'done' || data.phase === 'idle' ? 'live' : 'busy');
+          phaseEl.className = 'pill ' + (data.phase === 'done' || data.phase === 'ready' || data.phase === 'idle' ? 'ok' : 'busy');
         }
         if (data.headline) headline.textContent = data.headline;
         if (data.detail) subhead.textContent = data.detail;
@@ -223,18 +364,25 @@
             addEvent(ev);
           }
         }
-        if (data.reload_seq && data.reload_seq !== window.__gmReloadSeq) {
-          window.__gmReloadSeq = data.reload_seq;
-          if (autoReload) setGameSrc(true);
+        if (data.reload_seq && data.reload_seq !== lastReloadSeq) {
+          // file watcher bump — don't double-count if we already got file events
+          if (data.reload_seq > lastReloadSeq + 0) {
+            if (!pendingUpdates) queueOrApplyUpdate('reload_seq');
+          }
+          lastReloadSeq = data.reload_seq;
         }
-        foot.textContent = data.foot || `Game: ${gameUrl}`;
+        // game reachable?
+        if (data.phase === 'ready' || data.phase === 'coding' || data.phase === 'done') {
+          if (playState.textContent.includes('connecting')) {
+            playState.textContent = playing ? 'playing — keyboard active' : 'click game to play';
+          }
+        }
       } catch (e) {
         conn.textContent = 'reconnecting…';
         conn.className = 'pill';
       }
     }
 
-    // SSE if available
     try {
       const es = new EventSource('/api/stream');
       es.onmessage = (m) => {
@@ -243,14 +391,18 @@
           if (ev.id) lastEventId = Math.max(lastEventId, ev.id);
           addEvent(ev);
           conn.textContent = 'live';
-          conn.className = 'pill live';
+          conn.className = 'pill ok';
         } catch (_) {}
       };
-      es.onerror = () => { /* poll fallback */ };
     } catch (_) {}
 
-    setInterval(poll, 800);
+    setInterval(poll, 700);
     poll();
+
+    // Escape leaves play-focus chrome hide
+    addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') document.body.classList.remove('play-focus');
+    });
   </script>
 </body>
 </html>

@@ -96,8 +96,24 @@ source ./config/ollama-env.sh
 | **parallel** | `studio parallel -p DIR "…"` | player / world / ui streams |
 | **review** | `studio review -p DIR "…"` | Roast existing project |
 
-Add `--playtest` to run Playwright after build/review/parallel.  
-Add **`--live`** to open a **Live dashboard window**: game on the left (play anytime), AI progress log on the right, auto-reload when files change.
+### Play while it builds (built-in)
+
+**You do not start the game separately.** Studio **build/parallel** open a **Play window** by default:
+
+- Full game canvas inside Gamemaster (click to capture keyboard/mouse — shooters, WASD, etc.)
+- AI activity log in a side drawer
+- File updates apply live (or queue while you play if you turn Auto-update off)
+- Stays open after the build so you can keep testing
+
+```bash
+gamemaster studio build -p ./my-shooter "arena shooter vertical slice"
+# Play window opens automatically
+
+gamemaster live -p ./my-shooter          # play surface only
+gamemaster studio build -p ./x "…" --no-live   # disable if needed
+```
+
+Add `--playtest` for headless Playwright metrics after build (separate from human play).
 
 ## Architecture
 

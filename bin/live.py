@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-Gamemaster Live — open a window so the user can watch & play the game
-while Studio/Agent works.
+Gamemaster Live / Play surface
 
-- Starts Vite (or static server) for the project when possible
-- Opens a Live dashboard (game iframe + streaming progress log)
-- Agents/Studio call live.emit(...) so every step is visible
-- File writes bump reload so the iframe refreshes (Vite HMR also helps)
+The game runs *inside* Gamemaster — play and test while AI builds.
+No separate terminal workflow required.
+
+- Starts the project dev server (Vite) automatically
+- Opens a Play window: full game canvas + optional AI activity drawer
+- Click-to-play captures keyboard/mouse for shooters etc.
+- File writes stream into the UI; updates apply live (or queue while playing)
+- Studio/Agent emit progress; agent subprocess POSTs /api/emit
 
 Usage:
   gamemaster live -p ./my-game
-  gamemaster studio build -p ./my-game "..." --live
+  gamemaster studio build -p ./my-game "..." --live   # default on for build
   gamemaster -p ./my-game --agent "..." --live
 
 Env:
@@ -423,9 +426,18 @@ class LiveSession:
         self._watcher.start()
 
     def open_browser(self) -> None:
+        # Prefer a real app window on macOS (brings to front)
+        if sys.platform == "darwin":
+            try:
+                subprocess.run(
+                    ["open", self.dashboard_url],
+                    check=False,
+                    capture_output=True,
+                )
+                return
+            except Exception:
+                pass
         webbrowser.open(self.dashboard_url)
-        # also open bare game in second window for pure play (optional)
-        # webbrowser.open(self.game_url)
 
     def start(self, open_browser: bool = True) -> None:
         global _SESSION
@@ -439,17 +451,19 @@ class LiveSession:
         self.start_dashboard()
         self.start_file_watcher()
         self.emit(
-            "Live session ready — play on the left, watch AI progress on the right.",
+            "PLAY SURFACE READY — click the game to capture keyboard/mouse and test immediately. "
+            "AI updates apply live (or queue while you play if Auto-update is off).",
             role="system",
             phase="ready",
-            headline="Live session ready",
-            detail="Play anytime. The game reloads when files change.",
+            headline="Click the game to play",
+            detail="No separate start needed — this is your playable build.",
             reload=True,
         )
         if open_browser:
             self.open_browser()
-        print(f"\n🔴 LIVE dashboard: {self.dashboard_url}")
-        print(f"🎮 Game URL:       {self.game_url}\n")
+        print(f"\n🎮 PLAY in Gamemaster: {self.dashboard_url}")
+        print(f"   (game server: {self.game_url})")
+        print("   Click the game panel to play. AI progress is in the side log.\n")
 
     def stop(self) -> None:
         self.emit("Live session stopping…", role="system", phase="done")

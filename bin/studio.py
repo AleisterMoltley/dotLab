@@ -529,11 +529,11 @@ def pipeline_build(
 
             live_session = livelib.start_live(project, open_browser=True)
             live_session.emit(
-                f"Studio BUILD started: {brief[:200]}",
+                f"Studio BUILD started: {brief[:200]} — click the game to play/test anytime.",
                 role="system",
                 phase="boot",
-                headline="Studio build in progress",
-                detail="Play the game on the left while agents work.",
+                headline="Build running — play when ready",
+                detail="Click the game canvas for keyboard/mouse. Updates apply live.",
             )
         except Exception as e:
             print(f"  ⚠ live preview failed to start: {e}")
@@ -601,11 +601,11 @@ def pipeline_build(
         import live as livelib
 
         livelib.emit(
-            "Studio BUILD complete — play and test the game now!",
+            "Build complete — click the game and play the full slice (movement, shoot, restart…).",
             role="system",
             phase="done",
-            headline="Build complete — your turn to play",
-            detail="Live window stays open. Reload if needed.",
+            headline="Ready to play-test",
+            detail="No separate start. Stay in this window.",
             reload=True,
         )
     except Exception:
@@ -800,7 +800,13 @@ def main() -> int:
     ap.add_argument(
         "--live",
         action="store_true",
-        help="Open Live window: play the game while agents work (auto-reload)",
+        default=None,
+        help="Open Play window (game + AI log). Default ON for build/parallel.",
+    )
+    ap.add_argument(
+        "--no-live",
+        action="store_true",
+        help="Do not open the Play window",
     )
     args = ap.parse_args()
 
@@ -809,16 +815,24 @@ def main() -> int:
     brief = " ".join(args.brief)
     model = args.model
     pt = args.playtest
-    live = args.live
+    # Play surface default ON for modes that produce a runnable game
+    if args.no_live:
+        live = False
+    elif args.live:
+        live = True
+    else:
+        live = args.mode in ("build", "parallel") or (
+            args.mode == "council" and args.build
+        )
 
     ensure_ollama()
     print(f"🎮 Gamemaster STUDIO · mode={args.mode} · model={model}")
     print(f"📁 {project}")
     print(f"🎯 {brief}")
     if pt:
-        print("🎮 playtest enabled")
+        print("🎮 automated playtest enabled")
     if live:
-        print("🔴 live preview enabled — a browser window will open")
+        print("🕹️  PLAY window enabled — game opens for you to test live")
 
     if args.mode == "plan":
         if live:
