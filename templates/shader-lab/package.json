@@ -1,0 +1,18 @@
+{
+  "name": "gamemaster-shader-lab",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "FragCoord-class multipass GLSL lab — Gamemaster",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.185.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

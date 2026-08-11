@@ -1,0 +1,333 @@
+#!/usr/bin/env bash
+# gamemaster — local free multi-agent game coding CLI (Ollama)
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck disable=SC1091
+[[ -f "$ROOT/config/ollama-env.sh" ]] && source "$ROOT/config/ollama-env.sh" || true
+
+MODEL="${GAMEMASTER_MODEL:-gamemaster}"
+OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+KNOWLEDGE=1
+AGENT=0
+FILES=()
+PROJECT=""
+PROMPT_PARTS=()
+NUM_CTX="${GAMEMASTER_NUM_CTX:-0}"   # 0 = turbo auto
+TEMPERATURE="${GAMEMASTER_TEMP:-0.2}"
+NUM_PREDICT="${GAMEMASTER_PREDICT:-8192}"
+TIER_FORCE="${GAMEMASTER_TIER:-auto}"  # auto|flash|max|dense
+TURBO=1
+
+die() { echo "❌ $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+gamemaster — local free multi-agent game coding (Ollama, $0)
+  Games · Solana Seeker · shaders · studio · playtest
+
+  gamemaster [options] [prompt...]
+  gamemaster scaffold web-game|seeker-app|seeker-game|shader-lab [--genre X]
+  gamemaster studio plan|build|council|review|parallel -p DIR "brief" [--playtest]
+  gamemaster playtest -p DIR [--critic] [--duration SEC]
+  gamemaster prefs show|set|forget|from-critic|prompt [-p DIR]
+  gamemaster turbo status|warmup|bench
+  gamemaster update [--quick|--knowledge]
+
+Options:
+  -f, --file PATH          attach file context
+  -p, --project DIR        project context / agent root
+  -m, --model NAME         force model
+  --tier flash|max|dense   force quality tier (default auto)
+  --agent                  file agent (requires -p)
+  --no-knowledge           disable knowledge packs
+  --no-turbo               disable smart routing
+  -h, --help
+
+Examples:
+  gamemaster "Third-person controller with coyote time"
+  gamemaster scaffold seeker-game --genre runner --name NeonDash
+  gamemaster -p ./game --agent "Add collectibles and score"
+  gamemaster studio build -p ./game "platformer vertical slice" --playtest
+  gamemaster playtest -p ./game --critic
+  gamemaster prefs set like "tight jumps"
+  gamemaster turbo warmup
+EOF
+}
+
+ensure_ollama() {
+  command -v ollama >/dev/null 2>&1 || die "Ollama missing — https://ollama.com"
+  if ! curl -sf "$OLLAMA_HOST/api/tags" >/dev/null 2>&1; then
+    echo "⏳ Starting Ollama…"
+    open -a Ollama 2>/dev/null || true
+    for _ in {1..40}; do
+      curl -sf "$OLLAMA_HOST/api/tags" >/dev/null 2>&1 && break
+      sleep 0.4
+    done
+  fi
+  curl -sf "$OLLAMA_HOST/api/tags" >/dev/null 2>&1 || die "Ollama API dead"
+  if ! ollama list 2>/dev/null | awk '{print $1}' | grep -qE "^${MODEL}(:|$)"; then
+    die "Model '$MODEL' missing → cd $ROOT && ./install.sh --max"
+  fi
+}
+
+collect_project() {
+  local dir="$1"
+  local budget=160000
+  local used=0
+  local out=""
+  while IFS= read -r -d '' f; do
+    local sz
+    sz=$(wc -c <"$f" | tr -d ' ')
+    [[ "$sz" -gt 60000 ]] && continue
+    if (( used + sz > budget )); then break; fi
+    out+="
+
+===== FILE: ${f#"$dir"/} =====
+$(cat "$f")
+"
+    used=$((used + sz))
+  done < <(find "$dir" \( -name node_modules -o -name .git -o -name dist -o -name build \) -prune -o \
+    -type f \( -name '*.js' -o -name '*.ts' -o -name '*.mjs' -o -name '*.html' -o -name '*.css' -o -name '*.json' -o -name 'DESIGN.md' -o -name 'README.md' \) -print0 \
+    | head -z -n 60)
+  printf '%s' "$out"
+}
+
+build_extra() {
+  local extra=""
+  local prompt_hint="${PROMPT_PARTS[*]:-general game coding}"
+  if [[ "$KNOWLEDGE" -eq 1 ]]; then
+    if [[ "$TURBO" -eq 1 ]] && command -v python3 >/dev/null 2>&1; then
+      # slim domain packs — biggest free latency win
+      extra+="
+## KNOWLEDGE (turbo-selected)
+$(python3 "$ROOT/bin/turbo.py" knowledge --raw $prompt_hint 2>/dev/null || true)
+"
+    else
+      for k in threejs-cheatsheet.md threejs-advanced.md game-patterns.md fun-first-design.md; do
+        [[ -f "$ROOT/knowledge/$k" ]] && extra+="
+## $k
+$(head -c 8000 "$ROOT/knowledge/$k")
+"
+      done
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+      PREF_ARGS=()
+      [[ -n "$PROJECT" ]] && PREF_ARGS+=(-p "$PROJECT")
+      PREF_BLOCK=$(python3 "$ROOT/bin/prefs.py" "${PREF_ARGS[@]}" prompt 2>/dev/null || true)
+      if [[ -n "$PREF_BLOCK" && "$PREF_BLOCK" != "(empty prefs)" ]]; then
+        extra+="
+## USER PREFS
+$PREF_BLOCK
+"
+      fi
+    fi
+  fi
+  for f in "${FILES[@]+"${FILES[@]}"}"; do
+    [[ -f "$f" ]] || die "File missing: $f"
+    extra+="
+
+## User-Datei: $f
+\`\`\`
+$(cat "$f")
+\`\`\`
+"
+  done
+  if [[ -n "$PROJECT" && "$AGENT" -eq 0 ]]; then
+    [[ -d "$PROJECT" ]] || die "Project missing: $PROJECT"
+    extra+="
+
+## Projekt ($PROJECT)
+$(collect_project "$PROJECT")
+"
+  fi
+  printf '%s' "$extra"
+}
+
+# Stable system prefix → better Ollama prefix cache hits across turns
+STABLE_SYSTEM='You are Gamemaster, a free local game+Seeker+shader coding AI. Prefer complete runnable code. Honor USER PREFS. German explanations, English code.'
+
+chat_api() {
+  local user_msg="$1"
+  local system_extra="$2"
+  local full_user="$user_msg"
+  if [[ -n "$system_extra" ]]; then
+    full_user="[KONTEXT]
+
+${system_extra}
+
+[AUFGABE]
+${user_msg}"
+  fi
+
+  local ctx="$NUM_CTX"
+  [[ "$ctx" -eq 0 ]] && ctx=32768
+
+  if command -v jq >/dev/null 2>&1; then
+    local payload
+    payload=$(jq -n \
+      --arg model "$MODEL" \
+      --arg sys "$STABLE_SYSTEM" \
+      --arg content "$full_user" \
+      --argjson ctx "$ctx" \
+      --argjson temp "$TEMPERATURE" \
+      --argjson pred "$NUM_PREDICT" \
+      '{model:$model, keep_alive:"24h", stream:true,
+        messages:[
+          {role:"system", content:$sys},
+          {role:"user", content:$content}
+        ],
+        options:{temperature:$temp, num_ctx:$ctx, num_predict:$pred, num_batch:512}}')
+    curl -sN "$OLLAMA_HOST/api/chat" \
+      -H 'Content-Type: application/json' \
+      -d "$payload" | while IFS= read -r line; do
+        token=$(printf '%s' "$line" | jq -r '.message.content // empty' 2>/dev/null) || true
+        printf '%s' "$token"
+      done
+    echo
+  else
+    printf '%s\n' "$full_user" | ollama run "$MODEL"
+  fi
+}
+
+apply_turbo_route() {
+  local prompt="$1"
+  [[ "$TURBO" -eq 1 ]] || return 0
+  command -v python3 >/dev/null 2>&1 || return 0
+  # if user forced -m explicitly we still allow tier; skip only if MODEL was user-set via -m after route — handled by FORCE_MODEL
+  if [[ "${FORCE_MODEL:-0}" -eq 1 ]]; then
+    return 0
+  fi
+  local route
+  route=$(python3 "$ROOT/bin/turbo.py" route --mode "$TIER_FORCE" "$prompt" 2>/dev/null) || return 0
+  MODEL=$(printf '%s' "$route" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('model',''))" 2>/dev/null || true)
+  local ctx pred temp reason tier
+  ctx=$(printf '%s' "$route" | python3 -c "import sys,json; print(json.load(sys.stdin).get('num_ctx',32768))" 2>/dev/null || echo 32768)
+  pred=$(printf '%s' "$route" | python3 -c "import sys,json; print(json.load(sys.stdin).get('num_predict',8192))" 2>/dev/null || echo 8192)
+  temp=$(printf '%s' "$route" | python3 -c "import sys,json; print(json.load(sys.stdin).get('temperature',0.2))" 2>/dev/null || echo 0.2)
+  reason=$(printf '%s' "$route" | python3 -c "import sys,json; print(json.load(sys.stdin).get('reason',''))" 2>/dev/null || true)
+  tier=$(printf '%s' "$route" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tier',''))" 2>/dev/null || true)
+  [[ -n "$MODEL" ]] || return 0
+  if [[ "${GAMEMASTER_NUM_CTX:-0}" == "0" || -z "${GAMEMASTER_NUM_CTX:-}" ]]; then
+    NUM_CTX="$ctx"
+  fi
+  NUM_PREDICT="$pred"
+  TEMPERATURE="$temp"
+  echo "⚡ turbo tier=$tier model=$MODEL ctx=$NUM_CTX ($reason)" >&2
+}
+
+# Subcommands
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    scaffold)
+      shift
+      exec python3 "$ROOT/bin/scaffold.py" "$@"
+      ;;
+    studio)
+      shift
+      exec python3 "$ROOT/bin/studio.py" "$@"
+      ;;
+    playtest)
+      shift
+      exec python3 "$ROOT/bin/playtest.py" "$@"
+      ;;
+    prefs)
+      shift
+      exec python3 "$ROOT/bin/prefs.py" "$@"
+      ;;
+    turbo)
+      shift
+      exec python3 "$ROOT/bin/turbo.py" "$@"
+      ;;
+    update|self-update)
+      shift
+      exec python3 "$ROOT/bin/self-update.py" "$@"
+      ;;
+    genres)
+      exec python3 "$ROOT/bin/scaffold.py" list-genres
+      ;;
+  esac
+fi
+
+FORCE_MODEL=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    -f|--file) FILES+=("$2"); shift 2 ;;
+    -p|--project) PROJECT="$2"; shift 2 ;;
+    -m|--model) MODEL="$2"; FORCE_MODEL=1; shift 2 ;;
+    --tier) TIER_FORCE="$2"; shift 2 ;;
+    --agent) AGENT=1; shift ;;
+    --no-knowledge) KNOWLEDGE=0; shift ;;
+    --no-turbo) TURBO=0; shift ;;
+    --) shift; PROMPT_PARTS+=("$@"); break ;;
+    -*) die "Unknown option: $1" ;;
+    *) PROMPT_PARTS+=("$1"); shift ;;
+  esac
+done
+
+ensure_ollama
+
+if [[ "$AGENT" -eq 1 ]]; then
+  [[ -n "$PROJECT" ]] || die "--agent requires -p/--project"
+  [[ ${#PROMPT_PARTS[@]} -gt 0 ]] || die "--agent requires einen Prompt"
+  if [[ "$FORCE_MODEL" -eq 0 && "$TURBO" -eq 1 ]]; then
+    apply_turbo_route "${PROMPT_PARTS[*]}"
+  fi
+  exec python3 "$ROOT/bin/agent.py" -p "$PROJECT" -m "$MODEL" "${PROMPT_PARTS[@]}"
+fi
+
+if [[ ${#PROMPT_PARTS[@]} -gt 0 ]]; then
+  if [[ "$FORCE_MODEL" -eq 0 ]]; then
+    apply_turbo_route "${PROMPT_PARTS[*]}"
+  fi
+  EXTRA="$(build_extra)"
+  echo "🎮 Gamemaster · model=$MODEL · ctx=$NUM_CTX · $0"
+  echo "────────────────────────────────────────"
+  chat_api "${PROMPT_PARTS[*]}" "$EXTRA"
+  exit 0
+fi
+
+EXTRA="$(build_extra)"
+
+echo "🎮 Gamemaster  ·  $MODEL  ·  Games + Solana Seeker  ·  $0"
+echo "   /file  /project  /agent  /model  /clear  /exit"
+echo "   scaffold: gamemaster scaffold seeker-game --genre idle"
+echo "   update:   gamemaster update"
+echo "────────────────────────────────────────"
+HISTORY_CTX=""
+PROJECT_Q="${PROJECT}"
+while true; do
+  printf '\n\033[1;36myou>\033[0m '
+  IFS= read -r line || break
+  case "$line" in
+    "" ) continue ;;
+    /exit|/quit|/q) echo "bye."; break ;;
+    /clear) HISTORY_CTX=""; echo "(cleared)"; continue ;;
+    /agent)
+      [[ -n "$PROJECT_Q" ]] || { echo "Zuerst /project DIR"; continue; }
+      printf 'agent task> '
+      IFS= read -r atask || continue
+      [[ -n "$atask" ]] || continue
+      python3 "$ROOT/bin/agent.py" -p "$PROJECT_Q" -m "$MODEL" "$atask"
+      continue ;;
+    /file\ *)
+      FILES+=("${line#/file }"); EXTRA="$(build_extra)"; echo "📎 ${line#/file }"; continue ;;
+    /project\ *)
+      PROJECT_Q="${line#/project }"; PROJECT="$PROJECT_Q"; EXTRA="$(build_extra)"; echo "📁 $PROJECT_Q"; continue ;;
+    /model\ *)
+      MODEL="${line#/model }"; echo "🧠 $MODEL"; continue ;;
+    /*) echo "? $line"; continue ;;
+  esac
+  echo -e "\n\033[1;33mcoder>\033[0m"
+  USER_FULL="$line"
+  if [[ -n "$HISTORY_CTX" ]]; then
+    USER_FULL="[Chat]
+$HISTORY_CTX
+
+[Neu]
+$line"
+  fi
+  REPLY=$(chat_api "$USER_FULL" "$EXTRA" | tee /dev/tty)
+  HISTORY_CTX=$(printf 'U: %s\nA: %s\n%s' "$line" "$REPLY" "$HISTORY_CTX" | head -c 6000)
+done

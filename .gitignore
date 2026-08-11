@@ -1,0 +1,31 @@
+# deps / build
+node_modules/
+**/node_modules/
+dist/
+build/
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# local runtime state
+config/user-prefs.json
+config/bench-latest.json
+config/warmup.log
+config/warmup.err
+config/active-profile.json
+knowledge/live/*
+!knowledge/live/LATEST.md
+.gamemaster/
+**/.gamemaster/
+
+# secrets / env
+.env
+.env.*
+*.pem
+
+# editors
+.idea/
+.vscode/
+*.swp

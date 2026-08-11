@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Gamemaster launcher
+#   ./start              → browser chat
+#   ./start --term       → terminal chat
+#   ./start studio ...   → multi-agent studio
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
+# shellcheck disable=SC1091
+[[ -f "$ROOT/config/ollama-env.sh" ]] && source "$ROOT/config/ollama-env.sh" || true
+export OLLAMA_FLASH_ATTENTION="${OLLAMA_FLASH_ATTENTION:-1}"
+export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-24h}"
+export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-2}"
+export OLLAMA_MAX_LOADED_MODELS="${OLLAMA_MAX_LOADED_MODELS:-3}"
+export OLLAMA_KV_CACHE_TYPE="${OLLAMA_KV_CACHE_TYPE:-q8_0}"
+export OLLAMA_NUM_BATCH="${OLLAMA_NUM_BATCH:-512}"
+
+MODE="web"
+AGENT_ARGS=()
+
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    update|self-update)
+      shift; exec python3 "$ROOT/bin/self-update.py" "$@" ;;
+    scaffold)
+      shift; exec python3 "$ROOT/bin/scaffold.py" "$@" ;;
+    studio)
+      shift; exec python3 "$ROOT/bin/studio.py" "$@" ;;
+    playtest)
+      shift; exec python3 "$ROOT/bin/playtest.py" "$@" ;;
+    prefs)
+      shift; exec python3 "$ROOT/bin/prefs.py" "$@" ;;
+    turbo)
+      shift; exec python3 "$ROOT/bin/turbo.py" "$@" ;;
+  esac
+fi
+
+for a in "$@"; do
+  case "$a" in
+    --term|-t|term|terminal) MODE="term" ;;
+    --web|-w) MODE="web" ;;
+    --agent) MODE="agent" ;;
+    -h|--help)
+      echo "Usage: ./start | ./start --term | ./start studio build -p DIR 'brief'"
+      echo "       ./start turbo warmup | ./start scaffold web-game --genre runner"
+      exit 0
+      ;;
+    *) AGENT_ARGS+=("$a") ;;
+  esac
+done
+
+if ! curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+  if [[ "$(uname)" == "Darwin" ]]; then
+    open -a Ollama 2>/dev/null || true
+  fi
+  for _ in {1..40}; do
+    curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+    sleep 0.35
+  done
+fi
+
+if ! curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+  if [[ "$(uname)" == "Darwin" ]]; then
+    osascript -e 'display alert "Gamemaster" message "Ollama is not running.\nOpen Ollama.app, then try again." as critical' 2>/dev/null || true
+  fi
+  echo "❌ Ollama not running. https://ollama.com"
+  exit 1
+fi
+
+if ! ollama list 2>/dev/null | awk '{print $1}' | grep -qE '^gamemaster(:|$)'; then
+  echo "→ Model missing — installing MAX profile…"
+  "$ROOT/install.sh" --max
+fi
+
+if [[ "$MODE" == "term" ]]; then
+  exec "$ROOT/bin/gamemaster"
+fi
+
+if [[ "$MODE" == "agent" ]]; then
+  exec python3 "$ROOT/bin/agent.py" "${AGENT_ARGS[@]}"
+fi
+
+PORT="${GAMEMASTER_PORT:-8765}"
+if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  if curl -sf "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; then
+    if [[ "$(uname)" == "Darwin" ]]; then open "http://127.0.0.1:${PORT}/"; else xdg-open "http://127.0.0.1:${PORT}/" 2>/dev/null || true; fi
+    exit 0
+  fi
+  PORT=$((PORT + 1))
+  export GAMEMASTER_PORT="$PORT"
+fi
+
+exec /usr/bin/env python3 "$ROOT/bin/server.py"

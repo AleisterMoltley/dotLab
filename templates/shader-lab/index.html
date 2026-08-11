@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Gamemaster Shader Lab · FragCoord-class</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="top">
+      <div class="brand">
+        <span class="logo">GF</span>
+        <div>
+          <strong>Shader Lab</strong>
+          <small>FragCoord-class · multipass · Shadertoy import · 0 cloud</small>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button type="button" id="btn-run" class="primary" title="Compile (Ctrl/Cmd+Enter)">Run</button>
+        <button type="button" id="btn-pause">Pause</button>
+        <button type="button" id="btn-reset-time">Reset time</button>
+        <button type="button" id="btn-export">Export HTML</button>
+        <label class="file-btn">Import Shadertoy JSON
+          <input type="file" id="import-st" accept="application/json,.json" hidden />
+        </label>
+        <span id="fps" class="pill">— fps</span>
+        <span id="status" class="pill ok">ready</span>
+      </div>
+    </header>
+
+    <div class="main">
+      <aside class="sidebar">
+        <div class="pass-tabs" id="pass-tabs"></div>
+        <button type="button" id="btn-add-pass" class="ghost">+ Buffer pass</button>
+        <div class="hint">
+          <p><kbd>Ctrl</kbd>+<kbd>Enter</kbd> compile</p>
+          <p>Uniforms: <code>u_time</code> <code>u_resolution</code> <code>u_mouse</code> <code>u_buffer_a..d</code> <code>u_audio</code> <code>u_keyboard</code></p>
+          <p>Paste Shadertoy <code>mainImage</code> — auto-wrap available via Import or <code>#shadertoy</code> first line.</p>
+        </div>
+        <div class="audio-row">
+          <button type="button" id="btn-audio">Enable audio input</button>
+          <button type="button" id="btn-mic">Mic</button>
+        </div>
+      </aside>
+
+      <section class="editor-wrap">
+        <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <pre id="errors" class="errors hidden"></pre>
+      </section>
+
+      <section class="viewport-wrap">
+        <canvas id="c"></canvas>
+        <div class="viewport-hud" id="hud">Image</div>
+      </section>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

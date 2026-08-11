@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gamemaster</title>
+  <style>
+    :root {
+      --bg: #0b0c10;
+      --panel: #12141a;
+      --border: #23262f;
+      --text: #e8eaef;
+      --muted: #8b92a5;
+      --accent: #6ee7b7;
+      --accent2: #38bdf8;
+      --user: #1a2332;
+      --bot: #141820;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #152033 0%, transparent 50%),
+                  radial-gradient(900px 500px at 100% 0%, #0f2a22 0%, transparent 45%),
+                  var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(11,12,16,.85);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: grid; place-items: center;
+      font-weight: 800; color: #062016; font-size: 14px;
+      box-shadow: 0 0 24px rgba(110,231,183,.25);
+    }
+    .brand h1 { margin: 0; font-size: 16px; letter-spacing: -0.02em; }
+    .brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+    .status {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--muted);
+      padding: 6px 10px; border: 1px solid var(--border);
+      border-radius: 999px; background: var(--panel);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+    .dot.ok { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .dot.bad { background: var(--danger); }
+    main {
+      flex: 1;
+      overflow: auto;
+      padding: 20px;
+      max-width: 880px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .msg {
+      margin: 0 0 14px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      line-height: 1.55;
+      font-size: 14.5px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg.user { background: var(--user); margin-left: 12%; }
+    .msg.bot { background: var(--bot); margin-right: 8%; }
+    .msg.system {
+      background: transparent; border-style: dashed;
+      color: var(--muted); text-align: center; font-size: 13px;
+    }
+    .msg .role {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--muted); margin-bottom: 8px; font-weight: 600;
+    }
+    .msg.bot .role { color: var(--accent); }
+    .msg.user .role { color: var(--accent2); }
+    .msg pre {
+      background: #0a0c11;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      overflow-x: auto;
+      font-size: 12.5px;
+      line-height: 1.45;
+      margin: 10px 0 0;
+    }
+    .msg code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .msg p { margin: 0 0 8px; }
+    .msg p:last-child { margin-bottom: 0; }
+    footer {
+      border-top: 1px solid var(--border);
+      background: rgba(11,12,16,.92);
+      padding: 14px 16px 18px;
+    }
+    .composer {
+      max-width: 880px; margin: 0 auto;
+      display: flex; gap: 10px; align-items: flex-end;
+    }
+    textarea {
+      flex: 1;
+      resize: none;
+      min-height: 52px; max-height: 180px;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      font: inherit;
+      outline: none;
+      line-height: 1.4;
+    }
+    textarea:focus { border-color: #3a4152; box-shadow: 0 0 0 3px rgba(56,189,248,.12); }
+    button.send {
+      appearance: none; border: 0;
+      background: linear-gradient(135deg, var(--accent), #34d399);
+      color: #052e1c;
+      font-weight: 700;
+      border-radius: 14px;
+      padding: 0 18px;
+      height: 52px;
+      cursor: pointer;
+      min-width: 100px;
+    }
+    button.send:disabled { opacity: .5; cursor: not-allowed; }
+    .hints {
+      max-width: 880px; margin: 10px auto 0;
+      display: flex; flex-wrap: wrap; gap: 8px;
+    }
+    .hints button {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .hints button:hover { color: var(--text); border-color: #3a4152; }
+    .typing { color: var(--muted); font-size: 13px; padding: 4px 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">3J</div>
+      <div>
+        <h1>Gamemaster</h1>
+        <p>Games · Solana Seeker · all genres · local · $0</p>
+      </div>
+    </div>
+    <div class="status" id="status">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">checking…</span>
+    </div>
+  </header>
+
+  <main id="log">
+    <div class="msg system">Describe what you want to build — e.g. „Third-Person Controller mit Jump“. Enter to send · Shift+Enter for newline.</div>
+  </main>
+
+  <footer>
+    <div class="composer">
+      <textarea id="input" rows="2" placeholder="What should go in the game? e.g. FPS controller, enemy spawner, inventory…"></textarea>
+      <button class="send" id="send">Send</button>
+    </div>
+    <div class="hints">
+      <button data-q="Explain Studio multi-agent: council vs build vs parallel for a new arena game">Studio help</button>
+      <button data-q="Vertical Slice Design: Core Verb + 3 Pillars + feel numbers for a one-thumb runner">Director</button>
+      <button data-q="FragCoord multipass Shader Lab BufferA feedback + Image composite">Shader Lab</button>
+      <button data-q="Solana Seeker Idle Game MWA Connect + Claim Button">Seeker Idle</button>
+      <button data-q="Platformer Coyote Time Jump Buffer Screen Shake Juice">Platformer</button>
+    </div>
+  </footer>
+
+  <script>
+    const log = document.getElementById('log');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    const dot = document.getElementById('dot');
+    const statusText = document.getElementById('statusText');
+    const MODEL = 'gamemaster';
+    const history = [];
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function renderMarkdownLite(text) {
+      // code fences
+      let html = '';
+      const parts = text.split(/(```[\s\S]*?```)/g);
+      for (const part of parts) {
+        if (part.startsWith('```')) {
+          const m = part.match(/^```(\w+)?\n?([\s\S]*?)```$/);
+          const code = m ? m[2] : part.slice(3, -3);
+          html += '<pre><code>' + escapeHtml(code.replace(/\n$/, '')) + '</code></pre>';
+        } else {
+          const lines = escapeHtml(part).split(/\n/);
+          let buf = [];
+          const flush = () => {
+            if (buf.length) {
+              html += '<p>' + buf.join('<br>') + '</p>';
+              buf = [];
+            }
+          };
+          for (const line of lines) {
+            if (line.trim() === '') flush();
+            else buf.push(line.replace(/`([^`]+)`/g, '<code>$1</code>'));
+          }
+          flush();
+        }
+      }
+      return html || escapeHtml(text);
+    }
+
+    function addMsg(role, content, streaming = false) {
+      const el = document.createElement('div');
+      el.className = 'msg ' + role;
+      const label = role === 'user' ? 'You' : role === 'bot' ? 'Gamemaster' : '';
+      el.innerHTML = (label ? `<div class="role">${label}</div>` : '') +
+        (role === 'bot' || role === 'user'
+          ? `<div class="body">${role === 'bot' ? renderMarkdownLite(content) : escapeHtml(content)}</div>`
+          : escapeHtml(content));
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+      return el;
+    }
+
+    function setStatus(ok, text) {
+      dot.className = 'dot ' + (ok === true ? 'ok' : ok === false ? 'bad' : '');
+      statusText.textContent = text;
+    }
+
+    async function checkHealth() {
+      try {
+        const r = await fetch('/api/tags');
+        if (!r.ok) throw new Error('API ' + r.status);
+        const data = await r.json();
+        const names = (data.models || []).map(m => m.name);
+        const has = names.some(n => n === MODEL || n.startsWith(MODEL + ':'));
+        if (!has) {
+          setStatus(false, 'Model missing — Terminal: cd ~/gamemaster && ./install.sh');
+          return false;
+        }
+        setStatus(true, 'online · ' + MODEL + ' · $0');
+        return true;
+      } catch (e) {
+        setStatus(false, 'offline — start Ollama');
+        return false;
+      }
+    }
+
+    async function send() {
+      const text = input.value.trim();
+      if (!text || sendBtn.disabled) return;
+      input.value = '';
+      addMsg('user', text);
+      history.push({ role: 'user', content: text });
+      sendBtn.disabled = true;
+
+      const botEl = addMsg('bot', '…');
+      const bodyEl = botEl.querySelector('.body');
+      let full = '';
+
+      try {
+        const r = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: MODEL,
+            messages: history.slice(-12),
+            stream: true,
+          }),
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const reader = r.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const j = JSON.parse(line);
+              const t = j.message?.content || '';
+              if (t) {
+                full += t;
+                bodyEl.innerHTML = renderMarkdownLite(full);
+                log.scrollTop = log.scrollHeight;
+              }
+            } catch (_) {}
+          }
+        }
+        if (!full) full = '(keine Antwort)';
+        bodyEl.innerHTML = renderMarkdownLite(full);
+        history.push({ role: 'assistant', content: full });
+      } catch (e) {
+        bodyEl.textContent = 'Error: ' + e.message + '
+
+Tip: open Ollama.app, then reload this page.';
+        setStatus(false, 'Verbindungsfehler');
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    sendBtn.addEventListener('click', send);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        send();
+      }
+    });
+    document.querySelectorAll('.hints button').forEach(b => {
+      b.addEventListener('click', () => {
+        input.value = b.dataset.q;
+        input.focus();
+      });
+    });
+
+    checkHealth();
+    setInterval(checkHealth, 8000);
+    input.focus();
+  </script>
+</body>
+</html>
