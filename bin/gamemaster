@@ -10,6 +10,7 @@ MODEL="${GAMEMASTER_MODEL:-gamemaster}"
 OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
 KNOWLEDGE=1
 AGENT=0
+LIVE=0
 FILES=()
 PROJECT=""
 PROMPT_PARTS=()
@@ -28,7 +29,8 @@ gamemaster — local free multi-agent game coding (Ollama, $0)
 
   gamemaster [options] [prompt...]
   gamemaster scaffold web-game|seeker-app|seeker-game|shader-lab [--genre X]
-  gamemaster studio plan|build|council|review|parallel -p DIR "brief" [--playtest]
+  gamemaster studio plan|build|council|review|parallel -p DIR "brief" [--playtest] [--live]
+  gamemaster live -p DIR
   gamemaster playtest -p DIR [--critic] [--duration SEC]
   gamemaster prefs show|set|forget|from-critic|prompt [-p DIR]
   gamemaster turbo status|warmup|bench
@@ -48,7 +50,8 @@ Examples:
   gamemaster "Third-person controller with coyote time"
   gamemaster scaffold seeker-game --genre runner --name NeonDash
   gamemaster -p ./game --agent "Add collectibles and score"
-  gamemaster studio build -p ./game "platformer vertical slice" --playtest
+  gamemaster studio build -p ./game "platformer vertical slice" --live
+  gamemaster live -p ./game
   gamemaster playtest -p ./game --critic
   gamemaster prefs set like "tight jumps"
   gamemaster turbo warmup
@@ -227,6 +230,10 @@ if [[ $# -gt 0 ]]; then
       shift
       exec python3 "$ROOT/bin/studio.py" "$@"
       ;;
+    live)
+      shift
+      exec python3 "$ROOT/bin/live.py" "$@"
+      ;;
     playtest)
       shift
       exec python3 "$ROOT/bin/playtest.py" "$@"
@@ -258,6 +265,7 @@ while [[ $# -gt 0 ]]; do
     -m|--model) MODEL="$2"; FORCE_MODEL=1; shift 2 ;;
     --tier) TIER_FORCE="$2"; shift 2 ;;
     --agent) AGENT=1; shift ;;
+    --live) LIVE=1; shift ;;
     --no-knowledge) KNOWLEDGE=0; shift ;;
     --no-turbo) TURBO=0; shift ;;
     --) shift; PROMPT_PARTS+=("$@"); break ;;
@@ -270,11 +278,13 @@ ensure_ollama
 
 if [[ "$AGENT" -eq 1 ]]; then
   [[ -n "$PROJECT" ]] || die "--agent requires -p/--project"
-  [[ ${#PROMPT_PARTS[@]} -gt 0 ]] || die "--agent requires einen Prompt"
+  [[ ${#PROMPT_PARTS[@]} -gt 0 ]] || die "--agent requires a prompt"
   if [[ "$FORCE_MODEL" -eq 0 && "$TURBO" -eq 1 ]]; then
     apply_turbo_route "${PROMPT_PARTS[*]}"
   fi
-  exec python3 "$ROOT/bin/agent.py" -p "$PROJECT" -m "$MODEL" "${PROMPT_PARTS[@]}"
+  LIVE_ARGS=()
+  [[ "${LIVE:-0}" -eq 1 ]] && LIVE_ARGS+=(--live)
+  exec python3 "$ROOT/bin/agent.py" -p "$PROJECT" -m "$MODEL" "${LIVE_ARGS[@]}" "${PROMPT_PARTS[@]}"
 fi
 
 if [[ ${#PROMPT_PARTS[@]} -gt 0 ]]; then
@@ -282,7 +292,7 @@ if [[ ${#PROMPT_PARTS[@]} -gt 0 ]]; then
     apply_turbo_route "${PROMPT_PARTS[*]}"
   fi
   EXTRA="$(build_extra)"
-  echo "🎮 Gamemaster · model=$MODEL · ctx=$NUM_CTX · $0"
+  echo "🎮 Gamemaster · model=$MODEL · ctx=$NUM_CTX · \$0"
   echo "────────────────────────────────────────"
   chat_api "${PROMPT_PARTS[*]}" "$EXTRA"
   exit 0
@@ -290,7 +300,7 @@ fi
 
 EXTRA="$(build_extra)"
 
-echo "🎮 Gamemaster  ·  $MODEL  ·  Games + Solana Seeker  ·  $0"
+echo "🎮 Gamemaster  ·  $MODEL  ·  Games + Solana Seeker  ·  \$0"
 echo "   /file  /project  /agent  /model  /clear  /exit"
 echo "   scaffold: gamemaster scaffold seeker-game --genre idle"
 echo "   update:   gamemaster update"

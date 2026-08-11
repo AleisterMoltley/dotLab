@@ -32,6 +32,8 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/prefs.py" "$@" ;;
     turbo)
       shift; exec python3 "$ROOT/bin/turbo.py" "$@" ;;
+    live)
+      shift; exec python3 "$ROOT/bin/live.py" "$@" ;;
   esac
 fi
 

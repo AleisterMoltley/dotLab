@@ -57,8 +57,11 @@ gamemaster "Third-person controller with coyote time"
 
 # Multi-agent studio
 gamemaster studio plan -p ./my-game "one-thumb juiciness runner"
-gamemaster studio build -p ./my-game "platformer vertical slice" --playtest
-gamemaster studio council -p ./my-game "tight arena shooter" --build
+gamemaster studio build -p ./my-game "platformer vertical slice" --live
+gamemaster studio council -p ./my-game "tight arena shooter" --build --live
+
+# Live window only (play + watch file changes)
+gamemaster live -p ./my-game
 
 # Scaffolds
 gamemaster scaffold web-game --genre platformer --name Skyjump
@@ -93,7 +96,8 @@ source ./config/ollama-env.sh
 | **parallel** | `studio parallel -p DIR "…"` | player / world / ui streams |
 | **review** | `studio review -p DIR "…"` | Roast existing project |
 
-Add `--playtest` to run Playwright after build/review/parallel.
+Add `--playtest` to run Playwright after build/review/parallel.  
+Add **`--live`** to open a **Live dashboard window**: game on the left (play anytime), AI progress log on the right, auto-reload when files change.
 
 ## Architecture
 

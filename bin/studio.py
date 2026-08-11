@@ -156,6 +156,12 @@ def banner(title: str) -> None:
     print("\n" + "═" * 56)
     print(title)
     print("═" * 56)
+    try:
+        import live as livelib  # type: ignore
+
+        livelib.emit(title, role="system", phase="studio", headline=title.strip())
+    except Exception:
+        pass
 
 
 def write_session(project: Path, name: str, content: str) -> Path:
@@ -375,10 +381,45 @@ def run_coder_agent(project: Path, task: str, model: str, steps: int = 16) -> st
         str(steps),
         task,
     ]
+    # inherit live session via env so agent can emit + share dashboard
+    env = os.environ.copy()
+    env["GAMEMASTER_LIVE"] = "1"
+    env["GAMEMASTER_LIVE_PROJECT"] = str(project)
     print(f"  💻 Coder agent starting…")
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        import live as livelib  # type: ignore
+
+        livelib.emit(
+            "Coder agent starting — watch the game panel for reloads as files are written.",
+            role="coder",
+            phase="coding",
+            headline="Coder at work",
+            detail="Play on the left while files are written.",
+        )
+    except Exception:
+        pass
+    p = subprocess.run(cmd, capture_output=True, text=True, env=env)
     out = (p.stdout or "") + (p.stderr or "")
-    # keep tail
+    # stream key lines to live
+    try:
+        import live as livelib  # type: ignore
+
+        for line in out.splitlines():
+            if any(
+                k in line
+                for k in (
+                    "write_file",
+                    "OK wrote",
+                    "DONE",
+                    "Schritt",
+                    "ERROR",
+                    "Schritt",
+                    "wrote",
+                )
+            ):
+                livelib.emit(line.strip()[:300], role="coder", phase="coding")
+    except Exception:
+        pass
     return out[-12000:]
 
 
@@ -423,17 +464,53 @@ def pipeline_plan(project: Path, brief: str, model: str) -> dict:
     if pb:
         print("  🧠 preference memory active")
     banner("🎬 DIRECTOR")
+    try:
+        import live as livelib
+
+        livelib.emit(
+            f"Director designing: {brief[:160]}",
+            role="director",
+            phase="design",
+            headline="Director designing…",
+            detail="Fun-first pitch, pillars, feel numbers",
+        )
+    except Exception:
+        pass
     design = role_director(brief, model, project=project, prefs=pb)
     print(design[:2500] + ("…" if len(design) > 2500 else ""))
     write_session(project, "01-director.md", design)
     update_design_md(project, "Director", design)
+    try:
+        import live as livelib
+
+        livelib.emit("Director finished — design saved to DESIGN.md", role="director", phase="design")
+    except Exception:
+        pass
 
     banner("🏗️ ARCHITECT")
+    try:
+        import live as livelib
+
+        livelib.emit(
+            "Architect planning modules and file tree…",
+            role="architect",
+            phase="architecture",
+            headline="Architect planning…",
+            detail="Tech stack + implementation order",
+        )
+    except Exception:
+        pass
     tree = project_tree_summary(project)
     arch = role_architect(brief, design, model, tree, project=project, prefs=pb)
     print(arch[:2500] + ("…" if len(arch) > 2500 else ""))
     write_session(project, "02-architect.md", arch)
     update_design_md(project, "Architect", arch)
+    try:
+        import live as livelib
+
+        livelib.emit("Architect finished — ready to code", role="architect", phase="architecture")
+    except Exception:
+        pass
     return {"design": design, "architecture": arch}
 
 
@@ -443,7 +520,24 @@ def pipeline_build(
     model: str,
     skip_plan: bool = False,
     do_playtest: bool = False,
+    do_live: bool = False,
 ) -> None:
+    live_session = None
+    if do_live:
+        try:
+            import live as livelib
+
+            live_session = livelib.start_live(project, open_browser=True)
+            live_session.emit(
+                f"Studio BUILD started: {brief[:200]}",
+                role="system",
+                phase="boot",
+                headline="Studio build in progress",
+                detail="Play the game on the left while agents work.",
+            )
+        except Exception as e:
+            print(f"  ⚠ live preview failed to start: {e}")
+
     if skip_plan:
         design = (project / ".gamemaster" / "studio" / "01-director.md").read_text() if (
             project / ".gamemaster" / "studio" / "01-director.md"
@@ -503,15 +597,35 @@ def pipeline_build(
         run_playtest(project, model, with_critic=True)
 
     banner("✅ STUDIO BUILD COMPLETE")
+    try:
+        import live as livelib
+
+        livelib.emit(
+            "Studio BUILD complete — play and test the game now!",
+            role="system",
+            phase="done",
+            headline="Build complete — your turn to play",
+            detail="Live window stays open. Reload if needed.",
+            reload=True,
+        )
+    except Exception:
+        pass
     print(f"Project: {project}")
     print("Artifacts: .gamemaster/studio/ + DESIGN.md + prefs")
     if do_playtest:
         print("Playtest: .gamemaster/playtest/")
+    if do_live:
+        print("Live: dashboard still open — play anytime. Ctrl+C in terminal if you started with watch.")
     print("Next: npm i && npm run dev  — or: gamemaster playtest -p . --critic")
 
 
 def pipeline_council(
-    project: Path, brief: str, model: str, build: bool, do_playtest: bool = False
+    project: Path,
+    brief: str,
+    model: str,
+    build: bool,
+    do_playtest: bool = False,
+    do_live: bool = False,
 ) -> None:
     pb = pref_block(project)
     banner("⚖️ COUNCIL — Best-of-N design (3 variants in parallel)")
@@ -541,10 +655,30 @@ def pipeline_council(
     if m:
         final = m.group(1).strip()
     if build:
-        pipeline_build(project, final, model, skip_plan=False, do_playtest=do_playtest)
+        pipeline_build(
+            project, final, model, skip_plan=False, do_playtest=do_playtest, do_live=do_live
+        )
+    elif do_live:
+        try:
+            import live as livelib
+
+            livelib.start_live(project, open_browser=True)
+            livelib.emit("Council finished (no --build). Open Studio build next.", role="system")
+        except Exception:
+            pass
 
 
-def pipeline_review(project: Path, brief: str, model: str, do_playtest: bool = False) -> None:
+def pipeline_review(
+    project: Path, brief: str, model: str, do_playtest: bool = False, do_live: bool = False
+) -> None:
+    if do_live:
+        try:
+            import live as livelib
+
+            livelib.start_live(project, open_browser=True)
+            livelib.emit("Review mode — play while critic runs", role="critic", phase="review")
+        except Exception as e:
+            print(f"  ⚠ live: {e}")
     banner("🧪 REVIEW ONLY")
     if do_playtest:
         run_playtest(project, model, with_critic=False)
@@ -583,8 +717,22 @@ def pipeline_review(project: Path, brief: str, model: str, do_playtest: bool = F
 
 
 def pipeline_parallel(
-    project: Path, brief: str, model: str, do_playtest: bool = False
+    project: Path, brief: str, model: str, do_playtest: bool = False, do_live: bool = False
 ) -> None:
+    if do_live:
+        try:
+            import live as livelib
+
+            livelib.start_live(project, open_browser=True)
+            livelib.emit(
+                f"Parallel studio: {brief[:160]}",
+                role="system",
+                phase="boot",
+                headline="Parallel streams starting",
+                detail="player / world / ui — play on the left",
+            )
+        except Exception as e:
+            print(f"  ⚠ live: {e}")
     data = pipeline_plan(project, brief, model)
     design, arch = data["design"], data["architecture"]
     banner("🔀 PARALLEL STREAMS (player / world / ui)")
@@ -649,6 +797,11 @@ def main() -> int:
         action="store_true",
         help="After build/review/parallel: Playwright playtest (+ critic)",
     )
+    ap.add_argument(
+        "--live",
+        action="store_true",
+        help="Open Live window: play the game while agents work (auto-reload)",
+    )
     args = ap.parse_args()
 
     project = Path(args.project).expanduser().resolve()
@@ -656,6 +809,7 @@ def main() -> int:
     brief = " ".join(args.brief)
     model = args.model
     pt = args.playtest
+    live = args.live
 
     ensure_ollama()
     print(f"🎮 Gamemaster STUDIO · mode={args.mode} · model={model}")
@@ -663,17 +817,49 @@ def main() -> int:
     print(f"🎯 {brief}")
     if pt:
         print("🎮 playtest enabled")
+    if live:
+        print("🔴 live preview enabled — a browser window will open")
 
     if args.mode == "plan":
+        if live:
+            try:
+                import live as livelib
+
+                livelib.start_live(project, open_browser=True)
+            except Exception as e:
+                print(f"  ⚠ live: {e}")
         pipeline_plan(project, brief, model)
     elif args.mode == "build":
-        pipeline_build(project, brief, model, do_playtest=pt)
+        pipeline_build(project, brief, model, do_playtest=pt, do_live=live)
     elif args.mode == "council":
-        pipeline_council(project, brief, model, build=args.build, do_playtest=pt)
+        pipeline_council(
+            project, brief, model, build=args.build, do_playtest=pt, do_live=live
+        )
     elif args.mode == "review":
-        pipeline_review(project, brief, model, do_playtest=pt)
+        pipeline_review(project, brief, model, do_playtest=pt, do_live=live)
     elif args.mode == "parallel":
-        pipeline_parallel(project, brief, model, do_playtest=pt)
+        pipeline_parallel(project, brief, model, do_playtest=pt, do_live=live)
+
+    # Keep live servers up so the user can keep playing after AI finishes
+    if live:
+        try:
+            import live as livelib
+
+            if livelib.get_session() is not None:
+                print(
+                    "\n🔴 Live window stays open so you can keep playing.\n"
+                    "   Press Ctrl+C here when you are done testing.\n"
+                )
+                try:
+                    while True:
+                        time.sleep(3600)
+                except KeyboardInterrupt:
+                    print("\nStopping live session…")
+                    s = livelib.get_session()
+                    if s:
+                        s.stop()
+        except Exception:
+            pass
 
     return 0
 

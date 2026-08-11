@@ -232,6 +232,19 @@ def tool_write(project: Path, path: str, content: str) -> str:
         bak = f.with_suffix(f.suffix + ".bak")
         bak.write_bytes(f.read_bytes())
     f.write_text(content, encoding="utf-8")
+    try:
+        import live as livelib  # type: ignore
+
+        livelib.emit(
+            f"Wrote {path} ({len(content)} chars) — game will reload",
+            role="file",
+            phase="coding",
+            headline=f"Updated {path}",
+            detail="Play/test on the left panel",
+            reload=True,
+        )
+    except Exception:
+        pass
     return f"OK wrote {path} ({len(content)} chars)"
 
 
@@ -350,6 +363,11 @@ def main() -> int:
     ap.add_argument("-m", "--model", default=DEFAULT_MODEL)
     ap.add_argument("--steps", type=int, default=MAX_STEPS)
     ap.add_argument("--no-knowledge", action="store_true")
+    ap.add_argument(
+        "--live",
+        action="store_true",
+        help="Open Live window to play/test while the agent works",
+    )
     args = ap.parse_args()
 
     model = args.model
@@ -357,6 +375,31 @@ def main() -> int:
     if not project.is_dir():
         print(f"❌ Project not found: {project}", file=sys.stderr)
         return 1
+
+    # attach or start live session
+    live_flag = args.live or os.environ.get("GAMEMASTER_LIVE") == "1"
+    if live_flag:
+        try:
+            import live as livelib  # type: ignore
+
+            if livelib.get_session() is None:
+                # if parent studio already set GAMEMASTER_LIVE_PROJECT, still need a session
+                # Agent as subprocess cannot share Python global — reconnect via files only
+                # Start a full live session if --live on agent CLI
+                if args.live:
+                    livelib.start_live(project, open_browser=True)
+                    livelib.emit(
+                        f"Agent task: {' '.join(args.prompt)[:200]}",
+                        role="agent",
+                        phase="coding",
+                        headline="Agent working…",
+                        detail="Play the game while files are written",
+                    )
+                else:
+                    # file-based emit for studio child: append events so dashboard polls them
+                    os.environ["GAMEMASTER_LIVE_FILE_ONLY"] = "1"
+        except Exception as e:
+            print(f"  ⚠ live: {e}")
 
     ensure_ollama()
     task = " ".join(args.prompt)

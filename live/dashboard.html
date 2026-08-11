@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gamemaster Live</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --panel: #12121a;
+      --border: #27272f;
+      --text: #e8eaef;
+      --muted: #8b92a5;
+      --accent: #6ee7b7;
+      --warn: #fbbf24;
+      --danger: #f87171;
+      --info: #38bdf8;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+    body { display: grid; grid-template-rows: 52px 1fr; }
+    header {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 0 14px; border-bottom: 1px solid var(--border);
+      background: rgba(10,10,15,.95); backdrop-filter: blur(10px);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+    .logo {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--info));
+      color: #042f1c; display: grid; place-items: center; font-size: 11px; font-weight: 900;
+    }
+    .meta { color: var(--muted); font-size: 12px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button {
+      appearance: none; border: 1px solid var(--border); background: #18181f;
+      color: var(--text); border-radius: 8px; padding: 7px 12px; font-size: 12px;
+      font-weight: 600; cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: #042f1c; border-color: transparent; }
+    button:hover { border-color: #3f3f46; }
+    .pill {
+      font-size: 11px; padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .pill.live { color: var(--accent); border-color: rgba(110,231,183,.4); }
+    .pill.busy { color: var(--warn); }
+    main {
+      min-height: 0; display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+    }
+    .game-pane {
+      position: relative; border-right: 1px solid var(--border);
+      background: #000; min-width: 0;
+    }
+    .game-pane iframe {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      border: 0; background: #000;
+    }
+    .game-overlay {
+      position: absolute; left: 10px; top: 10px; z-index: 2;
+      display: flex; gap: 8px; pointer-events: none;
+    }
+    .game-overlay .pill { pointer-events: auto; background: rgba(0,0,0,.55); }
+    .side {
+      display: grid; grid-template-rows: auto 1fr auto;
+      min-height: 0; background: var(--panel);
+    }
+    .side-head {
+      padding: 12px 14px; border-bottom: 1px solid var(--border);
+      font-size: 12px; color: var(--muted);
+    }
+    .side-head strong { color: var(--text); display: block; font-size: 14px; margin-bottom: 4px; }
+    #log {
+      overflow: auto; padding: 10px 12px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .ev {
+      margin: 0 0 10px; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid var(--border); background: #0e0e14;
+    }
+    .ev .t { color: var(--muted); font-size: 10px; margin-bottom: 4px; }
+    .ev .role { font-weight: 700; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+    .ev.director .role { color: #c4b5fd; }
+    .ev.architect .role { color: var(--info); }
+    .ev.coder .role, .ev.agent .role { color: var(--accent); }
+    .ev.critic .role { color: var(--warn); }
+    .ev.system .role { color: var(--muted); }
+    .ev.file .role { color: #f9a8d4; }
+    .ev .msg { white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
+    .side-foot {
+      border-top: 1px solid var(--border); padding: 10px 12px;
+      font-size: 11px; color: var(--muted);
+    }
+    .empty { color: var(--muted); padding: 20px 8px; text-align: center; }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; grid-template-rows: 50vh 1fr; }
+      .game-pane { border-right: 0; border-bottom: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">GM</div>
+      <div>
+        <div>Gamemaster Live</div>
+        <div class="meta" id="projectPath">—</div>
+      </div>
+    </div>
+    <div class="actions">
+      <span class="pill" id="conn">connecting…</span>
+      <span class="pill" id="phase">idle</span>
+      <button type="button" id="btn-reload" class="primary">Reload game</button>
+      <button type="button" id="btn-open">Open game only</button>
+      <button type="button" id="btn-clear">Clear log</button>
+    </div>
+  </header>
+  <main>
+    <section class="game-pane">
+      <div class="game-overlay">
+        <span class="pill live" id="reloadBadge">auto-reload on</span>
+      </div>
+      <iframe id="game" title="Game preview" allow="gamepad *;"></iframe>
+    </section>
+    <aside class="side">
+      <div class="side-head">
+        <strong id="headline">Waiting for Gamemaster…</strong>
+        <span id="subhead">Steps and file writes appear here live. Play in the left panel anytime.</span>
+      </div>
+      <div id="log"><div class="empty">No events yet.</div></div>
+      <div class="side-foot" id="foot">Tip: keep this window open while Studio/Agent runs.</div>
+    </aside>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const gameUrl = params.get('game') || 'http://127.0.0.1:5173/';
+    const qs = location.search;
+    const iframe = document.getElementById('game');
+    const logEl = document.getElementById('log');
+    const conn = document.getElementById('conn');
+    const phaseEl = document.getElementById('phase');
+    const headline = document.getElementById('headline');
+    const subhead = document.getElementById('subhead');
+    const foot = document.getElementById('foot');
+    const projectPath = document.getElementById('projectPath');
+    let reloadToken = 0;
+    let autoReload = true;
+    let lastEventId = 0;
+
+    function setGameSrc(force) {
+      const u = new URL(gameUrl);
+      if (force || autoReload) u.searchParams.set('_gm', String(Date.now()));
+      iframe.src = u.toString();
+    }
+    setGameSrc(true);
+
+    document.getElementById('btn-reload').onclick = () => setGameSrc(true);
+    document.getElementById('btn-open').onclick = () => window.open(gameUrl, '_blank');
+    document.getElementById('btn-clear').onclick = () => {
+      logEl.innerHTML = '<div class="empty">Log cleared (new events still stream).</div>';
+    };
+    document.getElementById('reloadBadge').onclick = () => {
+      autoReload = !autoReload;
+      document.getElementById('reloadBadge').textContent = autoReload ? 'auto-reload on' : 'auto-reload off';
+    };
+
+    function addEvent(ev) {
+      if (logEl.querySelector('.empty')) logEl.innerHTML = '';
+      const div = document.createElement('div');
+      const role = (ev.role || 'system').toLowerCase();
+      div.className = 'ev ' + role;
+      const t = ev.ts ? new Date(ev.ts).toLocaleTimeString() : '';
+      div.innerHTML =
+        `<div class="t">${t}</div>` +
+        `<div class="role">${escapeHtml(ev.role || 'system')}</div>` +
+        `<div class="msg">${escapeHtml(ev.message || '')}</div>`;
+      logEl.prepend(div);
+      if (ev.phase) {
+        phaseEl.textContent = ev.phase;
+        phaseEl.className = 'pill ' + (ev.phase === 'done' ? 'live' : 'busy');
+      }
+      if (ev.headline) headline.textContent = ev.headline;
+      if (ev.detail) subhead.textContent = ev.detail;
+      if (ev.reload || role === 'file' || /wrote|write_file|saved/i.test(ev.message || '')) {
+        if (autoReload) {
+          clearTimeout(reloadToken);
+          reloadToken = setTimeout(() => setGameSrc(true), 400);
+        }
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function poll() {
+      try {
+        const r = await fetch('/api/status?' + Date.now());
+        if (!r.ok) throw new Error('status ' + r.status);
+        const data = await r.json();
+        conn.textContent = 'live';
+        conn.className = 'pill live';
+        if (data.project) projectPath.textContent = data.project;
+        if (data.game_url && data.game_url !== gameUrl) {
+          // keep iframe on query game url unless empty
+        }
+        if (data.phase) {
+          phaseEl.textContent = data.phase;
+          phaseEl.className = 'pill ' + (data.phase === 'done' || data.phase === 'idle' ? 'live' : 'busy');
+        }
+        if (data.headline) headline.textContent = data.headline;
+        if (data.detail) subhead.textContent = data.detail;
+        if (typeof data.last_event_id === 'number' && data.last_event_id > lastEventId) {
+          const er = await fetch('/api/events?after=' + lastEventId);
+          const evs = await er.json();
+          for (const ev of evs) {
+            lastEventId = Math.max(lastEventId, ev.id || 0);
+            addEvent(ev);
+          }
+        }
+        if (data.reload_seq && data.reload_seq !== window.__gmReloadSeq) {
+          window.__gmReloadSeq = data.reload_seq;
+          if (autoReload) setGameSrc(true);
+        }
+        foot.textContent = data.foot || `Game: ${gameUrl}`;
+      } catch (e) {
+        conn.textContent = 'reconnecting…';
+        conn.className = 'pill';
+      }
+    }
+
+    // SSE if available
+    try {
+      const es = new EventSource('/api/stream');
+      es.onmessage = (m) => {
+        try {
+          const ev = JSON.parse(m.data);
+          if (ev.id) lastEventId = Math.max(lastEventId, ev.id);
+          addEvent(ev);
+          conn.textContent = 'live';
+          conn.className = 'pill live';
+        } catch (_) {}
+      };
+      es.onerror = () => { /* poll fallback */ };
+    } catch (_) {}
+
+    setInterval(poll, 800);
+    poll();
+  </script>
+</body>
+</html>
