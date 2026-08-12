@@ -22,15 +22,19 @@ import slice as slicelib  # noqa: E402
 from gmcommon import (
     CHAT_DIR,
     DEFAULT_MODEL,
+    MODEL_FALLBACKS,
     OLLAMA,
     PRODUCT,
     ROOT,
     ensure_ollama,
+    ensure_product_models,
     free_tcp_port,
     list_game_projects,
     looks_like_game,
     meta_dir,
+    model_name_matches,
     projects_root,
+    resolve_model_name,
     slugify_project,
 )
 
@@ -121,7 +125,7 @@ def peek_ollama_tags(timeout: float = 2.0) -> dict:
 
 
 def has_model(names: list[str], model: str) -> bool:
-    return any(n == model or n.startswith(model + ":") for n in names)
+    return model_name_matches(names, model)
 
 
 def status_label(h: dict | None = None) -> tuple[bool, str]:
@@ -163,15 +167,8 @@ def health_payload() -> dict:
             "error": "",
         }
     names = list(_TAGS.get("names") or [])
-    # Prefer configured model; accept legacy gamemaster tags during rename
-    model = MODEL
-    found = has_model(names, model)
-    if not found:
-        for alt in ("dotlab", "gamemaster", "dotlab:latest", "gamemaster:latest"):
-            if has_model(names, alt.split(":")[0] if ":" in alt else alt) or has_model(names, alt):
-                model = alt.split(":")[0]
-                found = True
-                break
+    model = resolve_model_name(names, MODEL, MODEL_FALLBACKS) or MODEL
+    found = has_model(names, model) if model else False
     ollama_ok = bool(_TAGS.get("ok")) or bool(names)
     return {
         "ok": bool(found),
@@ -546,6 +543,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main() -> int:
+    global MODEL
     if not CHAT_DIR.is_dir():
         print(f"Chat-UI missing: {CHAT_DIR}", file=sys.stderr)
         return 1
@@ -561,22 +559,34 @@ def main() -> int:
             print(f"❌ {e}")
             return 1
         st = cloudlib.status_dict()
-        print(f"✓ Cloud LLM: {st['provider']} · {st['model']}  (paid — `gamemaster cloud off` to go local)")
+        print(f"✓ Cloud LLM: {st['provider']} · {st['model']}  (paid — `dotlab cloud off` to go local)")
     else:
         if not ensure_ollama(fatal=False):
             print("❌ Ollama not reachable. Open Ollama.app and try again.")
             print("   Download: https://ollama.com")
-            print("   Or opt in to a paid model: gamemaster cloud on grok")
+            print("   Or opt in to a paid model: dotlab cloud on grok")
             return 1
         print("✓ Ollama online")
         try:
+            # Rebrand safety: create dotlab* tags from gamemaster* if needed (no re-pull)
+            resolved = ensure_product_models()
+            if resolved.get("max"):
+                MODEL = resolved["max"]
             with urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=5) as r:
                 names = [m.get("name", "") for m in json.loads(r.read()).get("models", [])]
             remember_tags(names, ok=True)
             if not has_model(names, MODEL):
-                print(f"❌ Model '{MODEL}' missing.")
-                print(f"   Einmalig:  cd {ROOT} && ./install.sh")
-                return 1
+                alt = resolve_model_name(names, MODEL, MODEL_FALLBACKS)
+                if alt:
+                    MODEL = alt
+                    print(f"↻ Using installed model: {MODEL}")
+                else:
+                    print(f"❌ No local coding model found (wanted '{DEFAULT_MODEL}').")
+                    print(f"   Once:  cd {ROOT} && ./install.sh")
+                    print(f"   Or:    cd {ROOT} && python3 bin/intervene.py")
+                    return 1
+            else:
+                print(f"✓ Model: {MODEL}")
         except Exception as e:
             print("⚠ Could not list models:", e)
             remember_tags([], ok=False, error=str(e)[:160])

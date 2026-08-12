@@ -84,15 +84,22 @@ fi
 
 if ! curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
   if [[ "$(uname)" == "Darwin" ]]; then
-    osascript -e 'display alert "Gamemaster" message "Ollama is not running.\nOpen Ollama.app, then try again." as critical' 2>/dev/null || true
+    osascript -e 'display alert "dotLab" message "Ollama is not running.\nOpen Ollama.app, then try again." as critical' 2>/dev/null || true
   fi
   echo "❌ Ollama not running. https://ollama.com"
   exit 1
 fi
 
-if ! ollama list 2>/dev/null | awk '{print $1}' | grep -qE '^gamemaster(:|$)'; then
+# Accept dotlab OR legacy gamemaster. Create free aliases if only legacy exists.
+if ! ollama list 2>/dev/null | awk '{print $1}' | grep -qE '^(dotlab|gamemaster)(:|$)'; then
   echo "→ Model missing — installing MAX profile…"
   "$ROOT/install.sh" --max
+else
+  # Rebrand: map gamemaster* → dotlab* without re-downloading weights
+  echo "→ Ensuring dotLab model tags…"
+  PYTHONPATH="$ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 -c \
+    'from gmcommon import ensure_product_models; ensure_product_models()' \
+    || true
 fi
 
 if [[ "$MODE" == "term" ]]; then

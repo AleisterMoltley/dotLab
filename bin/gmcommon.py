@@ -51,6 +51,18 @@ FLASH_MODEL = (
     or "dotlab-flash"
 )
 
+# After rebrand: prefer new tags, accept legacy weights already on disk
+MODEL_FALLBACKS = (
+    "dotlab",
+    "gamemaster",
+    "qwen3-coder:30b",
+    "qwen2.5-coder:32b",
+    "qwen2.5-coder:14b",
+    "qwen2.5-coder:7b",
+)
+DENSE_FALLBACKS = ("dotlab-dense", "gamemaster-dense", "qwen2.5-coder:32b", "gamemaster", "dotlab")
+FLASH_FALLBACKS = ("dotlab-flash", "gamemaster-flash", "qwen2.5-coder:7b", "qwen2.5-coder:14b")
+
 GAME_GITIGNORE = """# dotLab game
 node_modules/
 dist/
@@ -228,6 +240,102 @@ def ollama_up() -> bool:
             return r.status == 200
     except Exception:
         return False
+
+
+def model_name_matches(names: list[str] | set[str], model: str) -> bool:
+    """True if tags list includes model or model:tag."""
+    model = (model or "").strip()
+    if not model:
+        return False
+    for n in names:
+        if n == model or n.startswith(model + ":"):
+            return True
+    return False
+
+
+def resolve_model_name(
+    names: list[str] | set[str] | None = None,
+    preferred: str | None = None,
+    fallbacks: tuple[str, ...] | None = None,
+) -> str | None:
+    """Pick first installed model from preferred + fallbacks (return bare tag base)."""
+    if names is None:
+        try:
+            data = ollama_json("/api/tags", timeout=3.0)
+            names = [m.get("name") or "" for m in data.get("models") or []]
+        except Exception:
+            names = []
+    chain: list[str] = []
+    for m in (preferred, *(fallbacks or MODEL_FALLBACKS)):
+        if m and m not in chain:
+            chain.append(m)
+    for m in chain:
+        if model_name_matches(names, m):
+            return m.split(":")[0]
+    return None
+
+
+def ensure_model_alias(target: str, source: str) -> bool:
+    """Create a free Ollama tag `target` pointing at existing `source` weights."""
+    if not target or not source or target == source:
+        return False
+    tmp = CONFIG / f".Modelfile.alias.{target.replace(':', '_')}"
+    try:
+        CONFIG.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(f"FROM {source}\n", encoding="utf-8")
+        code, _ = run(["ollama", "create", target, "-f", str(tmp)], timeout=300)
+        return code == 0
+    except Exception:
+        return False
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)  # type: ignore[call-arg]
+        except TypeError:
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
+        except OSError:
+            pass
+
+
+def ensure_product_models() -> dict[str, str]:
+    """
+    After rebrand, create dotlab* tags from gamemaster* / base weights if needed.
+    Returns {max, dense, flash} resolved names.
+    """
+    try:
+        data = ollama_json("/api/tags", timeout=5.0)
+        names = [m.get("name") or "" for m in data.get("models") or []]
+    except Exception:
+        names = []
+
+    resolved: dict[str, str] = {}
+    plans = (
+        ("max", DEFAULT_MODEL, MODEL_FALLBACKS),
+        ("dense", DENSE_MODEL, DENSE_FALLBACKS),
+        ("flash", FLASH_MODEL, FLASH_FALLBACKS),
+    )
+    for key, preferred, falls in plans:
+        have = resolve_model_name(names, preferred, falls)
+        if have and model_name_matches(names, preferred):
+            resolved[key] = preferred
+            continue
+        if have and preferred and not model_name_matches(names, preferred):
+            # Point new brand tag at whatever is installed (fast, no re-pull)
+            if ensure_model_alias(preferred, have):
+                names.append(preferred + ":latest")
+                resolved[key] = preferred
+                print(f"  ✓ alias {preferred} → {have}")
+            else:
+                resolved[key] = have
+                print(f"  ↻ using legacy model {have} (alias {preferred} failed)")
+        elif have:
+            resolved[key] = have
+        else:
+            resolved[key] = preferred
+    return resolved
 
 
 def ensure_ollama(timeout: float = 25.0, fatal: bool = True) -> bool:

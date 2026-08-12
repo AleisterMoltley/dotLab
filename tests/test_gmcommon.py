@@ -23,6 +23,17 @@ class TestGmcommon(unittest.TestCase):
         self.assertEqual(g.slugify_project("Wild Coast!!"), "wild-coast")
         self.assertEqual(g.slugify_project(""), "dotlab-project")
 
+    def test_resolve_model_prefers_dotlab_then_legacy(self) -> None:
+        self.assertEqual(
+            g.resolve_model_name(["gamemaster:latest"], preferred="dotlab"),
+            "gamemaster",
+        )
+        self.assertEqual(
+            g.resolve_model_name(["dotlab:latest", "gamemaster:latest"], preferred="dotlab"),
+            "dotlab",
+        )
+        self.assertIsNone(g.resolve_model_name(["llama3.1:8b"], preferred="dotlab"))
+
     def test_slugify_repo(self) -> None:
         self.assertEqual(g.slugify_repo("My Game v2"), "my-game-v2")
         self.assertIn(".", g.slugify_repo("foo.bar"))
