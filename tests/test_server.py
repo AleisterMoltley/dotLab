@@ -39,6 +39,9 @@ class TestHealth(unittest.TestCase):
         self.assertIn("online · gamemaster · $0", html)
         self.assertIn('class="dot ok"', html)
         self.assertNotIn("starting…", html)
+        self.assertIn('id="composer"', html)
+        self.assertIn("GM.bootSend", html)
+        self.assertTrue((server.CHAT_DIR / "app.js").is_file())
 
     def test_health_does_not_call_ollama(self) -> None:
         server.remember_tags(["gamemaster:latest"], ok=True)

@@ -262,17 +262,40 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, {"models": [{"name": name, "cloud": True}]})
             models = [{"name": n} for n in (_TAGS.get("names") or [])]
             return self._json(200, {"models": models, "error": _TAGS.get("error") or ""})
+        if path == "/app.js":
+            p = CHAT_DIR / "app.js"
+            if p.is_file():
+                return self._bytes(200, p.read_bytes(), "application/javascript; charset=utf-8")
         if path in ("/", "/index.html"):
             return self._bytes(200, index_html(), "text/html; charset=utf-8")
         return super().do_GET()
 
     def do_POST(self) -> None:
-        if urlparse(self.path).path.startswith("/api/github"):
+        path = urlparse(self.path).path
+        if path.startswith("/api/github"):
             self._github("POST")
             return
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length else b"{}"
-        if self.path.startswith("/api/chat"):
+        if path == "/api/ask":
+            try:
+                payload = json.loads(body.decode() or "{}")
+            except json.JSONDecodeError:
+                payload = {}
+            messages = payload.get("messages") or []
+            if isinstance(payload.get("q"), str) and payload["q"].strip():
+                messages = messages or [{"role": "user", "content": payload["q"]}]
+            try:
+                text = cloudlib.chat(
+                    messages,
+                    model=payload.get("model") or MODEL,
+                    temperature=float((payload.get("options") or {}).get("temperature", 0.2)),
+                    num_predict=int((payload.get("options") or {}).get("num_predict", 4096)),
+                )
+                return self._json(200, {"ok": True, "text": text})
+            except Exception as e:
+                return self._json(502, {"ok": False, "error": str(e)})
+        if path.startswith("/api/chat"):
             try:
                 payload = json.loads(body.decode() or "{}")
             except json.JSONDecodeError:
