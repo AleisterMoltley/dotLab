@@ -151,6 +151,43 @@ def enrich_projects(projects: list[dict[str, Any]], with_verify: bool = True) ->
     return out
 
 
+def diagnose_play_log(text: str) -> dict[str, Any]:
+    """Map Vite/npm log noise to one actionable line."""
+    t = text or ""
+    low = t.lower()
+    issues: list[dict[str, str]] = []
+
+    def add(code: str, message: str) -> None:
+        issues.append({"code": code, "message": message})
+
+    if re_search(r"enoent|cannot find module|err! missing|npm err! code elsp", low):
+        add("npm_missing", "Dependencies missing — run npm install in the project folder")
+    if re_search(r"eaddrinuse|address already in use|port \d+ is already", low):
+        add("port_busy", "Port busy — stop the other Vite/dev server or Play again")
+    if re_search(r"syntaxerror|unexpected token|failed to parse|esbuild.*error", low):
+        add("syntax", "JS syntax error — open Editor and check src/game.js")
+    if re_search(r"failed to resolve import|does not provide an export", low):
+        add("import", "Import failed — craft modules missing? Rebuild slice or re-vendor src/craft")
+    if re_search(r"error when starting|error:|err!", low) and not issues:
+        add("dev_error", "Dev server error — see log tail below")
+    if re_search(r"ready in|local:\s*http", low) and not issues:
+        add("ready", "Vite ready")
+
+    primary = issues[0]["message"] if issues else ""
+    # Prefer real problems over "ready"
+    for it in issues:
+        if it["code"] != "ready":
+            primary = it["message"]
+            break
+    return {"issues": issues, "primary": primary, "ok": not any(i["code"] not in ("ready",) for i in issues)}
+
+
+def re_search(pattern: str, text: str) -> bool:
+    import re
+
+    return bool(re.search(pattern, text, re.I))
+
+
 def preview_status(project: Path, previews: dict) -> dict[str, Any]:
     key = str(project.resolve())
     prev = previews.get(key) or {}
@@ -159,10 +196,11 @@ def preview_status(project: Path, previews: dict) -> dict[str, Any]:
     url = prev.get("url") or ""
     log_path = meta_dir(project) / "play.log"
     tail = ""
+    full = ""
     if log_path.is_file():
         try:
-            text = log_path.read_text(encoding="utf-8", errors="ignore")
-            tail = "\n".join(text.splitlines()[-40:])
+            full = log_path.read_text(encoding="utf-8", errors="ignore")
+            tail = "\n".join(full.splitlines()[-40:])
         except Exception:
             tail = ""
     up = False
@@ -174,15 +212,173 @@ def preview_status(project: Path, previews: dict) -> dict[str, Any]:
             up = True
         except Exception:
             up = False
+    diag = diagnose_play_log(full or tail)
     return {
         "ok": True,
         "running": running,
         "up": up,
-        "url": url if running else "",
+        "url": url if running else (url if up else ""),
         "port": prev.get("port"),
         "log_tail": tail[-4000:],
         "path": key,
+        "error_line": diag.get("primary") or "",
+        "diagnose": diag,
     }
+
+
+def trash_root() -> Path:
+    root = projects_root_safe() / ".Trash"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def projects_root_safe() -> Path:
+    from gmcommon import projects_root
+
+    return projects_root()
+
+
+def soft_delete(project: Path) -> dict[str, Any]:
+    """Move project into Projects/.Trash/<name>-<ts> instead of hard delete."""
+    project = project.expanduser().resolve()
+    if not under_projects(project):
+        return {"ok": False, "error": "not under projects root"}
+    if project.resolve() in (Path.home().resolve(), ROOT.resolve()):
+        return {"ok": False, "error": "refused"}
+    if project.name.startswith("."):
+        return {"ok": False, "error": "refused hidden"}
+    trash = trash_root()
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest = trash / f"{project.name}-{stamp}"
+    n = 1
+    while dest.exists():
+        dest = trash / f"{project.name}-{stamp}-{n}"
+        n += 1
+    project.rename(dest)
+    manifest = {
+        "original_name": project.name,
+        "original_path": str(project),
+        "trash_path": str(dest),
+        "deleted_at": time.time(),
+    }
+    try:
+        (dest / ".dotlab-trash.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "soft": True,
+        "path": str(project),
+        "trash_path": str(dest),
+        "message": f"Moved to Trash. Restore within Projects/.Trash if needed.",
+    }
+
+
+def list_trash() -> list[dict[str, Any]]:
+    trash = trash_root()
+    out: list[dict[str, Any]] = []
+    try:
+        for child in sorted(trash.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            if not child.is_dir():
+                continue
+            meta = {}
+            mp = child / ".dotlab-trash.json"
+            if mp.is_file():
+                try:
+                    meta = json.loads(mp.read_text(encoding="utf-8"))
+                except Exception:
+                    meta = {}
+            out.append(
+                {
+                    "name": child.name,
+                    "path": str(child.resolve()),
+                    "original_name": meta.get("original_name") or child.name.rsplit("-", 2)[0],
+                    "deleted_at": int(meta.get("deleted_at") or child.stat().st_mtime),
+                }
+            )
+    except OSError:
+        pass
+    return out
+
+
+def restore_trash(trash_path: Path) -> dict[str, Any]:
+    trash_path = trash_path.expanduser().resolve()
+    trash = trash_root().resolve()
+    try:
+        trash_path.relative_to(trash)
+    except ValueError:
+        return {"ok": False, "error": "not in trash"}
+    if not trash_path.is_dir():
+        return {"ok": False, "error": "not a folder"}
+    meta = {}
+    mp = trash_path / ".dotlab-trash.json"
+    if mp.is_file():
+        try:
+            meta = json.loads(mp.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+    name = slugify_project(str(meta.get("original_name") or trash_path.name))
+    dest = projects_root_safe() / name
+    n = 2
+    while dest.exists():
+        dest = projects_root_safe() / f"{name}-{n}"
+        n += 1
+    trash_path.rename(dest)
+    try:
+        (dest / ".dotlab-trash.json").unlink(missing_ok=True)  # type: ignore[call-arg]
+    except TypeError:
+        try:
+            p = dest / ".dotlab-trash.json"
+            if p.exists():
+                p.unlink()
+        except OSError:
+            pass
+    except OSError:
+        pass
+    return {"ok": True, "name": dest.name, "path": str(dest.resolve())}
+
+
+def open_terminal(project: Path) -> dict[str, Any]:
+    project = project.expanduser().resolve()
+    if not project.is_dir():
+        return {"ok": False, "error": "not a folder"}
+    if sys.platform == "darwin":
+        # AppleScript: new Terminal window cd's into project
+        script = (
+            f'tell application "Terminal"\n'
+            f'  activate\n'
+            f'  do script "cd {shell_quote(str(project))} && clear && pwd"\n'
+            f"end tell\n"
+        )
+        code, out = run(["osascript", "-e", script], timeout=10)
+        if code == 0:
+            return {"ok": True, "cmd": "Terminal", "path": str(project)}
+        # fallback iTerm
+        code2, _ = run(
+            [
+                "osascript",
+                "-e",
+                f'tell application "iTerm" to create window with default profile command "cd {shell_quote(str(project))}"',
+            ],
+            timeout=10,
+        )
+        if code2 == 0:
+            return {"ok": True, "cmd": "iTerm", "path": str(project)}
+        return {"ok": False, "error": out or "Terminal failed"}
+    # Linux
+    for term in (
+        ["x-terminal-emulator", "-e", f"bash -lc 'cd {shell_quote(str(project))}; exec bash'"],
+        ["gnome-terminal", "--working-directory", str(project)],
+        ["konsole", "--workdir", str(project)],
+    ):
+        code, _ = run(term, timeout=8)
+        if code == 0:
+            return {"ok": True, "cmd": term[0], "path": str(project)}
+    return {"ok": False, "error": "no terminal found"}
+
+
+def shell_quote(s: str) -> str:
+    return "'" + s.replace("'", "'\\''") + "'"
 
 
 def rename_project(target: Path, new_name: str) -> dict[str, Any]:

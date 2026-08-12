@@ -33,10 +33,30 @@
   }
 
   function setProjectButtons(on) {
-    ["nowPlay", "nowShow", "nowEditor", "nowZip", "nowVerify", "nowAgent", "nowDup", "nowRename", "nowDel",
-      "toolPlay", "toolFolder", "toolDup", "toolDel", "toolEditor", "toolZip", "toolVerify", "toolAgent"].forEach(function (id) {
+    ["nowPlay", "nowShow", "nowTerm", "nowEditor", "nowZip", "nowVerify", "nowAgent", "nowDup", "nowRename", "nowDel",
+      "toolPlay", "toolFolder", "toolDup", "toolDel", "toolEditor", "toolTerm", "toolZip", "toolVerify", "toolAgent"].forEach(function (id) {
       var el = $(id);
       if (el) el.disabled = !on;
+    });
+  }
+
+  function toast(msg, ms) {
+    var el = $("toast");
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.classList.remove("show"); }, ms || 3200);
+  }
+
+  function pulseVerifyPath(path) {
+    document.querySelectorAll(".proj").forEach(function (el) {
+      if (el.getAttribute("data-path") !== path) return;
+      var b = el.querySelector(".badge");
+      if (!b) return;
+      b.classList.remove("pulse");
+      void b.offsetWidth;
+      b.classList.add("pulse");
     });
   }
 
@@ -200,6 +220,10 @@
   function hidePlayBar() {
     var el = $("playBar");
     if (el) { el.classList.remove("show"); el.innerHTML = ""; }
+    var emb = $("playEmbed");
+    if (emb) emb.classList.remove("show");
+    var frame = $("playFrame");
+    if (frame) frame.removeAttribute("src");
   }
   function hideSession() {
     var el = $("sessionBar");
@@ -216,12 +240,17 @@
     var up = d && d.up;
     var running = d && d.running;
     var url = (d && d.url) || "";
+    var err = (d && d.error_line) || "";
     var badge = up ? '<span class="badge ok">up</span>' : (running ? '<span class="badge na">starting</span>' : '<span class="badge na">stopped</span>');
+    if (err && !(d && d.diagnose && d.diagnose.ok)) {
+      badge += ' <span class="badge bad">issue</span>';
+    }
     el.innerHTML =
       '<div class="row"><span>Play ' + badge +
       (url ? ' · <a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + "</a>" : "") +
+      (err ? '<div style="margin-top:4px;color:var(--bad)">' + esc(err) + "</div>" : "") +
       "</span><span>" +
-      (url ? '<button type="button" class="btn sm" id="playReopen">Open</button> ' : "") +
+      (url ? '<button type="button" class="btn sm" id="playReopen">Open tab</button> ' : "") +
       '<button type="button" class="btn sm" id="playRefresh">Refresh</button>' +
       "</span></div>" +
       (d && d.log_tail ? "<pre>" + esc(d.log_tail) + "</pre>" : "");
@@ -230,6 +259,26 @@
     if (reopen && url) reopen.onclick = function () { window.open(url, "_blank"); };
     var refresh = $("playRefresh");
     if (refresh) refresh.onclick = function () { refreshPlayStatus(); };
+
+    // embed
+    var emb = $("playEmbed");
+    var frame = $("playFrame");
+    var st = $("playEmbedStatus");
+    var errEl = $("playEmbedErr");
+    if (emb && frame && url) {
+      emb.classList.add("show");
+      if (frame.getAttribute("src") !== url) frame.setAttribute("src", url);
+      if (st) st.innerHTML = badge + (url ? " · " + esc(url) : "");
+      if (errEl) {
+        if (err && !(d.diagnose && d.diagnose.ok)) {
+          errEl.hidden = false;
+          errEl.textContent = err;
+        } else {
+          errEl.hidden = true;
+          errEl.textContent = "";
+        }
+      }
+    }
   }
 
   function stopPlayPoll() {
@@ -263,34 +312,52 @@
 
   function playPath(path, openTab) {
     if (!path) return;
-    api("/api/projects/play", { path: path, open: openTab !== false }).then(function (d) {
+    // Embed by default; openTab only if explicitly true
+    api("/api/projects/play", { path: path, open: !!openTab }).then(function (d) {
       if (!d || !d.ok) {
-        addMsg("bot", "Play failed. " + ((d && d.error) || "Open folder → npm i && npm run dev."));
+        var msg = "Play failed. " + ((d && d.error) || "Open folder → npm i && npm run dev.");
+        if (d && d.error_line) msg += "\n" + d.error_line;
+        addMsg("bot", msg);
+        if (d) showPlayBar(d);
         return;
       }
       showPlayBar(d);
+      if (d.error_line && !(d.diagnose && d.diagnose.ok)) {
+        toast(d.error_line, 5000);
+      }
       showIterate(true);
       loadSession();
       stopPlayPoll();
-      playPoll = setInterval(refreshPlayStatus, 2500);
-      setTimeout(stopPlayPoll, 60000);
+      playPoll = setInterval(refreshPlayStatus, 2000);
+      setTimeout(stopPlayPoll, 90000);
     });
   }
 
-  function runVerify(path) {
-    if (!path) return;
-    addMsg("bot", "Verifying…");
-    api("/api/projects/verify", { path: path, force: true }).then(function (d) {
+  function runVerify(path, quiet) {
+    if (!path) return Promise.resolve();
+    if (!quiet) addMsg("bot", "Verifying…");
+    return api("/api/projects/verify", { path: path, force: true }).then(function (d) {
       var v = d && d.verify;
       if (!v) {
-        addMsg("bot", "Verify failed.");
+        if (!quiet) addMsg("bot", "Verify failed.");
         return;
       }
       var line = v.ok
         ? "Verify OK · score " + v.score + "/100"
         : "Verify FAIL · P0: " + ((v.p0_fail || []).join(", ") || "unknown");
-      addMsg("bot", line + (v.report ? "\n" + v.report : ""));
-      loadProjects();
+      if (!quiet) addMsg("bot", line + (v.report ? "\n" + v.report : ""));
+      else if (!v.ok) addMsg("bot", line);
+      return loadProjects().then(function () {
+        pulseVerifyPath(path);
+      });
+    });
+  }
+
+  function openTerminal(path) {
+    if (!path) return;
+    api("/api/projects/terminal", { path: path }).then(function (d) {
+      if (!d || !d.ok) addMsg("bot", "Terminal: " + ((d && d.error) || "failed"));
+      else toast("Terminal → " + (d.path || path));
     });
   }
 
@@ -329,7 +396,7 @@
 
   function deletePath(path, name) {
     if (!path) return;
-    if (!confirm("Delete project “" + (name || path) + "”?\nCannot be undone.")) return;
+    if (!confirm("Move “" + (name || path) + "” to Trash?\n(Soft delete — restore from Tools → Trash)")) return;
     api("/api/projects/delete", { path: path }).then(function (d) {
       if (!d || !d.ok) {
         addMsg("bot", "Delete failed. " + ((d && d.error) || ""));
@@ -337,8 +404,123 @@
       }
       if (current.path === path) setCurrent("", "");
       loadProjects();
-      addMsg("bot", "Deleted " + (name || path));
+      var msg = d.soft
+        ? "Moved to Trash: " + (name || path) + (d.trash_path ? "\n" + d.trash_path : "")
+        : "Deleted " + (name || path);
+      addMsg("bot", msg);
+      toast("In Trash — Tools → Trash to restore");
     });
+  }
+
+  function showTrash() {
+    api("/api/projects/trash").then(function (d) {
+      var list = $("trashList");
+      if (!list) return;
+      var items = (d && d.trash) || [];
+      if (!items.length) {
+        list.innerHTML = '<div class="empty-list">Trash empty.</div>';
+      } else {
+        list.innerHTML = items.map(function (t) {
+          return (
+            '<div class="proj" style="cursor:default">' +
+            '<div class="t"><span class="name">' + esc(t.original_name || t.name) + "</span>" +
+            '<span class="when">' + esc(relTime(t.deleted_at)) + "</span></div>" +
+            '<div class="meta">' + esc(t.path) + "</div>" +
+            '<div class="acts" style="display:flex">' +
+            '<button type="button" class="btn sm" data-restore="' + esc(t.path) + '">Restore</button>' +
+            "</div></div>"
+          );
+        }).join("");
+        list.querySelectorAll("[data-restore]").forEach(function (btn) {
+          btn.onclick = function () {
+            api("/api/projects/restore", { path: btn.getAttribute("data-restore") }).then(function (r) {
+              if (!r || !r.ok) {
+                addMsg("bot", "Restore failed. " + ((r && r.error) || ""));
+                return;
+              }
+              toast("Restored " + r.name);
+              closeSheets();
+              loadProjects();
+              setCurrent(r.path, r.name);
+            });
+          };
+        });
+      }
+      openSheet("trashSheet");
+    });
+  }
+
+  // —— Command palette ——
+  var cmdItems = [];
+  var cmdIndex = 0;
+
+  function buildCommands() {
+    var has = !!current.path;
+    return [
+      { id: "play", label: "Play project", key: "⌘P", need: true, run: function () { playPath(current.path); } },
+      { id: "verify", label: "Verify P0", key: "⌘⇧V", need: true, run: function () { runVerify(current.path); } },
+      { id: "deep", label: "Deep agent…", key: "", need: true, run: function () { openSheet("agentSheet"); } },
+      { id: "zip", label: "Export zip", key: "", need: true, run: function () { exportZip(current.path); } },
+      { id: "ship", label: "Ship GitHub", key: "", need: false, run: function () {
+        var gp = $("ghProject");
+        if (gp) gp.value = current.path || "";
+        openSheet("ghModal");
+      } },
+      { id: "editor", label: "Open editor", key: "", need: true, run: function () { openEditor(current.path); } },
+      { id: "term", label: "Terminal here", key: "", need: true, run: function () { openTerminal(current.path); } },
+      { id: "folder", label: "Show folder", key: "", need: true, run: function () { api("/api/projects/reveal", { path: current.path }); } },
+      { id: "dup", label: "Duplicate", key: "", need: true, run: function () { duplicatePath(current.path); } },
+      { id: "rename", label: "Rename…", key: "", need: true, run: function () { renamePath(current.path); } },
+      { id: "del", label: "Move to trash", key: "", need: true, run: function () { deletePath(current.path, current.name); } },
+      { id: "new", label: "New game", key: "⌘N", need: false, run: newGameMode },
+      { id: "model", label: "Model / cloud", key: "", need: false, run: function () { openSheet("settingsSheet"); } },
+      { id: "trash", label: "Open trash", key: "", need: false, run: showTrash },
+      { id: "help", label: "Keyboard help", key: "?", need: false, run: function () { openSheet("helpSheet"); } },
+    ].filter(function (c) { return !c.need || has; });
+  }
+
+  function openPalette() {
+    cmdItems = buildCommands();
+    cmdIndex = 0;
+    var pal = $("cmdPalette");
+    var inp = $("cmdInput");
+    if (inp) inp.value = "";
+    renderPalette("");
+    if (pal) pal.classList.add("show");
+    if (inp) setTimeout(function () { inp.focus(); }, 10);
+  }
+
+  function closePalette() {
+    var pal = $("cmdPalette");
+    if (pal) pal.classList.remove("show");
+  }
+
+  function renderPalette(q) {
+    var list = $("cmdList");
+    if (!list) return;
+    q = (q || "").toLowerCase();
+    var items = cmdItems.filter(function (c) {
+      return !q || c.label.toLowerCase().indexOf(q) !== -1 || c.id.indexOf(q) !== -1;
+    });
+    if (cmdIndex >= items.length) cmdIndex = 0;
+    list.innerHTML = items.map(function (c, i) {
+      return (
+        '<div class="item' + (i === cmdIndex ? " on" : "") + '" data-i="' + i + '">' +
+        "<div>" + esc(c.label) + "</div><span>" + esc(c.key || "") + "</span></div>"
+      );
+    }).join("") || '<div class="empty-list">No commands</div>';
+    list._items = items;
+    list.querySelectorAll(".item").forEach(function (el) {
+      el.onclick = function () {
+        var i = Number(el.getAttribute("data-i"));
+        runPaletteItem(items[i]);
+      };
+    });
+  }
+
+  function runPaletteItem(item) {
+    closePalette();
+    if (item && item.run) item.run();
   }
 
   function renamePath(path) {
@@ -386,8 +568,18 @@
           st.textContent = d.exit === 0 ? "done" : ("exit " + d.exit);
           st.className = d.exit === 0 ? "badge ok" : "badge bad";
           stopAgentPoll();
-          loadProjects();
-          if (d.exit === 0) addMsg("bot", "Agent finished. Verify + Play.");
+          if (current.path) {
+            runVerify(current.path, true).then(function () {
+              if (d.exit === 0) {
+                addMsg("bot", "Agent finished. Verify updated · Play.");
+                toast("Agent done · badge refreshed");
+              } else {
+                addMsg("bot", "Agent exit " + d.exit);
+              }
+            });
+          } else {
+            loadProjects();
+          }
         }
       }
     }).catch(function () {});
@@ -440,7 +632,11 @@
         history.push({ role: "user", content: text });
         history.push({ role: "assistant", content: summary });
         showIterate(true);
-        if (created.path) runVerify(created.path);
+        if (created.path) {
+          runVerify(created.path, true).then(function () {
+            toast("Slice ready · Verify done · Play");
+          });
+        }
         return;
       }
 
@@ -465,7 +661,13 @@
           history.push({ role: "assistant", content: t });
           if (d.instant || d.iterate) showIterate(true);
           loadSession();
-          loadProjects();
+          if (path) {
+            runVerify(path, true).then(function () {
+              if (d.instant) toast("Craft applied · Verify updated");
+            });
+          } else {
+            loadProjects();
+          }
         })
         .catch(function (e) {
           body.textContent = "Model unreachable. Keep terminal open · Ollama.app\n\n" + e.message;
@@ -569,10 +771,33 @@
   });
   bind("nowEditor", function () { if (current.path) openEditor(current.path); });
   bind("toolEditor", function () { closeSheets(); if (current.path) openEditor(current.path); });
+  bind("nowTerm", function () { if (current.path) openTerminal(current.path); });
+  bind("toolTerm", function () { closeSheets(); if (current.path) openTerminal(current.path); });
   bind("nowZip", function () { if (current.path) exportZip(current.path); });
   bind("toolZip", function () { closeSheets(); if (current.path) exportZip(current.path); });
   bind("nowVerify", function () { if (current.path) runVerify(current.path); });
   bind("toolVerify", function () { closeSheets(); if (current.path) runVerify(current.path); });
+  bind("toolTrash", function () { closeSheets(); showTrash(); });
+  bind("trashClose", closeSheets);
+  bind("btnPalette", openPalette);
+  bind("playEmbedOpen", function () {
+    var frame = $("playFrame");
+    var url = frame && frame.getAttribute("src");
+    if (url) window.open(url, "_blank");
+  });
+  bind("playEmbedReload", function () {
+    var frame = $("playFrame");
+    if (frame && frame.getAttribute("src")) {
+      frame.src = frame.getAttribute("src");
+    }
+    refreshPlayStatus();
+  });
+  bind("playEmbedClose", function () {
+    var emb = $("playEmbed");
+    if (emb) emb.classList.remove("show");
+    var frame = $("playFrame");
+    if (frame) frame.removeAttribute("src");
+  });
   bind("nowAgent", function () {
     if (!current.path) return;
     var ta = $("agentPrompt");
@@ -678,8 +903,40 @@
     });
   }
 
+  var cmdInput = $("cmdInput");
+  if (cmdInput) {
+    cmdInput.addEventListener("input", function () {
+      cmdIndex = 0;
+      renderPalette(cmdInput.value);
+    });
+    cmdInput.addEventListener("keydown", function (e) {
+      var list = $("cmdList");
+      var items = (list && list._items) || [];
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        cmdIndex = Math.min(items.length - 1, cmdIndex + 1);
+        renderPalette(cmdInput.value);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        cmdIndex = Math.max(0, cmdIndex - 1);
+        renderPalette(cmdInput.value);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (items[cmdIndex]) runPaletteItem(items[cmdIndex]);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        closePalette();
+      }
+    });
+  }
+
   document.addEventListener("keydown", function (e) {
     var meta = e.metaKey || e.ctrlKey;
+    if (meta && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      openPalette();
+      return;
+    }
     if (meta && e.key.toLowerCase() === "p") {
       e.preventDefault();
       if (current.path) playPath(current.path);
@@ -696,10 +953,13 @@
       e.preventDefault();
       if (current.path) runVerify(current.path);
     }
-    if (e.key === "?" && !e.metaKey && !e.ctrlKey && document.activeElement !== input) {
+    if (e.key === "?" && !e.metaKey && !e.ctrlKey && document.activeElement !== input && document.activeElement !== cmdInput) {
       openSheet("helpSheet");
     }
-    if (e.key === "Escape") closeSheets();
+    if (e.key === "Escape") {
+      closePalette();
+      closeSheets();
+    }
   });
 
   refreshHealth();

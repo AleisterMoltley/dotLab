@@ -131,6 +131,57 @@
     .badge.ok { color: var(--ok); border-color: #3a4a20; }
     .badge.bad { color: var(--bad); border-color: #5a2020; }
     .badge.na { color: var(--faint); }
+    .badge.pulse { animation: pulse 0.9s ease 2; }
+    @keyframes pulse {
+      0%, 100% { box-shadow: none; }
+      50% { box-shadow: 0 0 0 3px rgba(200, 240, 96, 0.25); }
+    }
+    .play-embed {
+      display: none; max-width: 720px; margin: 0 auto 12px;
+      border: 1px solid var(--line); border-radius: var(--r); overflow: hidden;
+      background: #000;
+    }
+    .play-embed.show { display: block; }
+    .play-embed .bar {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between;
+      padding: 6px 8px; background: var(--elev); border-bottom: 1px solid var(--line);
+      font: 11px/1.3 var(--mono); color: var(--muted);
+    }
+    .play-embed .err {
+      color: var(--bad); padding: 4px 8px; font: 11px/1.35 var(--mono);
+      border-bottom: 1px solid var(--line); background: #1a1010;
+    }
+    .play-embed iframe {
+      display: block; width: 100%; height: min(52vh, 480px); border: 0; background: #000;
+    }
+    .palette {
+      display: none; position: fixed; inset: 0; z-index: 60;
+      background: #000a; place-items: start center; padding: 12vh 16px 16px;
+    }
+    .palette.show { display: grid; }
+    .palette .box {
+      width: min(440px, 100%); background: var(--panel);
+      border: 1px solid var(--line2); border-radius: var(--r); overflow: hidden;
+    }
+    .palette input {
+      width: 100%; border: 0; border-bottom: 1px solid var(--line);
+      background: var(--bg); padding: 12px 14px; outline: none; font: 13px var(--sans);
+    }
+    .palette .list { max-height: 50vh; overflow: auto; }
+    .palette .item {
+      display: flex; justify-content: space-between; gap: 10px;
+      padding: 10px 14px; border-bottom: 1px solid var(--line);
+      cursor: pointer; font-size: 13px;
+    }
+    .palette .item:hover, .palette .item.on { background: var(--elev); }
+    .palette .item span { font: 10px/1 var(--mono); color: var(--faint); }
+    .toast {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      z-index: 70; background: var(--elev); border: 1px solid var(--line2);
+      padding: 8px 12px; border-radius: var(--r); font: 12px/1.3 var(--mono);
+      color: var(--text); display: none; max-width: 90vw;
+    }
+    .toast.show { display: block; }
     .proj .acts { display: none; gap: 4px; margin-top: 6px; }
     .proj:hover .acts, .proj.on .acts { display: flex; }
     .empty-list { padding: 12px 10px; color: var(--faint); font-size: 12px; }
@@ -364,6 +415,7 @@
       <div class="top-r">
         <button type="button" class="btn sm" id="nowPlay" disabled title="Play (⌘P)">Play</button>
         <button type="button" class="btn sm" id="nowShow" disabled>Folder</button>
+        <button type="button" class="btn sm" id="nowTerm" disabled title="Terminal here">Term</button>
         <button type="button" class="btn sm" id="nowEditor" disabled title="Open in Cursor/VS Code">Editor</button>
         <button type="button" class="btn sm" id="nowZip" disabled title="Export zip">Zip</button>
         <button type="button" class="btn sm" id="nowVerify" disabled title="Run P0 verify">Verify</button>
@@ -371,6 +423,7 @@
         <button type="button" class="btn sm" id="nowDup" disabled>Dup</button>
         <button type="button" class="btn sm" id="nowRename" disabled>Rename</button>
         <button type="button" class="btn sm" id="nowDel" disabled>Del</button>
+        <button type="button" class="btn sm" id="btnPalette" title="Command palette (⌘K)">⌘K</button>
         <button type="button" class="btn sm" id="btnSettings">Model</button>
         <button type="button" class="btn sm" id="btnGh">Ship</button>
       </div>
@@ -383,11 +436,23 @@
           <p>dotLab compiles a playable Three.js slice from plain language. No cloud required. Iterate with craft chips or chat.</p>
           <ol>
             <li><i>01</i><span><b>Write what the player does</b>at t=8s — place optional</span></li>
-            <li><i>02</i><span><b>Play</b>runs this folder’s Vite server</span></li>
+            <li><i>02</i><span><b>Play</b>embeds the game here · Open tab optional</span></li>
             <li><i>03</i><span><b>Craft / Verify / Deep</b>instant tweak · P0 gate · agent expand</span></li>
           </ol>
         </div>
         <div class="session" id="sessionBar"></div>
+        <div class="play-embed" id="playEmbed">
+          <div class="bar">
+            <span id="playEmbedStatus">play</span>
+            <span>
+              <button type="button" class="btn sm" id="playEmbedOpen">Open tab</button>
+              <button type="button" class="btn sm" id="playEmbedReload">Reload</button>
+              <button type="button" class="btn sm" id="playEmbedClose">Close</button>
+            </span>
+          </div>
+          <div class="err" id="playEmbedErr" hidden></div>
+          <iframe id="playFrame" title="Game preview" sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-forms"></iframe>
+        </div>
         <div class="playbar" id="playBar"></div>
         <div class="iterate" id="iterateBar">
           <div class="label">After play — what felt off?</div>
@@ -462,7 +527,7 @@
         <form id="composer" onsubmit="return window.DL.bootSend(event)">
           <textarea id="input" name="q" required placeholder="Player verb + place…"></textarea>
           <div class="cbar">
-            <span class="hint" id="composerHint">Enter send · Shift+Enter newline · ⌘P play</span>
+            <span class="hint" id="composerHint">Enter send · ⌘K palette · ⌘P play</span>
             <button type="submit" id="send">Make game</button>
           </div>
         </form>
@@ -480,9 +545,11 @@
         <button type="button" class="btn" id="toolDup">Duplicate</button>
         <button type="button" class="btn" id="toolDel">Delete</button>
         <button type="button" class="btn" id="toolEditor">Editor</button>
+        <button type="button" class="btn" id="toolTerm">Terminal</button>
         <button type="button" class="btn" id="toolZip">Export zip</button>
         <button type="button" class="btn" id="toolVerify">Verify</button>
         <button type="button" class="btn" id="toolAgent">Deep agent</button>
+        <button type="button" class="btn" id="toolTrash">Trash</button>
       </div>
       <label for="project">Folder path</label>
       <input id="project" type="text" placeholder="/path/to/game" />
@@ -535,6 +602,15 @@
     </div>
   </div>
 
+  <div class="sheet" id="trashSheet">
+    <div class="box">
+      <h3>Trash</h3>
+      <p>Soft-deleted projects. Restore or leave them.</p>
+      <div id="trashList" class="list" style="max-height:40vh;overflow:auto"></div>
+      <div class="row"><button type="button" class="btn" id="trashClose">Close</button></div>
+    </div>
+  </div>
+
   <div class="sheet" id="ghModal">
     <div class="box">
       <h3>Ship to GitHub</h3>
@@ -556,19 +632,27 @@
     <div class="box">
       <h3>Keyboard</h3>
       <div class="shortcuts">
+        <div><span>Command palette</span><span class="kbd">⌘K</span></div>
         <div><span>Send</span><span class="kbd">Enter</span></div>
         <div><span>Newline</span><span class="kbd">⇧ Enter</span></div>
-        <div><span>Play current</span><span class="kbd">⌘ P</span></div>
-        <div><span>New game</span><span class="kbd">⌘ N</span></div>
-        <div><span>Focus filter</span><span class="kbd">⌘ F</span></div>
-        <div><span>This help</span><span class="kbd">?</span></div>
+        <div><span>Play (embed)</span><span class="kbd">⌘P</span></div>
+        <div><span>New game</span><span class="kbd">⌘N</span></div>
+        <div><span>Filter projects</span><span class="kbd">⌘F</span></div>
         <div><span>Verify</span><span class="kbd">⌘⇧V</span></div>
+        <div><span>This help</span><span class="kbd">?</span></div>
       </div>
-      <p style="margin-top:12px">Verify badges · Play status · Craft · Deep agent · Zip · Editor · Cloud toggle.</p>
+      <p style="margin-top:12px">Embed play · error radar · soft trash · terminal · auto-verify · ⌘K.</p>
       <div class="row"><button type="button" class="btn" id="helpClose">Close</button></div>
     </div>
   </div>
 
+  <div class="palette" id="cmdPalette">
+    <div class="box">
+      <input id="cmdInput" type="text" placeholder="Type a command…" autocomplete="off" />
+      <div class="list" id="cmdList"></div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
   <script src="/app.js"></script>
 </body>
 </html>

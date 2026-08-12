@@ -109,7 +109,19 @@ def start_preview(project: Path) -> dict:
         ops.session_set_play(project, url)
     except Exception:
         pass
-    return {"ok": ok, "url": url, "path": key, "reused": False, "log": str(log)}
+    st = ops.preview_status(project, _PREVIEWS)
+    return {
+        "ok": ok,
+        "url": url,
+        "path": key,
+        "reused": False,
+        "log": str(log),
+        "up": st.get("up"),
+        "running": st.get("running"),
+        "log_tail": st.get("log_tail"),
+        "error_line": st.get("error_line") or "",
+        "diagnose": st.get("diagnose") or {},
+    }
 
 
 def remember_tags(names: list[str], ok: bool = True, error: str = "") -> None:
@@ -362,7 +374,16 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if path == "/api/projects":
             projects = ops.enrich_projects(list_game_projects(), with_verify=True)
-            return self._json(200, {"root": str(projects_root()), "projects": projects})
+            return self._json(
+                200,
+                {
+                    "root": str(projects_root()),
+                    "projects": projects,
+                    "trash": ops.list_trash(),
+                },
+            )
+        if path == "/api/projects/trash":
+            return self._json(200, {"ok": True, "trash": ops.list_trash()})
         if path == "/api/projects/session":
             qs = parse_qs(urlparse(self.path).query)
             raw_p = (qs.get("path") or [""])[0]
@@ -428,7 +449,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path.endswith("/play"):
             if not target.is_dir() or not looks_like_game(target):
                 return self._json(400, {"ok": False, "error": "not a game folder"})
-            open_tab = body.get("open", True)
+            # Default: start server but do not force external tab (dashboard embeds)
+            open_tab = bool(body.get("open", False))
             result = start_preview(target)
             if open_tab and result.get("ok") and result.get("url"):
                 if sys.platform == "darwin":
@@ -436,8 +458,22 @@ class Handler(SimpleHTTPRequestHandler):
                 else:
                     webbrowser.open(result["url"])
             st = ops.preview_status(target, _PREVIEWS)
-            result.update({"up": st.get("up"), "running": st.get("running"), "log_tail": st.get("log_tail")})
+            result.update(
+                {
+                    "up": st.get("up"),
+                    "running": st.get("running"),
+                    "log_tail": st.get("log_tail"),
+                    "error_line": st.get("error_line") or "",
+                    "diagnose": st.get("diagnose") or {},
+                }
+            )
             return self._json(200, result)
+        if path.endswith("/terminal"):
+            if not target.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            return self._json(200, ops.open_terminal(target))
+        if path.endswith("/restore"):
+            return self._json(200, ops.restore_trash(target))
         if path.endswith("/play-status"):
             if not target.is_dir():
                 return self._json(400, {"ok": False, "error": "not a folder"})
@@ -497,6 +533,10 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 genre = str(body.get("genre") or spec["genre"])
                 scaffoldlib.scaffold_web_game(dest, spec["title"], genre, prompt=prompt)
+            try:
+                v = ops.cached_verify(dest, force=True)
+            except Exception:
+                v = {}
             return self._json(
                 200,
                 {
@@ -508,6 +548,8 @@ class Handler(SimpleHTTPRequestHandler):
                     "verb": spec.get("verb"),
                     "kind": kind,
                     "summary": slicelib.summarize(spec),
+                    "verify": v,
+                    "iterate": True,
                 },
             )
         if path.endswith("/duplicate"):
@@ -544,26 +586,17 @@ class Handler(SimpleHTTPRequestHandler):
         if path.endswith("/delete"):
             if not target.is_dir() or not looks_like_game(target):
                 return self._json(400, {"ok": False, "error": "not a game folder"})
-            try:
-                ok_root = False
-                for root in __import__("gmcommon", fromlist=["project_search_roots"]).project_search_roots():
-                    try:
-                        target.resolve().relative_to(root.resolve())
-                        ok_root = True
-                        break
-                    except ValueError:
-                        continue
-                if not ok_root:
+            hard = bool(body.get("hard"))
+            if hard:
+                if not ops.under_projects(target):
                     return self._json(403, {"ok": False, "error": "refusing delete outside projects"})
-            except Exception:
-                return self._json(400, {"ok": False, "error": "invalid path"})
-            # never delete home or tool root
-            if target.resolve() in (Path.home().resolve(), ROOT.resolve()):
-                return self._json(403, {"ok": False, "error": "refused"})
-            import shutil
+                if target.resolve() in (Path.home().resolve(), ROOT.resolve()):
+                    return self._json(403, {"ok": False, "error": "refused"})
+                import shutil
 
-            shutil.rmtree(target)
-            return self._json(200, {"ok": True, "path": str(target)})
+                shutil.rmtree(target)
+                return self._json(200, {"ok": True, "soft": False, "path": str(target)})
+            return self._json(200, ops.soft_delete(target))
         return self._json(404, {"ok": False, "error": "unknown project action"})
 
     def do_POST(self) -> None:
