@@ -1,1 +1,5 @@
-{"product":"Gamemaster","version":"1.0.0"}
+{
+  "product": "Gamemaster",
+  "version": "1.1.0",
+  "focus": "three.js-worlds"
+}

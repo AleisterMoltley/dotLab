@@ -40,24 +40,35 @@ TIERS = {
 
 # Knowledge packs by domain (order = priority, sizes capped in select)
 PACKS = {
-    "core": ["threejs-cheatsheet.md", "fun-first-design.md"],
+    "core": ["craft-taste.md", "pair-partner.md", "game-systems.md", "threejs-cheatsheet.md"],
     "three": ["threejs-advanced.md", "threejs-ecosystem.md"],
     "shader": ["shaders-glsl-tsl.md", "fragcoord-parity.md"],
-    "game": ["game-patterns.md", "game-genres.md"],
+    "game": ["feel-tables.md", "game-patterns.md", "game-genres.md"],
+    "world": ["world-building.md", "readable-spaces.md"],
+    "physics": ["physics-ragdoll.md"],
+    "combat": ["combat-juice.md", "feel-tables.md"],
+    "dialogue": ["dialogue-narrative.md"],
+    "anim": ["threejs-animation.md"],
     "seeker": ["solana-seeker.md"],
     "agent": ["agent-protocol.md"],
-    "playtest": ["playtest-harness.md", "prefs-and-playtest.md"],
+    "playtest": ["playtest-harness.md", "prefs-and-playtest.md", "pair-partner.md"],
     "live": ["live/LATEST.md"],
 }
 
-# Keyword → pack ids
+# Keyword → pack ids (first match wins extra packs; all matches accumulate)
 ROUTES = [
-    (r"shader|glsl|wgsl|tsl|fragcoord|shadertoy|raymarch|sdf|fbm|multipass|fragment", ["shader", "core"]),
-    (r"seeker|solana|mwa|wallet|seed.?vault|spl-token|anchor|dapp", ["seeker", "core", "game"]),
-    (r"playtest|fps|metric|screenshot|critic|feel|coyote|juice|shake", ["playtest", "game", "core"]),
-    (r"platformer|runner|fps|tps|racing|rpg|card|idle|tower|genre|arena", ["game", "core", "three"]),
-    (r"r3f|drei|postprocess|gltf|instanced|shadow|webgpu", ["three", "core"]),
-    (r"tool call|write_file|agent|refactor", ["agent", "core", "three"]),
+    (r"shader|glsl|wgsl|tsl|fragcoord|shadertoy|raymarch|sdf|fbm|multipass|fragment|toon|water shader", ["shader", "core", "three"]),
+    (r"combat|enemy|melee|dash|knockback|hitstop|arena|boss|projectile|gun|sword", ["combat", "physics", "game", "core"]),
+    (r"ragdoll|rapier|cannon|collider|rigid.?body|softbody|cloth|vehicle|suspension|physics|physic", ["physics", "anim", "three", "core"]),
+    (r"dialogue|dialog|npc|quest|narrative|bark|conversation|ink |typewriter|story beat", ["dialogue", "world", "game", "core"]),
+    (r"worldclaw|open.?world|terrain|biome|heightfield|village|region|landmark|explorable", ["world", "physics", "three", "core"]),
+    (r"mixer|gltf|skinned|mixamo|crossfade|root motion|ik\b|animation clip", ["anim", "three", "core"]),
+    (r"seeker|solana|mwa|wallet|seed.?vault|spl-token|anchor|dapp", ["seeker", "core", "game", "three"]),
+    (r"playtest|metric|screenshot|critic|feel|coyote|juice|shake|hitstop", ["playtest", "combat", "game", "core"]),
+    (r"platformer|runner|fps|tps|racing|rpg|card|idle|tower|genre|arena|horror|stealth|rhythm", ["game", "combat", "core", "three", "physics"]),
+    (r"r3f|drei|postprocess|instanced|shadow|webgpu", ["three", "core"]),
+    (r"tool call|write_file|agent|refactor", ["agent", "core", "three", "game"]),
+    (r"complete game|whole world|from scratch|vertical slice|studio|implement", ["world", "physics", "dialogue", "anim", "shader", "game", "three", "core"]),
 ]
 
 
@@ -121,25 +132,32 @@ def route_task(prompt: str, mode: str = "auto") -> dict:
         ):
             tier, reason = "dense", "hard-reasoning"
         elif re.search(
-            r"\b(complete game|multi.?agent|studio|vertical slice|from scratch|implement|write|scaffold|build)\b",
+            r"\b(complete game|multi.?agent|studio|vertical slice|from scratch|implement|write|scaffold|build|worldclaw|ragdoll|open.?world)\b",
             p,
         ):
             tier, reason = "max", "coding-build"
-        elif re.search(r"\b(fix|collision|controller|shader|seeker|player|game)\b", p):
+        elif re.search(
+            r"shader|glsl|wgsl|tsl|seeker|ragdoll|dialogue|npc|physics|three\.?js|gltf|"
+            r"combat|village|jump|camera|enemy|arena|runner|platform|feel|juice|"
+            r"\b(fix|collision|controller|player|game|world|tps|fps)\b",
+            p,
+        ):
             tier, reason = "max", "default-coding"
         elif len(prompt) < 100 and not re.search(
-            r"\b(code|function|class|file|bug|error)\b", p
+            r"shader|glsl|game|world|ragdoll|dialogue|"
+            r"\b(code|function|class|file|bug|error)\b",
+            p,
         ):
             tier, reason = "flash", "short-qa"
         else:
             tier, reason = "max", "default-coding"
 
     # ctx sizing — quality preserved: enough room, not max always
-    if re.search(r"\b(whole project|entire codebase|all files|multipass|large)\b", p):
+    if re.search(r"\b(whole project|entire codebase|all files|multipass|large|open.?world|worldclaw|complete game)\b", p):
         num_ctx = 65536
     elif tier == "flash":
         num_ctx = 8192
-    elif re.search(r"\b(agent|write_file|refactor|implement)\b", p):
+    elif re.search(r"\b(agent|write_file|refactor|implement|ragdoll|dialogue|shader)\b", p):
         num_ctx = 32768
     else:
         num_ctx = 16384
@@ -160,12 +178,18 @@ def route_task(prompt: str, mode: str = "auto") -> dict:
 def select_knowledge(prompt: str, max_chars: int = 28000) -> str:
     """Pick only relevant knowledge packs — biggest free speedup for agents."""
     p = prompt.lower()
+    # Only slim knowledge for true chit-chat (flash tier)
+    if route_task(prompt).get("tier") == "flash":
+        max_chars = min(max_chars, 8000)
     pack_ids: list[str] = []
     for rx, ids in ROUTES:
         if re.search(rx, p, re.I):
             pack_ids.extend(ids)
     if not pack_ids:
-        pack_ids = ["core", "three", "game"]
+        pack_ids = ["core", "three", "game", "physics"]
+    # whole-game briefs get the full systems stack
+    if re.search(r"complete game|whole world|from scratch|vertical slice|studio build", p, re.I):
+        pack_ids.extend(["world", "physics", "dialogue", "anim", "shader"])
     # always core first, unique preserve order
     ordered: list[str] = []
     for pid in ["core"] + pack_ids + ["live"]:

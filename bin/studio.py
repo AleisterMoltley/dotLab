@@ -189,20 +189,31 @@ def update_design_md(project: Path, section: str, body: str) -> None:
 def role_director(
     brief: str, model: str, genre_hint: str = "", prefs: str = "", project: Path | None = None
 ) -> str:
-    knowledge = load_pack("fun-first-design.md", "game-genres.md", "game-patterns.md")
+    knowledge = load_pack(
+        "craft-taste.md",
+        "pair-partner.md",
+        "feel-tables.md",
+        "game-genres.md",
+        "readable-spaces.md",
+        limit=3200,
+    )
     prefs = prefs or pref_block(project)
     sys_p = (
-        "You are DIRECTOR in Gamemaster Studio — a game designer with elite taste.\n"
-        "Fun first. No feature bloat. Answer in English, concise and structured.\n"
+        "You are DIRECTOR in Gamemaster Studio — pair-partner with elite taste.\n"
+        "Engine is Three.js. Worlds have lighting, NPCs, and a reason to walk.\n"
+        "Be opinionated: 'The fun is X. We cut Y.' Do not take every feature request.\n"
         "Honor USER PREFERENCE MEMORY when present.\n"
         "Output MUST include:\n"
-        "1) Pitch (2 sentences)\n"
-        "2) Core Verb\n"
+        "1) Pitch (2 sentences) — sharper than the brief\n"
+        "2) Core Verb + what the player does at t=8s\n"
         "3) 3 Design Pillars\n"
         "4) Vertical Slice (playable in one session)\n"
-        "5) Feel targets (numbers: speed, jump, cam lag…)\n"
-        "6) Explicit NON-goals (what we will NOT build)\n"
-        "7) Success metric: 'one more run?' test\n"
+        "5) Feel targets — REAL numbers from the feel tables (grav, coyote, camLag…)\n"
+        "6) World beat (place + 1 NPC/dialogue or bark + 1 physical toy + 1 shader accent)\n"
+        "7) First room / first death (how it teaches, why it's fair)\n"
+        "8) Explicit NON-goals (what we will NOT build)\n"
+        "9) Success metric: 'one more run?' test\n"
+        "If target is Solana Seeker: same Three.js game + MWA; loop must work offline.\n"
     )
     user = (
         f"Brief:\n{brief}\n\nGenre-Note: {genre_hint or 'auto'}\n\n"
@@ -225,23 +236,30 @@ def role_architect(
     project: Path | None = None,
 ) -> str:
     knowledge = load_pack(
+        "game-systems.md",
+        "feel-tables.md",
         "threejs-cheatsheet.md",
-        "threejs-advanced.md",
+        "physics-ragdoll.md",
+        "readable-spaces.md",
         "solana-seeker.md",
-        limit=4000,
+        limit=3000,
     )
     prefs = prefs or pref_block(project)
     sys_p = (
         "You are ARCHITECT in Gamemaster Studio.\n"
+        "ENGINE IS THREE.JS (Vite + vanilla ES modules). Never Unity/Godot/Phaser/R3F unless user named them.\n"
+        "Seeker = same Three.js game + Mobile Wallet Adapter (wallet is not the product).\n"
         "Plan modules, files, data flow. No code except signatures/sketches.\n"
         "Honor USER PREFERENCE MEMORY (tech/feel).\n"
+        "A complete slice needs: loop, input, camera, world/lighting, physics path (arcade OR Rapier),\n"
+        "plus at least one of {dialogue tree, ragdoll, shader FX}.\n"
         "Output:\n"
-        "1) Tech stack choice + why\n"
-        "2) File tree (exact paths)\n"
-        "3) Module responsibilities\n"
-        "4) Data flow (input→update→render)\n"
+        "1) Tech stack (Three.js + optional Rapier / MWA) + why\n"
+        "2) File tree (exact paths under src/)\n"
+        "3) Module responsibilities (player, world, physics, narrative, fx, ui)\n"
+        "4) Data flow (input→fixedUpdate→mixer→render)\n"
         "5) Implementation order (checklist, max 8 steps)\n"
-        "6) Risks / perf notes\n"
+        "6) Risks / perf notes (no alloc in loop, instance props, shadow budget)\n"
         "English, precise.\n"
     )
     user = (
@@ -265,11 +283,20 @@ def role_critic(
     prefs: str = "",
     project: Path | None = None,
 ) -> str:
-    knowledge = load_pack("fun-first-design.md", "playtest-harness.md", limit=5000)
+    knowledge = load_pack(
+        "craft-taste.md",
+        "pair-partner.md",
+        "playtest-harness.md",
+        "game-systems.md",
+        limit=3500,
+    )
     prefs = prefs or pref_block(project)
     sys_p = (
         "You are CRITIC / PLAYTESTER in Gamemaster Studio — strict but constructive.\n"
         "Judge fun, fairness, clarity, scope, feel. Find bugs and boredom.\n"
+        "A gray plane + cube is a FAIL. Worlds need light, collision, and a living beat.\n"
+        "If they added systems instead of tuning CONFIG, say so. Protect the verb.\n"
+        "Ask: controls <10s? first death fair? juice on hit? next goal obvious? one more run?\n"
         "If PLAYTEST METRICS exist: prioritize empirical data (FPS, errors, death→retry).\n"
         "Output:\n"
         "1) Severity list (P0/P1/P2) — max 8 findings\n"
@@ -295,13 +322,14 @@ def role_pitch_variant(
     brief: str, model: str, seed: int, prefs: str = "", project: Path | None = None
 ) -> str:
     # Slim packs only — council is latency-bound (3× parallel)
-    knowledge = load_pack("fun-first-design.md", "game-genres.md", limit=2500)
+    knowledge = load_pack("craft-taste.md", "feel-tables.md", "game-genres.md", limit=2200)
     prefs = prefs or pref_block(project)
     sys_p = (
         f"You are DIRECTOR variant #{seed}. Create ONE sharp, unique game pitch.\n"
         "Differentiate strongly from generic ideas. 1 core verb. Vertical slice only.\n"
         "Honor USER PREFERENCE MEMORY.\n"
-        "Format: PITCH / VERB / PILLARS (3) / SLICE / FEEL NUMBERS / HOOK\nEnglish. Max 400 words.\n"
+        "Format: PITCH / VERB / t=8s / PILLARS (3) / SLICE / FEEL NUMBERS / FIRST DEATH / HOOK\n"
+        "English. Max 400 words. Be opinionated.\n"
     )
     # Prefer max MoE for quality; flash only if max unavailable
     pitch_model = model
@@ -556,7 +584,12 @@ def pipeline_build(
     task = (
         f"Implement the vertical slice ONLY.\n\nUSER BRIEF:\n{brief}\n\n"
         f"DESIGN:\n{design[:4000]}\n\nARCHITECTURE:\n{arch[:4000]}\n\n"
-        "Write complete runnable files. Prefer Vite+three.js unless design says Seeker. "
+        "Write complete runnable files. ENGINE: Vite + three.js always. "
+        "If Seeker: same Three.js game + MWA module — do not replace the engine. "
+        "Ship a place (lights/fog/ground), a body (controller+camera), collision, "
+        "and at least one of: dialogue tree, ragdoll/physics toy, shader accent. "
+        "No Vector3 allocs in the loop. CONFIG from feel tables (real numbers, not 1/1/1). "
+        "src/fx/juice.js with hitstop+punch+blip; call it from damage. "
         "Include optional window.__GF_PLAYTEST__ hooks: recordDeath/recordRestart/recordJump if easy. "
         "Update DESIGN.md backlog checkboxes if present. End with done."
     )
@@ -617,6 +650,7 @@ def pipeline_build(
     if do_live:
         print("Live: dashboard still open — play anytime. Ctrl+C in terminal if you started with watch.")
     print("Next: npm i && npm run dev  — or: gamemaster playtest -p . --critic")
+    print(f'Ship:  gamemaster ship -p "{project}" -m "vertical slice"')
 
 
 def pipeline_council(
@@ -739,15 +773,18 @@ def pipeline_parallel(
     streams = [
         (
             "player",
-            "Implement player controller + input + camera feel numbers from design. Files under src/player* or similar.",
+            "Implement player controller + input + camera + animation state from design feel numbers. "
+            "src/player/*. Arcade capsule or Rapier character. Files under src/player* .",
         ),
         (
             "world",
-            "Implement world/level/obstacles/spawning matching vertical slice. src/world* etc.",
+            "Implement a real place: lighting, fog, ground/terrain, props (InstancedMesh), "
+            "one NPC or interactable, collision meshes. src/world* . Not a gray plane.",
         ),
         (
             "ui",
-            "Implement minimal HUD + restart UX. HTML or src/ui*. Keep touch-friendly.",
+            "Implement HUD + restart + dialogue box (typewriter + choices) if the slice has talk. "
+            "HTML overlay or src/ui*. Touch-friendly, pause move while dialogue is open.",
         ),
     ]
     results = parallel_streams(project, design, arch, model, streams)

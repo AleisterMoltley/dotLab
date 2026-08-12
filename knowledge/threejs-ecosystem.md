@@ -29,7 +29,7 @@
 | **lensflare, water, sky examples** | classic demos |
 
 ## Rendering techniques to own
-- PBR (Meshdefault/Physical), IBL Environment
+- PBR (MeshStandardMaterial / MeshPhysicalMaterial), IBL Environment
 - Shadow maps, CSM ideas, contact shadows (drei)
 - Instancing, batched meshes, LODs
 - Morph targets, skinning, AnimationMixer

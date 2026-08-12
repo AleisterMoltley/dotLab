@@ -13,7 +13,7 @@ warn() { echo -e "${YEL}!${NC} $*"; }
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║  Gamemaster — Installation                           ║"
-echo "║  Games · Solana Seeker · Shaders · \$0 · offline      ║"
+echo "║  Three.js worlds · Seeker · Shaders · \$0 · offline   ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
@@ -149,7 +149,17 @@ ln -sfn "$ROOT/bin/playtest.py" "$BIN_DIR/gamemaster-playtest"
 ln -sfn "$ROOT/bin/prefs.py" "$BIN_DIR/gamemaster-prefs"
 ln -sfn "$ROOT/bin/turbo.py" "$BIN_DIR/gamemaster-turbo"
 ln -sfn "$ROOT/bin/self-update.py" "$BIN_DIR/gamemaster-update"
+ln -sfn "$ROOT/bin/worldclaw.py" "$BIN_DIR/gamemaster-worldclaw"
+ln -sfn "$ROOT/bin/github.py" "$BIN_DIR/gamemaster-github"
 ok "CLI: gamemaster · gm"
+
+if ! command -v gh >/dev/null 2>&1; then
+  warn "GitHub CLI (gh) not found — ship needs it: brew install gh && gamemaster github login"
+elif ! command -v git >/dev/null 2>&1; then
+  warn "git not found — install Xcode CLT or git"
+else
+  ok "GitHub: gh $(gh --version 2>/dev/null | head -1 | awk '{print $3}')"
+fi
 
 if ! echo ":$PATH:" | grep -q ":$BIN_DIR:"; then
   SHELL_RC="${HOME}/.zshrc"
@@ -173,9 +183,11 @@ ${GREEN}════════════════════════
   Gamemaster is ready.
 
   Start:     ./start   or   gamemaster
-  Chat:      gamemaster "Third-person controller with jump"
-  Studio:    gamemaster studio build -p ./my-game "platformer slice"
-  Scaffold:  gamemaster scaffold web-game --genre runner
+  Chat:      gamemaster "Village slice: walk, NPC dialogue, ragdoll"
+  Studio:    gamemaster studio build -p ./my-game "open-world village"
+  Scaffold:  gamemaster scaffold world-game --name Wilds
+  World:     gamemaster worldclaw generate -p ./Wilds "coast + pines"
+  GitHub:    gamemaster github login && gamemaster ship -p ./Wilds
   Playtest:  gamemaster playtest -p ./my-game --critic
   Turbo:     gamemaster turbo warmup
 

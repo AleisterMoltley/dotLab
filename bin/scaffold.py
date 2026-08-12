@@ -15,11 +15,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = ROOT / "templates"
 
+GAME_GITIGNORE = """# Gamemaster game
+node_modules/
+dist/
+build/
+.vite/
+.DS_Store
+.gamemaster/
+.env
+.env.*
+*.pem
+*.key
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+"""
+
 GENRES = [
     "arena",
     "platformer",
     "fps",
     "tps",
+    "adventure",
+    "open-world",
     "racing",
     "runner",
     "tower-defense",
@@ -143,7 +162,7 @@ export function createGame({{ genre, title }}) {{
   // Ground
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(80, 80),
-    new THREE.MeshdefaultMaterial({{ color: 0x1a3d2e, roughness: 0.9 }})
+    new THREE.MeshStandardMaterial({{ color: 0x1a3d2e, roughness: 0.9 }})
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
@@ -152,7 +171,7 @@ export function createGame({{ genre, title }}) {{
   // Player placeholder
   const player = new THREE.Mesh(
     new THREE.CapsuleGeometry(0.4, 0.8, 4, 8),
-    new THREE.MeshdefaultMaterial({{ color: 0x6ee7b7 }})
+    new THREE.MeshStandardMaterial({{ color: 0x6ee7b7 }})
   );
   player.position.y = 1.2;
   player.castShadow = true;
@@ -236,6 +255,7 @@ npm run dev
 Next: open chat `gamemaster -p {dest.name} --agent "Add jump + collectibles for {genre}"`
 """,
     )
+    write(dest / ".gitignore", GAME_GITIGNORE)
     write(
         dest / "DESIGN.md",
         f"""# {name}
@@ -554,6 +574,53 @@ tjc update   # keep knowledge + models current
         )
         + "\n",
     )
+    write(dest / ".gitignore", GAME_GITIGNORE)
+
+
+def scaffold_world_game(dest: Path, name: str) -> None:
+    """Copy explorable Three.js world template (WorldClaw-ready)."""
+    src = TEMPLATES / "world-game"
+    if not src.is_dir():
+        raise SystemExit(f"Template missing: {src}")
+    for item in src.iterdir():
+        target = dest / item.name
+        if item.is_dir():
+            shutil.copytree(item, target)
+        else:
+            shutil.copy2(item, target)
+        print(f"  + {target}")
+    pkg_path = dest / "package.json"
+    if pkg_path.exists():
+        pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+        pkg["name"] = slugify(name)
+        pkg_path.write_text(json.dumps(pkg, indent=2) + "\n", encoding="utf-8")
+    readme = dest / "README.md"
+    if readme.exists():
+        text = readme.read_text(encoding="utf-8")
+        readme.write_text(f"# {name}\n\n" + text, encoding="utf-8")
+    gi = dest / ".gitignore"
+    if not gi.exists():
+        write(gi, GAME_GITIGNORE)
+    design = dest / "DESIGN.md"
+    if not design.exists():
+        write(
+            design,
+            f"""# {name}
+
+## Engine
+Three.js (Vite) · WorldClaw-ready
+
+## Core loop
+Walk the world → talk to one NPC → change a flag → see the place react
+
+## Backlog
+- [ ] `gamemaster worldclaw generate -p . "your biomes"`
+- [ ] Player controller + follow cam
+- [ ] One dialogue tree
+- [ ] Collision on terrain + houses
+- [ ] Shader accent (sky or water)
+""",
+        )
 
 
 def scaffold_shader_lab(dest: Path, name: str) -> None:
@@ -579,6 +646,9 @@ def scaffold_shader_lab(dest: Path, name: str) -> None:
     if readme.exists():
         text = readme.read_text(encoding="utf-8")
         readme.write_text(f"# {name}\n\n" + text, encoding="utf-8")
+    gi = dest / ".gitignore"
+    if not gi.exists():
+        write(gi, GAME_GITIGNORE)
 
 
 def main() -> int:
@@ -587,6 +657,7 @@ def main() -> int:
         "kind",
         choices=[
             "web-game",
+            "world-game",
             "seeker-app",
             "seeker-game",
             "shader-lab",
@@ -612,6 +683,7 @@ def main() -> int:
 
     name = args.name or {
         "web-game": f"Web {args.genre.title()}",
+        "world-game": "World",
         "seeker-app": "Seeker App",
         "seeker-game": f"Seeker {args.genre.title()}",
         "shader-lab": "Shader Lab",
@@ -627,6 +699,8 @@ def main() -> int:
     print(f"🎮 Scaffold {kind} → {dest}")
     if kind == "web-game":
         scaffold_web_game(dest, name, args.genre)
+    elif kind == "world-game":
+        scaffold_world_game(dest, name)
     elif kind == "seeker-app":
         scaffold_seeker_app(dest, name, genre=None)
     elif kind == "seeker-game":
@@ -636,8 +710,10 @@ def main() -> int:
 
     print("\n✅ Done.")
     print(f"   cd {dest}")
-    if kind in ("web-game", "shader-lab"):
+    if kind in ("web-game", "world-game", "shader-lab"):
         print("   npm i && npm run dev")
+        if kind == "world-game":
+            print(f'   gamemaster worldclaw generate -p "{dest}" "coastal village, pine ridge"')
     else:
         print("   npm i && npx expo start")
     print(f'   gamemaster -p "{dest}" --agent "Expand vertical slice"')

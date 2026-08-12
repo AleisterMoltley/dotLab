@@ -142,6 +142,27 @@
 
     body.play-focus header { opacity: .35; transition: opacity .2s; }
     body.play-focus header:hover { opacity: 1; }
+    .modal-bg {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(0,0,0,.55); display: none; place-items: center; padding: 16px;
+    }
+    .modal-bg.show { display: grid; }
+    .modal {
+      width: min(400px, 100%); background: var(--panel);
+      border: 1px solid var(--border); border-radius: 14px; padding: 16px;
+    }
+    .modal h2 { margin: 0 0 6px; font-size: 15px; }
+    .modal p { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .modal input[type=text], .modal input[type=password] {
+      width: 100%; background: #0a0a10; color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+      font: inherit; font-size: 12px; margin: 0 0 8px;
+    }
+    .modal .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .modal .row button { flex: 1; }
+    .modal .code { font: 700 20px ui-monospace, Menlo, monospace; color: var(--accent); letter-spacing: .1em; margin: 6px 0 10px; }
+    .modal .err { color: var(--danger); font-size: 11px; min-height: 1em; }
+    button.gh.on { border-color: rgba(110,231,183,.4); color: var(--accent); }
   </style>
 </head>
 <body>
@@ -161,8 +182,28 @@
       <button type="button" id="btn-auto" class="active" title="Auto-apply updates while building">Auto-update: ON</button>
       <button type="button" id="btn-log" class="ghost">AI log</button>
       <button type="button" id="btn-newtab" class="ghost">Pop-out game</button>
+      <button type="button" id="btn-gh" class="gh">GitHub</button>
     </div>
   </header>
+
+  <div class="modal-bg" id="ghModal">
+    <div class="modal">
+      <h2 id="ghTitle">Ship to GitHub</h2>
+      <p id="ghLead">Sign in, then push this game.</p>
+      <div class="code" id="ghCode" hidden></div>
+      <input id="ghMsg" type="text" placeholder="commit message — feat: vertical slice" />
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin:0 0 8px">
+        <input id="ghPrivate" type="checkbox" checked /> Private repo
+      </label>
+      <input id="ghToken" type="password" placeholder="or paste PAT (ghp_…)" autocomplete="off" />
+      <div class="err" id="ghErr"></div>
+      <div class="row">
+        <button type="button" id="ghLogin">Sign in</button>
+        <button type="button" class="primary" id="ghShip">Ship</button>
+        <button type="button" class="ghost" id="ghClose">Close</button>
+      </div>
+    </div>
+  </div>
 
   <div id="stage">
     <div class="play-wrap" id="playWrap">
@@ -395,6 +436,94 @@
         } catch (_) {}
       };
     } catch (_) {}
+
+    const ghModal = document.getElementById('ghModal');
+    const ghBtn = document.getElementById('btn-gh');
+    const ghTitle = document.getElementById('ghTitle');
+    const ghLead = document.getElementById('ghLead');
+    const ghCode = document.getElementById('ghCode');
+    const ghErr = document.getElementById('ghErr');
+    let ghPoll = 0;
+
+    async function refreshGh() {
+      try {
+        const d = await fetch('/api/github/status').then((r) => r.json());
+        if (d.logged_in) {
+          ghBtn.textContent = '@' + d.user;
+          ghBtn.classList.add('on');
+          ghTitle.textContent = 'Ship as @' + d.user;
+          ghLead.textContent = (d.repo && d.repo.html_url)
+            ? ('Remote: ' + d.repo.html_url)
+            : 'Commit + create repo + push this game.';
+        } else {
+          ghBtn.textContent = 'GitHub';
+          ghBtn.classList.remove('on');
+          ghTitle.textContent = 'Ship to GitHub';
+          ghLead.textContent = d.install_hint || 'Sign in, then push this game.';
+        }
+        if (d.repo && d.repo.dirty) ghLead.textContent += ' · uncommitted changes';
+        return d;
+      } catch (_) { return null; }
+    }
+
+    ghBtn.onclick = () => { ghModal.classList.add('show'); refreshGh(); };
+    document.getElementById('ghClose').onclick = () => { ghModal.classList.remove('show'); clearInterval(ghPoll); };
+
+    document.getElementById('ghLogin').onclick = async () => {
+      ghErr.textContent = '';
+      const token = document.getElementById('ghToken').value.trim();
+      const d = await fetch('/api/github/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(token ? { token } : {}),
+      }).then((r) => r.json());
+      if (d.already || d.logged_in) { refreshGh(); return; }
+      if (d.error && !d.user_code) { ghErr.textContent = d.error; return; }
+      if (d.user_code) {
+        ghCode.hidden = false;
+        ghCode.textContent = d.user_code;
+        ghLead.innerHTML = 'Enter code at <a href="https://github.com/login/device" target="_blank" rel="noopener">github.com/login/device</a>';
+      }
+      clearInterval(ghPoll);
+      ghPoll = setInterval(async () => {
+        const s = await fetch('/api/github/login').then((r) => r.json()).catch(() => ({}));
+        if (s.user_code) { ghCode.hidden = false; ghCode.textContent = s.user_code; }
+        if (s.done || s.logged_in) {
+          clearInterval(ghPoll);
+          if (s.error) ghErr.textContent = s.error;
+          refreshGh();
+          if (s.logged_in) ghCode.hidden = true;
+        }
+      }, 1500);
+    };
+
+    document.getElementById('ghShip').onclick = async () => {
+      ghErr.textContent = '';
+      ghShipBusy(true);
+      try {
+        const d = await fetch('/api/github/ship', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: document.getElementById('ghMsg').value.trim() || undefined,
+            private: document.getElementById('ghPrivate').checked,
+          }),
+        }).then((r) => r.json());
+        if (!d.ok) { ghErr.textContent = d.error || 'ship failed'; return; }
+        ghLead.innerHTML = d.html_url
+          ? ('Pushed → <a href="' + d.html_url + '" target="_blank" rel="noopener">' + d.html_url + '</a>')
+          : 'Shipped.';
+        refreshGh();
+      } finally { ghShipBusy(false); }
+    };
+
+    function ghShipBusy(on) {
+      const b = document.getElementById('ghShip');
+      b.disabled = on;
+      b.textContent = on ? 'Shipping…' : 'Ship';
+    }
+
+    refreshGh();
 
     setInterval(poll, 700);
     poll();

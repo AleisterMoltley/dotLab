@@ -1,11 +1,11 @@
 # Gamemaster
 
-**Local, free, game-specialized multi-agent coding studio.**  
-Three.js games · Solana Seeker apps · FragCoord-class shaders · $0 forever.
+**Local, free, Three.js game-world studio.**  
+Whole worlds · physics / ragdoll · dialogue · shaders · Solana Seeker games · $0 forever.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 
-Gamemaster is an open-source local AI toolchain for **shipping playable games**, not generic chat. It runs on [Ollama](https://ollama.com) (no cloud credits), with multi-agent production, playtesting, preference memory, and speed routing.
+Gamemaster is an open-source local AI toolchain for **shipping playable Three.js games**, not generic chat. The local model is trained-in-prompt as a game-world engineer: places, bodies, physics, ragdoll, dialogue trees, and shaders. Solana Seeker games are the **same Three.js game** plus Mobile Wallet Adapter. Runs on [Ollama](https://ollama.com) (no cloud credits).
 
 > Inspired by workflows from cloud agents (plan → implement → review) and game-first design — fully offline on your machine.
 
@@ -13,14 +13,17 @@ Gamemaster is an open-source local AI toolchain for **shipping playable games**,
 
 | Area | What you get |
 |------|----------------|
-| **Models** | `gamemaster` (Qwen3-Coder 30B MoE) + `gamemaster-dense` (32B) + 7B flash tier |
+| **Models** | `gamemaster` (Qwen3-Coder 30B MoE) + `gamemaster-dense` (32B) + 7B flash — **Three.js game-tuned system prompt** |
 | **Studio** | Director · Architect · Coder · Critic · Council (best-of-N) |
 | **Agent** | File tools: list / read / write / search / run |
-| **Scaffolds** | Web game, Solana Seeker app/game, Shader Lab |
+| **Worlds** | WorldClaw: prompt → regions → heightfield → editable instances |
+| **Systems** | Physics (arcade / Rapier), ragdoll, dialogue trees, animation, shaders |
+| **Scaffolds** | Web game, open world, Solana Seeker app/game, Shader Lab |
 | **Playtest** | Playwright headless run + screenshots + metrics |
 | **Prefs** | Learns your feel (tight jumps, mobile-first, …) |
-| **Turbo** | Model routing, slim knowledge packs, warmup, bench |
+| **Turbo** | Routes knowledge packs (world / physics / dialogue / shader / Seeker) |
 | **Update** | Self-update models + live package versions |
+| **GitHub** | Browser login · commit · create repo · push (`gamemaster ship`) |
 
 ## Requirements
 
@@ -53,18 +56,23 @@ alias gamemaster="$PWD/bin/gamemaster"
 
 ```bash
 # One-shot chat
-gamemaster "Third-person controller with coyote time"
+gamemaster "Third-person village slice: walk, talk to an NPC, ragdoll on death"
 
 # Multi-agent studio
 gamemaster studio plan -p ./my-game "one-thumb juiciness runner"
-gamemaster studio build -p ./my-game "platformer vertical slice" --live
+gamemaster studio build -p ./my-game "open-world village vertical slice" --live
 gamemaster studio council -p ./my-game "tight arena shooter" --build --live
+
+# Generated open world
+gamemaster scaffold world-game --name Wilds
+gamemaster worldclaw generate -p ./Wilds "coastal village, pine ridge, desert canyon"
 
 # Live window only (play + watch file changes)
 gamemaster live -p ./my-game
 
 # Scaffolds
 gamemaster scaffold web-game --genre platformer --name Skyjump
+gamemaster scaffold world-game --name Wilds
 gamemaster scaffold seeker-game --genre idle --name ClaimQuest
 gamemaster scaffold shader-lab --name NeonFrag
 
@@ -81,6 +89,10 @@ gamemaster prefs show
 gamemaster turbo warmup
 gamemaster turbo bench
 source ./config/ollama-env.sh
+
+# GitHub — sign in once, then ship any game
+gamemaster github login
+gamemaster ship -p ./Wilds -m "open-world village slice"
 
 # Browser UI
 ./start
@@ -115,23 +127,43 @@ gamemaster studio build -p ./x "…" --no-live   # disable if needed
 
 Add `--playtest` for headless Playwright metrics after build (separate from human play).
 
+## GitHub (login · commit · push)
+
+Sign in once with the [GitHub CLI](https://cli.github.com) (`brew install gh`). Gamemaster opens the browser, then can create a repo and push the game.
+
+```bash
+gamemaster github login          # browser / device code
+gamemaster github status
+gamemaster github commit -p ./Wilds -m "first walk"
+gamemaster github push -p ./Wilds
+gamemaster ship -p ./Wilds -m "vertical slice"   # commit + create private repo + push
+gamemaster github logout
+```
+
+- Default new repos are **private**. Pass `--public` to publish.
+- New games get a `.gitignore` (no `node_modules`, `.env`, `.gamemaster`).
+- Chat UI and the Play window have a **GitHub / Ship** button that uses the same flow.
+- Tokens stay in the `gh` keyring — Gamemaster never writes a PAT to disk.
+
 ## Architecture
 
 ```
 gamemaster/
-  Modelfile              System prompt (game + Seeker + shaders)
+  Modelfile              Three.js game-world system prompt
   install.sh             Pull models + create gamemaster / gamemaster-dense
   bin/gamemaster         Main CLI
   bin/studio.py          Multi-agent production
   bin/agent.py           Tool-using implementer
   bin/scaffold.py        Project generators
+  bin/worldclaw.py       Open-world generator (spec → terrain → instances)
   bin/playtest.py        Dev server + Playwright
   bin/prefs.py           Preference memory
   bin/turbo.py           Routing + warmup + bench
   bin/self-update.py     Keep models/docs fresh
   bin/server.py + chat/  Local browser chat UI
-  knowledge/             Domain packs (three.js, genres, Seeker, shaders)
+  knowledge/             Three.js game packs (worlds, physics, ragdoll, dialogue, shaders, Seeker)
   templates/shader-lab/  FragCoord-class multipass editor
+  templates/world-game/  Explorable WorldClaw world
   playtest/              Playwright runner
   config/                Ollama env, Continue snippet
 ```
@@ -166,10 +198,12 @@ See `config/README-editor.md` and `config/continue-config.snippet.json`.
 ## Philosophy
 
 1. **Playable first** — vertical slices, not feature laundry lists  
-2. **Fun-first design** — core verb, feel numbers, non-goals  
-3. **Measure** — Playwright metrics + critic, not vibes alone  
-4. **Remember** — preference memory across sessions  
-5. **Fast without dumbing down** — route models + slim knowledge, keep max quality on code  
+2. **Three.js only** — worlds, physics, ragdoll, dialogue, shaders in one engine  
+3. **Fun-first design** — core verb, feel numbers, non-goals  
+4. **Seeker is the same game** — MWA on top, loop works offline  
+5. **Measure** — Playwright metrics + critic, not vibes alone  
+6. **Remember** — preference memory across sessions  
+7. **Fast without dumbing down** — route models + slim knowledge, keep max quality on code  
 
 ## Benchmarks (honest)
 

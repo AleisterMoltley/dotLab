@@ -50,6 +50,52 @@
     }
     .brand h1 { margin: 0; font-size: 16px; letter-spacing: -0.02em; }
     .brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    button.gh {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+    }
+    button.gh:hover { border-color: #3a4152; }
+    button.gh.on { border-color: rgba(110,231,183,.4); color: var(--accent); }
+    .modal-bg {
+      position: fixed; inset: 0; z-index: 40;
+      background: rgba(0,0,0,.55);
+      display: none; place-items: center;
+      padding: 20px;
+    }
+    .modal-bg.show { display: grid; }
+    .modal {
+      width: min(440px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px 18px 16px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.45);
+    }
+    .modal h2 { margin: 0 0 6px; font-size: 16px; }
+    .modal p { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .modal label { display: block; font-size: 11px; color: var(--muted); margin: 10px 0 4px; }
+    .modal input, .modal textarea {
+      width: 100%; background: #0b0c10; color: var(--text);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 12px; font: inherit; font-size: 13px;
+    }
+    .modal .row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    .modal .row button { flex: 1; min-width: 110px; height: 40px; border-radius: 10px; font-weight: 700; cursor: pointer; border: 1px solid var(--border); background: #18181f; color: var(--text); }
+    .modal .row button.primary { background: var(--accent); color: #042f1c; border: 0; }
+    .modal .code {
+      font: 700 22px/1.2 ui-monospace, Menlo, monospace;
+      letter-spacing: .12em; color: var(--accent); margin: 8px 0 12px;
+    }
+    .modal .err { color: var(--danger); font-size: 12px; min-height: 1.2em; }
     .status {
       display: flex; align-items: center; gap: 8px;
       font-size: 12px; color: var(--muted);
@@ -165,11 +211,37 @@
         <p>Games · Solana Seeker · all genres · local · $0</p>
       </div>
     </div>
-    <div class="status" id="status">
-      <span class="dot" id="dot"></span>
-      <span id="statusText">checking…</span>
+    <div class="header-right">
+      <button type="button" class="gh" id="btnGh">GitHub</button>
+      <div class="status" id="status">
+        <span class="dot" id="dot"></span>
+        <span id="statusText">checking…</span>
+      </div>
     </div>
   </header>
+
+  <div class="modal-bg" id="ghModal" role="dialog" aria-label="GitHub">
+    <div class="modal">
+      <h2 id="ghTitle">GitHub</h2>
+      <p id="ghLead">Sign in to commit and push your games.</p>
+      <div class="code" id="ghCode" hidden></div>
+      <label for="ghProject">Game folder</label>
+      <input id="ghProject" type="text" placeholder="/Users/you/GrokGameStudio/Projects/Wilds" />
+      <label for="ghMsg">Commit message</label>
+      <input id="ghMsg" type="text" placeholder="feat: vertical slice" />
+      <label class="check" style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <input id="ghPrivate" type="checkbox" checked /> Private repo
+      </label>
+      <label for="ghToken">Or paste a PAT (repo scope)</label>
+      <input id="ghToken" type="password" autocomplete="off" placeholder="ghp_…" />
+      <div class="err" id="ghErr"></div>
+      <div class="row">
+        <button type="button" id="ghLogin">Sign in</button>
+        <button type="button" class="primary" id="ghShip">Ship game</button>
+        <button type="button" id="ghClose">Close</button>
+      </div>
+    </div>
+  </div>
 
   <main id="log">
     <div class="msg system">Describe what you want to build — e.g. „Third-Person Controller mit Jump“. Enter to send · Shift+Enter for newline.</div>
@@ -340,7 +412,115 @@ Tip: open Ollama.app, then reload this page.';
       });
     });
 
+    const ghModal = document.getElementById('ghModal');
+    const ghBtn = document.getElementById('btnGh');
+    const ghTitle = document.getElementById('ghTitle');
+    const ghLead = document.getElementById('ghLead');
+    const ghCode = document.getElementById('ghCode');
+    const ghErr = document.getElementById('ghErr');
+    const ghProject = document.getElementById('ghProject');
+    const ghMsg = document.getElementById('ghMsg');
+    let ghPoll = 0;
+
+    function ghShowErr(t) { ghErr.textContent = t || ''; }
+
+    async function refreshGh() {
+      try {
+        const r = await fetch('/api/github/status');
+        const d = await r.json();
+        if (d.logged_in) {
+          ghBtn.textContent = '@' + d.user;
+          ghBtn.classList.add('on');
+          ghTitle.textContent = 'Signed in as @' + d.user;
+          ghLead.textContent = 'Commit and push this game to a GitHub repo.';
+        } else {
+          ghBtn.textContent = 'GitHub';
+          ghBtn.classList.remove('on');
+          ghTitle.textContent = 'GitHub';
+          ghLead.textContent = d.install_hint
+            ? ('Install the GitHub CLI first: ' + d.install_hint)
+            : 'Sign in to commit and push your games.';
+        }
+        if (d.repo && d.repo.project && !ghProject.value) ghProject.value = d.repo.project;
+        return d;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    ghBtn.onclick = () => { ghModal.classList.add('show'); refreshGh(); };
+    document.getElementById('ghClose').onclick = () => {
+      ghModal.classList.remove('show');
+      clearInterval(ghPoll);
+    };
+    ghModal.addEventListener('click', (e) => {
+      if (e.target === ghModal) { ghModal.classList.remove('show'); clearInterval(ghPoll); }
+    });
+
+    document.getElementById('ghLogin').onclick = async () => {
+      ghShowErr('');
+      const token = document.getElementById('ghToken').value.trim();
+      const r = await fetch('/api/github/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(token ? { token } : {}),
+      });
+      const d = await r.json();
+      if (d.already || d.logged_in) {
+        await refreshGh();
+        return;
+      }
+      if (d.error && !d.user_code) {
+        ghShowErr(d.error);
+        return;
+      }
+      if (d.user_code) {
+        ghCode.hidden = false;
+        ghCode.textContent = d.user_code;
+        ghLead.innerHTML = 'Enter this code at <a href="' + (d.verification_uri || 'https://github.com/login/device') + '" target="_blank" rel="noopener">github.com/login/device</a>';
+      }
+      clearInterval(ghPoll);
+      ghPoll = setInterval(async () => {
+        const s = await fetch('/api/github/login').then(x => x.json()).catch(() => ({}));
+        if (s.user_code) {
+          ghCode.hidden = false;
+          ghCode.textContent = s.user_code;
+        }
+        if (s.done || s.logged_in) {
+          clearInterval(ghPoll);
+          if (s.error) ghShowErr(s.error);
+          await refreshGh();
+          if (s.logged_in) {
+            ghCode.hidden = true;
+            ghLead.textContent = 'Signed in. Ship when the slice is fun.';
+          }
+        }
+      }, 1500);
+    };
+
+    document.getElementById('ghShip').onclick = async () => {
+      ghShowErr('');
+      const project = ghProject.value.trim();
+      if (!project) { ghShowErr('Set the game folder path.'); return; }
+      const r = await fetch('/api/github/ship', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project,
+          message: ghMsg.value.trim() || undefined,
+          private: document.getElementById('ghPrivate').checked,
+        }),
+      });
+      const d = await r.json();
+      if (!d.ok) { ghShowErr(d.error || 'ship failed'); return; }
+      ghLead.innerHTML = d.html_url
+        ? ('Pushed → <a href="' + d.html_url + '" target="_blank" rel="noopener">' + d.html_url + '</a>')
+        : (d.message || 'Shipped.');
+      addMsg('system', 'Shipped to GitHub' + (d.html_url ? ': ' + d.html_url : ''));
+    };
+
     checkHealth();
+    refreshGh();
     setInterval(checkHealth, 8000);
     input.focus();
   </script>

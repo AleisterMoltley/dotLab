@@ -25,11 +25,16 @@ project/
   .gamemaster/studio/        all agent transcripts
 ```
 
+## Engine contract
+Studio always plans **Vite + Three.js**. Seeker = same game + MWA.
+A slice is not done without: place, body, collision, and one of {dialogue, ragdoll, shader}.
+
 ## Tips for best games
 1. Start with `council` for originality
-2. Then `build` or `parallel` for code
-3. Human play 2 minutes → `review` → `agent` fix
-4. Keep vertical slice sacred — Critic will kill scope
+2. Worlds: `scaffold world-game` then `worldclaw generate`, then `studio build`
+3. Then `build` or `parallel` for code
+4. Human play 2 minutes → `review` → `agent` fix
+5. Keep vertical slice sacred — Critic will kill scope
 
 ## Parallelism note
 Ollama on one GPU serializes inference; ThreadPool still overlaps prompt prep.

@@ -1,12 +1,33 @@
-# Solana Seeker — App & Game Development
+# Solana Seeker — Games first (Three.js + wallet)
 
 **Solana Seeker** = Solana Mobile phone (successor to Saga).  
-Target apps: **dApp Store**-ready Android apps + mobile-first web, optimized for Seed Vault Wallet + Mobile Wallet Adapter (MWA).
+Gamemaster builds **games**. Wallet is a system, not the product.
 
 ## Target platforms (priority)
-1. **Expo / React Native Android** (primary for Seeker dApp Store)
-2. **Mobile Web / PWA** with MWA (fast prototypes; Three.js WebGL possible)
-3. **Kotlin native** only if the user asks
+1. **Three.js web game + Mobile Wallet Adapter** (default — same engine as desktop)
+2. **Expo / React Native Android shell** hosting the Three.js canvas (WebView) or a thin native HUD + GL view — use when they need **dApp Store** packaging
+3. **Expo utility dApp** (no 3D) only if the user asked for a wallet tool, not a game
+4. **Kotlin native** only if the user asks
+
+## Seeker game architecture (default)
+
+```
+Vite + three.js game   ← camera, physics, dialogue, shaders, ragdoll
+        ↓
+wallet/mwa.js          ← connect, sign, cluster visible
+        ↓
+optional on-chain      ← score, claim, entry fee, NFT cosmetic
+```
+
+Rules:
+- Core loop must be fun **offline** (devnet down ≠ unplayable).
+- Wallet connect is a button, never a boot blocker.
+- Never store seeds. MWA / Seed Vault only.
+- `renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5))`, 1 shadow or none, pause rAF on hide.
+- Touch: virtual stick + action ≥44px, portrait-first, safe areas.
+- On-chain after the slice is fun: claim idle, entry ticket, cosmetic unlock.
+
+## Target platforms (legacy notes)
 
 ## Core stack (default Seeker app)
 ```

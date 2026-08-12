@@ -1,4 +1,4 @@
-# Fun-First Design (extracted from strong game AI / Grok-style pairing)
+# Fun-First Design (slim) — full craft lives in craft-taste.md + pair-partner.md + feel-tables.md
 
 ## Non-negotiables before writing systems
 1. **Core verb** in one sentence: "You jump and bounce enemies" / "You aim under pressure"

@@ -24,17 +24,20 @@ die() { echo "❌ $*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-gamemaster — local free multi-agent game coding (Ollama, $0)
-  Games · Solana Seeker · shaders · studio · playtest
+gamemaster — local Three.js game studio (Ollama, $0)
+  Worlds · physics · ragdoll · dialogue · shaders · Solana Seeker
 
   gamemaster [options] [prompt...]
-  gamemaster scaffold web-game|seeker-app|seeker-game|shader-lab [--genre X]
+  gamemaster scaffold web-game|world-game|seeker-app|seeker-game|shader-lab [--genre X]
+  gamemaster worldclaw generate -p DIR "medieval village, snow peaks"
   gamemaster studio plan|build|council|review|parallel -p DIR "brief" [--playtest] [--live]
   gamemaster live -p DIR
   gamemaster playtest -p DIR [--critic] [--duration SEC]
   gamemaster prefs show|set|forget|from-critic|prompt [-p DIR]
   gamemaster turbo status|warmup|bench
-  gamemaster update [--quick|--knowledge]
+  gamemaster update [--quick|--knowledge|--modelfile]
+  gamemaster github login|status|logout|commit|push|ship -p DIR
+  gamemaster ship -p DIR -m "vertical slice"
 
 Options:
   -f, --file PATH          attach file context
@@ -47,14 +50,18 @@ Options:
   -h, --help
 
 Examples:
-  gamemaster "Third-person controller with coyote time"
+  gamemaster "Third-person controller with coyote time and ragdoll death"
+  gamemaster scaffold world-game --name Wilds
+  gamemaster worldclaw generate -p ./Wilds "coastal village, pine ridge, desert canyon"
   gamemaster scaffold seeker-game --genre runner --name NeonDash
-  gamemaster -p ./game --agent "Add collectibles and score"
-  gamemaster studio build -p ./game "platformer vertical slice" --live
+  gamemaster -p ./game --agent "Add NPC dialogue tree and interact prompt"
+  gamemaster studio build -p ./game "open-world village slice" --live
   gamemaster live -p ./game
   gamemaster playtest -p ./game --critic
   gamemaster prefs set like "tight jumps"
   gamemaster turbo warmup
+  gamemaster github login
+  gamemaster ship -p ./Wilds -m "open-world village slice"
 EOF
 }
 
@@ -107,7 +114,7 @@ build_extra() {
 $(python3 "$ROOT/bin/turbo.py" knowledge --raw $prompt_hint 2>/dev/null || true)
 "
     else
-      for k in threejs-cheatsheet.md threejs-advanced.md game-patterns.md fun-first-design.md; do
+      for k in game-systems.md threejs-cheatsheet.md threejs-advanced.md physics-ragdoll.md world-building.md game-patterns.md fun-first-design.md; do
         [[ -f "$ROOT/knowledge/$k" ]] && extra+="
 ## $k
 $(head -c 8000 "$ROOT/knowledge/$k")
@@ -148,7 +155,7 @@ $(collect_project "$PROJECT")
 }
 
 # Stable system prefix → better Ollama prefix cache hits across turns
-STABLE_SYSTEM='You are Gamemaster, a free local game+Seeker+shader coding AI. Prefer complete runnable code. Honor USER PREFS. German explanations, English code.'
+STABLE_SYSTEM='You are Gamemaster — a Three.js game pair-partner with taste. Engine is always Three.js (Vite + vanilla). Verb first, one novelty, kill list before systems. Feel is CONFIG numbers (accel/friction, coyote, spring camera) not new features. Juice stack: hitstop then punch then blip. Readable spaces (fog=bg, landmarks). Fair first death. Seeker = same game + MWA, loop offline. Match the user language for explanations; English for code. Honor USER PREFS. After code: run + 2 focused questions + next one thing. No pseudocode holes.'
 
 chat_api() {
   local user_msg="$1"
@@ -250,6 +257,18 @@ if [[ $# -gt 0 ]]; then
       shift
       exec python3 "$ROOT/bin/self-update.py" "$@"
       ;;
+    worldclaw|world)
+      shift
+      exec python3 "$ROOT/bin/worldclaw.py" "$@"
+      ;;
+    github|gh)
+      shift
+      exec python3 "$ROOT/bin/github.py" "$@"
+      ;;
+    ship)
+      shift
+      exec python3 "$ROOT/bin/github.py" ship "$@"
+      ;;
     genres)
       exec python3 "$ROOT/bin/scaffold.py" list-genres
       ;;
@@ -300,7 +319,7 @@ fi
 
 EXTRA="$(build_extra)"
 
-echo "🎮 Gamemaster  ·  $MODEL  ·  Games + Solana Seeker  ·  \$0"
+echo "🎮 Gamemaster  ·  $MODEL  ·  Three.js worlds  ·  Seeker  ·  \$0"
 echo "   /file  /project  /agent  /model  /clear  /exit"
 echo "   scaffold: gamemaster scaffold seeker-game --genre idle"
 echo "   update:   gamemaster update"

@@ -12,9 +12,10 @@ For **every** genre: Core Loop → Feel → Systems → Vertical Slice in <1 Ses
 - Feel: coyote time 80–120ms, jump buffer 80–100ms, variable jump height
 - Systems: tile collision, moving platforms, one-way, camera lerp
 
-## 3. Third-Person Adventure
+## 3. Third-Person Adventure / Open World
 - Loop: explore → interact → combat/puzzle → story beat
-- Systems: follow cam, interact prompts, inventory, quest flags
+- Systems: follow cam, interact prompts, inventory, quest flags, heightfield, NPCs
+- World: 2+ biomes, 1 landmark per region, WorldClaw when generated
 - Seeker: large interact button, simplified camera orbit
 
 ## 4. FPS

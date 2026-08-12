@@ -215,6 +215,31 @@ def pull_models(profile: str = "dual") -> None:
     run(["ollama", "pull", "nomic-embed-text"], timeout=600)
 
 
+def rebuild_modelfile_only() -> None:
+    """Re-apply Modelfile onto existing weights (no pull)."""
+    mf = ROOT / "Modelfile"
+    tmp = ROOT / "config" / ".Modelfile.apply"
+    text = mf.read_text(encoding="utf-8")
+    # keep FROM as-is; install.sh is what rebases the FROM line
+    tmp.write_text(text, encoding="utf-8")
+    print("  → ollama create gamemaster (Modelfile only)")
+    code, out = run(["ollama", "create", "gamemaster", "-f", str(tmp)], timeout=600)
+    print(out[-800:] if len(out) > 800 else out)
+    if code != 0:
+        print("  ⚠ ollama create gamemaster failed")
+    # dense if present
+    code2, tags = run(["ollama", "list"], timeout=20)
+    if "gamemaster-dense" in tags or "qwen2.5-coder:32b" in tags:
+        print("  → ollama create gamemaster-dense (Modelfile only)")
+        dense = text.replace("FROM qwen3-coder:30b", "FROM qwen2.5-coder:32b")
+        tmp.write_text(dense, encoding="utf-8")
+        run(["ollama", "create", "gamemaster-dense", "-f", str(tmp)], timeout=600)
+    try:
+        tmp.unlink()
+    except OSError:
+        pass
+
+
 def rebuild_custom(profile: str = "dual") -> None:
     """Invoke install.sh profile rebuild."""
     flag = {
@@ -268,6 +293,11 @@ def main() -> int:
     ap.add_argument("--quick", action="store_true", help="Skip web knowledge scrape")
     ap.add_argument("--knowledge", action="store_true", help="Only knowledge live fetch")
     ap.add_argument("--models", action="store_true", help="Only pull+rebuild models")
+    ap.add_argument(
+        "--modelfile",
+        action="store_true",
+        help="Only re-apply Modelfile (no pull) — use after prompt/knowledge identity changes",
+    )
     ap.add_argument("--profile", default="dual", choices=["max", "dense", "dual", "balanced", "fast"])
     ap.add_argument("--no-smoke", action="store_true")
     args = ap.parse_args()
@@ -278,6 +308,17 @@ def main() -> int:
 
     ensure_dirs()
     meta: dict = {}
+
+    if args.modelfile:
+        print("→ Re-apply Modelfile…")
+        ensure_ollama()
+        rebuild_modelfile_only()
+        if not args.no_smoke:
+            print("→ Smoke…")
+            meta["smoke_ok"] = smoke()
+        write_version(meta)
+        print("\n✅ Modelfile applied. New system prompt is live.")
+        return 0
 
     only_k = args.knowledge
     only_m = args.models
@@ -304,7 +345,7 @@ def main() -> int:
         meta["smoke_ok"] = smoke()
 
     write_version(meta)
-    print("\n✅ Self-update fertig. Starting neu: tjc")
+    print("\n✅ Self-update done. New prompt is live: gamemaster \"…\"")
     return 0
 
 

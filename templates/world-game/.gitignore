@@ -1,0 +1,11 @@
+# Gamemaster game
+node_modules/
+dist/
+build/
+.vite/
+.DS_Store
+.gamemaster/
+.env
+.env.*
+*.pem
+*.key

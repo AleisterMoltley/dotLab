@@ -29,6 +29,7 @@ MODEL = DEFAULT_MODEL
 
 SYSTEM_EXTRA = """
 You are in AGENT MODE with filesystem tools in the project root.
+You implement **Three.js games** (Vite + vanilla). Seeker = same game + MWA.
 
 IMPORTANT: Exactly ONE tool block per reply. Then wait for TOOL RESULT.
 
@@ -46,6 +47,12 @@ Tools:
 - search → query: regex
 - run → cmd: short safe command
 - done → summary: what was done + how to test
+
+Game completeness when writing systems:
+- Place (lights, fog=bg, door-scale) · Body (accel/friction + spring camera) · Matter
+- Voice (dialogue JSON + overlay, never alert) · optional ragdoll/Rapier · shader accent
+- CONFIG from feel tables · juice.hit() on damage · WebAudio blip if no assets
+- no `new THREE.Vector3()` in the loop · complete files · protect the verb
 
 Efficiency:
 1) One list_dir, then targeted read_file with full path (src/...)
@@ -327,7 +334,7 @@ def load_knowledge(project: Path | None = None, task: str = "") -> str:
         sys.path.insert(0, str(ROOT / "bin"))
         import turbo as turbolib  # type: ignore
 
-        k = turbolib.select_knowledge(task or "three.js game coding agent", max_chars=24000)
+        k = turbolib.select_knowledge(task or "three.js complete game world agent", max_chars=32000)
         if k:
             chunks.append(k)
         # always agent protocol (tools)
@@ -336,8 +343,12 @@ def load_knowledge(project: Path | None = None, task: str = "") -> str:
             chunks.append(ap.read_text(encoding="utf-8")[:4000])
     except Exception:
         for name in (
+            "game-systems.md",
             "threejs-cheatsheet.md",
             "threejs-advanced.md",
+            "physics-ragdoll.md",
+            "world-building.md",
+            "dialogue-narrative.md",
             "game-patterns.md",
             "agent-protocol.md",
             "fun-first-design.md",
@@ -407,8 +418,8 @@ def main() -> int:
     knowledge = "" if args.no_knowledge else load_knowledge(project, task)
     # Stable system prefix first for cache; knowledge second
     system = (
-        "You are Gamemaster agent. File tools only as specified. "
-        "Honor USER PREFERENCE MEMORY. Complete runnable game code.\n"
+        "You are Gamemaster agent — Three.js game implementer. File tools only as specified. "
+        "Honor USER PREFERENCE MEMORY. Complete runnable Three.js game code (worlds, physics, dialogue, shaders).\n"
         + SYSTEM_EXTRA
         + ("\n\n# Knowledge\n" + knowledge if knowledge else "")
     )

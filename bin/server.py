@@ -12,6 +12,10 @@ import urllib.request
 import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import github as githublib  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 CHAT_DIR = ROOT / "chat"
@@ -107,7 +111,45 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 pass
 
+    def _json(self, status: int, data: dict) -> None:
+        raw = json.dumps(data).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def _github(self, method: str) -> bool:
+        parsed = urlparse(self.path)
+        if not parsed.path.startswith("/api/github"):
+            return False
+        body: dict = {}
+        if method == "POST":
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length) if length else b"{}"
+            try:
+                body = json.loads(raw.decode() or "{}")
+            except json.JSONDecodeError:
+                body = {}
+        qs = parse_qs(parsed.query)
+        if qs.get("project") and not body.get("project"):
+            body["project"] = qs["project"][0]
+        code, data = githublib.handle_http(method, parsed.path, body)
+        self._json(code, data)
+        return True
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
     def do_GET(self) -> None:
+        if self._github("GET"):
+            return
         if self.path.startswith("/api/tags"):
             return self._proxy("/api/tags")
         if self.path in ("/", "/index.html"):
@@ -115,6 +157,9 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:
+        if urlparse(self.path).path.startswith("/api/github"):
+            self._github("POST")
+            return
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length else b"{}"
         if self.path.startswith("/api/chat"):

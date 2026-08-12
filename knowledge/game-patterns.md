@@ -1,5 +1,11 @@
 # Game Design Patterns for Three.js (local context)
 
+## World slice add-ons (any genre)
+- One **place** with lighting/fog (not a gray plane)
+- One **NPC or vendor** with a 3-node dialogue tree
+- One **physical toy** (crate, ragdoll death, bounce pad)
+- One **shader** accent (sky, water, hit flash, toon rim)
+
 ## Core Loop Templates
 
 ### Arena Shooter / Twin-Stick

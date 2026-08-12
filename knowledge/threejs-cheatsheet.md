@@ -1,9 +1,30 @@
 # Three.js Game Cheatsheet (for local LLM context)
 
+**This is the engine.** Vite + vanilla three r160+. Y-up, meters. Complete files, no holes.
+
+## Game boot (copy this shape)
+
+```js
+import * as THREE from 'three';
+const CONFIG = { moveSpeed: 6, accel: 40, gravity: 22, jumpForce: 8, camLag: 8 };
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b1020);
+scene.fog = new THREE.Fog(0x0b1020, 25, 80);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 400);
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+// lights + world + player + loop (fixed step) + dispose on unload
+```
+
 ## Imports (r160+)
 ```js
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'; // NEVER three/examples/jsm
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { SkeletonUtils } from 'three/addons/utils/SkeletonUtils.js';

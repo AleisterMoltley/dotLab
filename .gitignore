@@ -11,6 +11,7 @@ venv/
 
 # local runtime state
 config/user-prefs.json
+config/github.json
 config/bench-latest.json
 config/warmup.log
 config/warmup.err

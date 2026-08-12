@@ -40,6 +40,8 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 LIVE_DIR = ROOT / "live"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import github as githublib  # noqa: E402
 DEFAULT_LIVE_PORT = int(os.environ.get("GAMEMASTER_LIVE_PORT", "8767"))
 DEFAULT_GAME_PORT = int(os.environ.get("GAMEMASTER_GAME_PORT", "5173"))
 
@@ -257,8 +259,35 @@ class LiveSession:
                 self._cors()
                 self.end_headers()
 
+            def _json(self, status: int, data: dict) -> None:
+                raw = json.dumps(data).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self._cors()
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
             def do_POST(self) -> None:  # noqa: N802
                 parsed = urlparse(self.path)
+                if parsed.path.startswith("/api/github"):
+                    length = int(self.headers.get("Content-Length", 0))
+                    raw = self.rfile.read(length) if length else b"{}"
+                    try:
+                        data = json.loads(raw.decode() or "{}")
+                    except json.JSONDecodeError:
+                        data = {}
+                    data.setdefault("project", str(session.project))
+                    code, payload = githublib.handle_http("POST", parsed.path, data, session.project)
+                    self._json(code, payload)
+                    if payload.get("ok") and parsed.path.endswith("/ship"):
+                        session.emit(
+                            payload.get("html_url") or payload.get("message") or "shipped",
+                            role="system",
+                            phase="ship",
+                            headline="Pushed to GitHub",
+                        )
+                    return
                 if parsed.path == "/api/emit":
                     length = int(self.headers.get("Content-Length", 0))
                     raw = self.rfile.read(length) if length else b"{}"
@@ -342,6 +371,12 @@ class LiveSession:
                         pass
                     finally:
                         session.unsubscribe(q)
+                    return
+                if path.startswith("/api/github"):
+                    qs = parse_qs(parsed.query)
+                    body = {"project": (qs.get("project") or [str(session.project)])[0]}
+                    code, payload = githublib.handle_http("GET", path, body, session.project)
+                    self._json(code, payload)
                     return
                 self.send_error(404)
 
