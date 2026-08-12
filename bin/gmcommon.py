@@ -193,6 +193,37 @@ def project_search_roots() -> list[Path]:
     return roots
 
 
+def _project_meta_snippet(project: Path) -> dict[str, str]:
+    """Best-effort genre/verb/title from slice or WIKI (no Ollama)."""
+    out = {"genre": "", "verb": "", "title": "", "ship_bar": ""}
+    for meta_name in (".dotlab", ".gamemaster"):
+        sp = project / meta_name / "slice.json"
+        if sp.is_file():
+            try:
+                data = json.loads(sp.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    out["genre"] = str(data.get("genre") or "")[:40]
+                    out["verb"] = str(data.get("verb") or "")[:80]
+                    out["title"] = str(data.get("title") or "")[:60]
+                    out["ship_bar"] = str(data.get("shipBar") or "")[:40]
+                    return out
+            except Exception:
+                pass
+    wiki = project / "WIKI.md"
+    if wiki.is_file():
+        try:
+            text = wiki.read_text(encoding="utf-8", errors="ignore")[:2000]
+            m = re.search(r"Genre:\s*([^\n*]+)", text, re.I)
+            if m:
+                out["genre"] = m.group(1).strip()[:40]
+            m = re.search(r"Verb at t=8s:\s*([^\n*]+)", text, re.I)
+            if m:
+                out["verb"] = m.group(1).strip()[:80]
+        except Exception:
+            pass
+    return out
+
+
 def list_game_projects() -> list[dict[str, Any]]:
     seen: set[Path] = set()
     found: list[dict[str, Any]] = []
@@ -210,11 +241,16 @@ def list_game_projects() -> list[dict[str, Any]]:
                     continue
                 seen.add(key)
                 st = child.stat()
+                meta = _project_meta_snippet(child)
                 found.append(
                     {
                         "name": child.name,
                         "path": str(key),
                         "mtime": int(st.st_mtime),
+                        "genre": meta.get("genre") or "",
+                        "verb": meta.get("verb") or "",
+                        "title": meta.get("title") or child.name,
+                        "ship_bar": meta.get("ship_bar") or "",
                     }
                 )
             except OSError:

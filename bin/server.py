@@ -144,11 +144,25 @@ def index_html() -> bytes:
     ok, label = status_label()
     klass = "ok" if ok else "bad"
     raw = raw.replace(
+        '<span class="led" id="dot"></span>',
+        f'<span class="led {klass}" id="dot"></span>',
+        1,
+    )
+    raw = raw.replace(
         '<span class="dot" id="dot"></span>',
         f'<span class="dot {klass}" id="dot"></span>',
         1,
     )
-    raw = raw.replace(">starting…</span>", f">{label}</span>", 1)
+    raw = raw.replace(
+        '<span id="statusText">…</span>',
+        f'<span id="statusText">{label}</span>',
+        1,
+    )
+    raw = raw.replace(
+        '<span id="statusText">starting…</span>',
+        f'<span id="statusText">{label}</span>',
+        1,
+    )
     return raw.encode()
 
 
@@ -416,6 +430,60 @@ class Handler(SimpleHTTPRequestHandler):
                     "summary": slicelib.summarize(spec),
                 },
             )
+        if path.endswith("/duplicate"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            # safety: only under known project roots
+            try:
+                ok_root = False
+                for root in __import__("gmcommon", fromlist=["project_search_roots"]).project_search_roots():
+                    try:
+                        target.resolve().relative_to(root.resolve())
+                        ok_root = True
+                        break
+                    except ValueError:
+                        continue
+                if not ok_root:
+                    return self._json(400, {"ok": False, "error": "folder not under projects root"})
+            except Exception:
+                return self._json(400, {"ok": False, "error": "invalid project root"})
+            base = slugify_project(target.name + "-copy")
+            dest = projects_root() / base
+            n = 2
+            while dest.exists():
+                dest = projects_root() / f"{base}-{n}"
+                n += 1
+            import shutil
+
+            def _ignore(dirpath: str, names: list[str]) -> set[str]:
+                skip = {"node_modules", ".git", "dist", "build", ".vite"}
+                return {x for x in names if x in skip}
+
+            shutil.copytree(target, dest, ignore=_ignore)
+            return self._json(200, {"ok": True, "name": dest.name, "path": str(dest)})
+        if path.endswith("/delete"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            try:
+                ok_root = False
+                for root in __import__("gmcommon", fromlist=["project_search_roots"]).project_search_roots():
+                    try:
+                        target.resolve().relative_to(root.resolve())
+                        ok_root = True
+                        break
+                    except ValueError:
+                        continue
+                if not ok_root:
+                    return self._json(403, {"ok": False, "error": "refusing delete outside projects"})
+            except Exception:
+                return self._json(400, {"ok": False, "error": "invalid path"})
+            # never delete home or tool root
+            if target.resolve() in (Path.home().resolve(), ROOT.resolve()):
+                return self._json(403, {"ok": False, "error": "refused"})
+            import shutil
+
+            shutil.rmtree(target)
+            return self._json(200, {"ok": True, "path": str(target)})
         return self._json(404, {"ok": False, "error": "unknown project action"})
 
     def do_POST(self) -> None:

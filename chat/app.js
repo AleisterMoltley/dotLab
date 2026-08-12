@@ -4,23 +4,41 @@
   var sendBtn = document.getElementById("send");
   var projectEl = document.getElementById("project");
   var history = [];
+  var projectsCache = [];
   var current = { path: "", name: "" };
-  var health = { ok: false, model: "", product: "dotLab" };
 
   function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s || "").replace(/[&<>"']/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+    });
+  }
+
+  function relTime(ts) {
+    if (!ts) return "";
+    var s = Math.max(0, (Date.now() / 1000) - Number(ts));
+    if (s < 60) return "now";
+    if (s < 3600) return Math.floor(s / 60) + "m";
+    if (s < 86400) return Math.floor(s / 3600) + "h";
+    if (s < 86400 * 14) return Math.floor(s / 86400) + "d";
+    var d = new Date(ts * 1000);
+    return (d.getMonth() + 1) + "/" + d.getDate();
+  }
 
   function setCurrent(path, name) {
     current.path = path || "";
     current.name = name || (path ? path.split("/").pop() : "");
     if (projectEl) projectEl.value = current.path;
-    try { localStorage.setItem("dl.project", current.path); } catch (e) {}
-    try { localStorage.setItem("gm.project", current.path); } catch (e) {}
+    try {
+      localStorage.setItem("dl.project", current.path);
+      localStorage.setItem("gm.project", current.path);
+    } catch (e) {}
 
     var ctx = $("contextLine");
     if (ctx) {
       ctx.innerHTML = current.path
-        ? 'Working on <strong>' + esc(current.name) + '</strong>'
-        : "No project selected — describe a new game below";
+        ? '<b>' + esc(current.name) + '</b> · project'
+        : "no project";
     }
     document.body.classList.toggle("has-project", !!current.path);
     var craft = $("craftChips");
@@ -28,26 +46,20 @@
     var newOpts = $("newOptions");
     if (craft) craft.hidden = !current.path;
     if (examples) examples.hidden = !!current.path;
-    if (newOpts) newOpts.style.opacity = current.path ? "0.45" : "1";
+    if (newOpts) newOpts.style.display = current.path ? "none" : "grid";
 
-    ["nowPlay", "nowShow", "nowCraft", "toolPlay", "toolFolder"].forEach(function (id) {
+    ["nowPlay", "nowShow", "nowDup", "nowDel", "toolPlay", "toolFolder", "toolDup", "toolDel"].forEach(function (id) {
       var el = $(id);
-      if (el) el.disabled = !current.path && id !== "toolFolder";
+      if (el) el.disabled = !current.path;
     });
-    if (sendBtn) sendBtn.textContent = current.path ? "Continue" : "Make this game";
+    if (sendBtn) sendBtn.textContent = current.path ? "Continue" : "Make game";
     var hint = $("composerHint");
     if (hint) {
-      hint.textContent = current.path
-        ? "Craft chips are instant. Chat can add systems via the model."
-        : "First build is instant. Pick type/genre or leave on Auto.";
+      hint.innerHTML = current.path
+        ? 'Craft chips = instant · model for systems'
+        : 'Enter send · <span class="kbd">⌘P</span> play';
     }
-    highlightProjectList();
-  }
-
-  function esc(s) {
-    return String(s || "").replace(/[&<>"']/g, function (c) {
-      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
-    });
+    renderProjects();
   }
 
   function api(path, body) {
@@ -58,23 +70,22 @@
 
   function refreshHealth() {
     return api("/api/health").then(function (h) {
-      health = h || health;
       var ok = !!(h && h.ok);
-      var dot = $("dot");
+      var led = $("dot");
       var text = $("statusText");
-      if (dot) {
-        dot.classList.toggle("ok", ok);
-        dot.classList.toggle("bad", !ok);
+      if (led) {
+        led.classList.toggle("ok", ok);
+        led.classList.toggle("bad", !ok);
       }
       if (text) {
         if (h && h.backend === "cloud") {
-          text.textContent = "cloud · " + (h.provider || "") + " · " + (h.model || "");
+          text.textContent = (h.provider || "cloud") + " · " + (h.model || "");
         } else if (ok) {
-          text.textContent = "online · " + (h.model || "dotlab") + " · $0";
+          text.textContent = (h.model || "dotlab") + " · local";
         } else if (h && !h.ollama) {
-          text.textContent = "Ollama offline — open Ollama.app";
+          text.textContent = "ollama offline";
         } else {
-          text.textContent = h && h.error ? h.error : "model missing";
+          text.textContent = (h && h.error) || "model missing";
         }
       }
       if (h && h.projects_root) {
@@ -83,10 +94,10 @@
       }
       return h;
     }).catch(function () {
-      var dot = $("dot");
-      if (dot) { dot.classList.remove("ok"); dot.classList.add("bad"); }
+      var led = $("dot");
+      if (led) { led.classList.remove("ok"); led.classList.add("bad"); }
       var text = $("statusText");
-      if (text) text.textContent = "dashboard offline";
+      if (text) text.textContent = "offline";
     });
   }
 
@@ -94,38 +105,54 @@
     return api("/api/projects").then(function (d) {
       var rootEl = $("projectsRoot");
       if (rootEl && d.root) rootEl.textContent = d.root;
-      var list = $("projectList");
-      if (!list) return d;
-      var items = d.projects || [];
-      if (!items.length) {
-        list.innerHTML = '<div style="padding:8px 12px;color:var(--muted);font-size:12px">No games yet. Describe one below.</div>';
-        return d;
-      }
-      list.innerHTML = items.map(function (p) {
-        var active = current.path === p.path ? " active" : "";
-        return (
-          '<div class="proj' + active + '" data-path="' + esc(p.path) + '" data-name="' + esc(p.name) + '">' +
-          "<div><b>" + esc(p.name) + "</b><span>" + esc(p.path) + "</span></div>" +
-          '<div class="row">' +
-          '<button type="button" class="btn sm" data-act="play">Play</button>' +
-          "</div></div>"
-        );
-      }).join("");
+      projectsCache = d.projects || [];
+      renderProjects();
       return d;
     });
   }
 
-  function highlightProjectList() {
-    document.querySelectorAll(".proj").forEach(function (el) {
-      el.classList.toggle("active", el.getAttribute("data-path") === current.path);
+  function filteredProjects() {
+    var q = (($("projectSearch") && $("projectSearch").value) || "").toLowerCase().trim();
+    if (!q) return projectsCache;
+    return projectsCache.filter(function (p) {
+      var hay = [p.name, p.path, p.genre, p.verb, p.title].join(" ").toLowerCase();
+      return hay.indexOf(q) !== -1;
     });
+  }
+
+  function renderProjects() {
+    var list = $("projectList");
+    var count = $("projectCount");
+    if (!list) return;
+    var items = filteredProjects();
+    if (count) count.textContent = projectsCache.length ? "(" + projectsCache.length + ")" : "";
+    if (!items.length) {
+      list.innerHTML = '<div class="empty-list">' +
+        (projectsCache.length ? "No match." : "No projects yet.") +
+        "</div>";
+      return;
+    }
+    list.innerHTML = items.map(function (p) {
+      var on = current.path === p.path ? " on" : "";
+      var meta = [p.genre, p.verb].filter(Boolean).join(" · ") || p.path;
+      return (
+        '<div class="proj' + on + '" data-path="' + esc(p.path) + '" data-name="' + esc(p.name) + '">' +
+        '<div class="t"><span class="name">' + esc(p.name) + '</span>' +
+        '<span class="when">' + esc(relTime(p.mtime)) + "</span></div>" +
+        '<div class="meta" title="' + esc(meta) + '">' + esc(meta) + "</div>" +
+        '<div class="acts">' +
+        '<button type="button" class="btn icon" data-act="play">Play</button>' +
+        '<button type="button" class="btn icon" data-act="dup">Dup</button>' +
+        "</div></div>"
+      );
+    }).join("");
   }
 
   function addMsg(role, text) {
     var el = document.createElement("div");
     el.className = "msg " + role;
     el.innerHTML =
-      '<div class="role">' + (role === "user" ? "You" : "dotLab") + "</div>" +
+      '<div class="role">' + (role === "user" ? "you" : "dotlab") + "</div>" +
       '<div class="body"></div>';
     el.querySelector(".body").textContent = text;
     log.appendChild(el);
@@ -137,18 +164,48 @@
     if (!path) return;
     api("/api/projects/play", { path: path }).then(function (d) {
       if (!d || !d.ok) {
-        addMsg("bot", "Play failed. " + ((d && d.error) || "Try Folder → npm install && npm run dev."));
+        addMsg("bot", "Play failed. " + ((d && d.error) || "Open folder → npm i && npm run dev."));
       }
+    });
+  }
+
+  function duplicatePath(path) {
+    if (!path) return;
+    api("/api/projects/duplicate", { path: path }).then(function (d) {
+      if (!d || !d.ok) {
+        addMsg("bot", "Duplicate failed. " + ((d && d.error) || ""));
+        return;
+      }
+      setCurrent(d.path, d.name);
+      loadProjects();
+      addMsg("bot", "Duplicated → " + d.name);
+    });
+  }
+
+  function deletePath(path, name) {
+    if (!path) return;
+    if (!confirm("Delete project “" + (name || path) + "”?\nThis cannot be undone.")) return;
+    api("/api/projects/delete", { path: path }).then(function (d) {
+      if (!d || !d.ok) {
+        addMsg("bot", "Delete failed. " + ((d && d.error) || ""));
+        return;
+      }
+      if (current.path === path) setCurrent("", "");
+      loadProjects();
+      addMsg("bot", "Deleted " + (name || path));
     });
   }
 
   function newGameMode() {
     setCurrent("", "");
+    history = [];
     if (input) {
-      input.placeholder = "The player runs, jumps, and grabs coins…";
+      input.value = "";
+      input.placeholder = "Player verb + place…";
       input.focus();
     }
     document.body.classList.remove("has-chat");
+    // keep welcome visible: remove chat msgs optional — leave history in log if any
   }
 
   window.DL.send = function (forcedText) {
@@ -157,7 +214,7 @@
     document.body.classList.add("has-chat");
     if (forcedText == null && input) input.value = "";
     addMsg("user", text);
-    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "Working…"; }
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "…"; }
 
     var making = !current.path;
     var kind = ($("optKind") && $("optKind").value) || "auto";
@@ -179,10 +236,10 @@
     start.then(function (created) {
       if (making) {
         if (!created || created.error) {
-          addMsg("bot", (created && (created.error || created.message)) || "Could not create the folder.");
+          addMsg("bot", (created && (created.error || created.message)) || "Could not create folder.");
           return;
         }
-        var summary = created.summary || "Playable slice is ready. Click Play.";
+        var summary = created.summary || "Ready. Play.";
         addMsg("bot", summary);
         history.push({ role: "user", content: text });
         history.push({ role: "assistant", content: summary });
@@ -191,14 +248,11 @@
 
       var path = current.path;
       history.push({ role: "user", content: text });
-      var body = addMsg("bot", "Working…");
+      var body = addMsg("bot", "…");
       return fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: history.slice(-8),
-          project: path || "",
-        }),
+        body: JSON.stringify({ messages: history.slice(-8), project: path || "" }),
       })
         .then(function (r) {
           return r.json().then(function (d) {
@@ -208,19 +262,17 @@
         })
         .then(function (d) {
           var t = d.text || d.error || "No reply";
-          if (d.instant) t = "⚡ " + t;
+          if (d.instant) t = "· " + t;
           body.textContent = t;
           history.push({ role: "assistant", content: t });
         })
         .catch(function (e) {
-          body.textContent =
-            "Could not reach the model. Keep the dotLab terminal open and check Ollama.app.\n\n" +
-            e.message;
+          body.textContent = "Model unreachable. Keep the terminal open · Ollama.app\n\n" + e.message;
         });
     }).then(function () {
       if (sendBtn) {
         sendBtn.disabled = false;
-        sendBtn.textContent = current.path ? "Continue" : "Make this game";
+        sendBtn.textContent = current.path ? "Continue" : "Make game";
       }
       if (input) input.focus();
       log.scrollTop = log.scrollHeight;
@@ -229,7 +281,6 @@
     return false;
   };
 
-  // chips
   document.querySelectorAll("[data-fill]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       if (!input) return;
@@ -253,7 +304,6 @@
     });
   }
 
-  // sidebar projects
   var projectList = $("projectList");
   if (projectList) {
     projectList.addEventListener("click", function (e) {
@@ -262,51 +312,33 @@
       if (!row) return;
       var path = row.getAttribute("data-path");
       var name = row.getAttribute("data-name");
-      if (btn && btn.getAttribute("data-act") === "play") {
+      var act = btn && btn.getAttribute("data-act");
+      if (act === "play") {
         setCurrent(path, name);
         playPath(path);
         return;
       }
+      if (act === "dup") {
+        duplicatePath(path);
+        return;
+      }
       setCurrent(path, name);
       if (input) {
-        input.placeholder = "What should we change in " + name + "?";
+        input.placeholder = "Change " + name + "…";
         input.focus();
       }
     });
   }
 
-  function bindClick(id, fn) {
+  var search = $("projectSearch");
+  if (search) {
+    search.addEventListener("input", renderProjects);
+  }
+
+  function bind(id, fn) {
     var el = $(id);
     if (el) el.onclick = fn;
   }
-
-  bindClick("btnNewGame", newGameMode);
-  bindClick("toolNew", function () { closeSheets(); newGameMode(); });
-  bindClick("btnClearProject", newGameMode);
-  bindClick("btnRefreshProjects", function () { loadProjects(); refreshHealth(); });
-  bindClick("btnRevealRoot", function () {
-    var root = ($("projectsRoot") && $("projectsRoot").textContent) || "";
-    api("/api/projects/reveal", { path: root });
-  });
-  bindClick("nowPlay", function () { if (current.path) playPath(current.path); });
-  bindClick("toolPlay", function () { closeSheets(); if (current.path) playPath(current.path); });
-  bindClick("nowShow", function () {
-    if (current.path) api("/api/projects/reveal", { path: current.path });
-  });
-  bindClick("toolFolder", function () {
-    closeSheets();
-    if (current.path) api("/api/projects/reveal", { path: current.path });
-  });
-  bindClick("nowCraft", function () {
-    if (!current.path) return;
-    var craft = $("craftChips");
-    if (craft) {
-      craft.hidden = false;
-      craft.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  });
-
-  // sheets
   function openSheet(id) {
     var el = $(id);
     if (el) el.classList.add("show");
@@ -314,45 +346,58 @@
   function closeSheets() {
     document.querySelectorAll(".sheet").forEach(function (s) { s.classList.remove("show"); });
   }
-  bindClick("btnTools", function () { openSheet("toolsSheet"); });
-  bindClick("toolsClose", closeSheets);
-  bindClick("btnHelp", function () { openSheet("helpSheet"); });
-  bindClick("helpClose", closeSheets);
-  bindClick("btnGh", function () {
+
+  bind("btnNewGame", newGameMode);
+  bind("btnClearProject", newGameMode);
+  bind("btnRevealRoot", function () {
+    var root = ($("projectsRoot") && $("projectsRoot").textContent) || "";
+    api("/api/projects/reveal", { path: root });
+  });
+  bind("nowPlay", function () { if (current.path) playPath(current.path); });
+  bind("toolPlay", function () { closeSheets(); if (current.path) playPath(current.path); });
+  bind("nowShow", function () {
+    if (current.path) api("/api/projects/reveal", { path: current.path });
+  });
+  bind("toolFolder", function () {
+    closeSheets();
+    if (current.path) api("/api/projects/reveal", { path: current.path });
+  });
+  bind("nowDup", function () { if (current.path) duplicatePath(current.path); });
+  bind("toolDup", function () { closeSheets(); if (current.path) duplicatePath(current.path); });
+  bind("nowDel", function () { if (current.path) deletePath(current.path, current.name); });
+  bind("toolDel", function () {
+    closeSheets();
+    if (current.path) deletePath(current.path, current.name);
+  });
+
+  bind("btnTools", function () { openSheet("toolsSheet"); });
+  bind("toolsClose", closeSheets);
+  bind("btnHelp", function () { openSheet("helpSheet"); });
+  bind("helpClose", closeSheets);
+  bind("btnGh", function () {
     var gp = $("ghProject");
     if (gp) gp.value = current.path || (projectEl && projectEl.value) || "";
     openSheet("ghModal");
   });
-  bindClick("toolGh", function () {
-    closeSheets();
-    var gp = $("ghProject");
-    if (gp) gp.value = current.path || "";
-    openSheet("ghModal");
-  });
-  bindClick("ghClose", closeSheets);
+  bind("ghClose", closeSheets);
+  bind("btnMenu", function () { document.body.classList.toggle("side-open"); });
+  bind("scrim", function () { document.body.classList.remove("side-open"); });
 
-  bindClick("btnMenu", function () {
-    document.body.classList.toggle("side-open");
-  });
-  bindClick("scrim", function () {
-    document.body.classList.remove("side-open");
-  });
-
-  bindClick("ghLogin", function () {
+  bind("ghLogin", function () {
     fetch("/api/github/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var lead = $("ghLead");
         if (!lead) return;
-        if (d.user_code) lead.textContent = "Enter " + d.user_code + " at github.com/login/device";
-        else if (d.logged_in) lead.textContent = "Signed in as @" + d.user;
-        else lead.textContent = d.error || "Could not start login";
+        if (d.user_code) lead.textContent = "Code " + d.user_code + " → github.com/login/device";
+        else if (d.logged_in) lead.textContent = "@" + d.user;
+        else lead.textContent = d.error || "Login failed";
       });
   });
-  bindClick("ghShip", function () {
+  bind("ghShip", function () {
     var project = (($("ghProject") && $("ghProject").value) || current.path || "").trim();
     var err = $("ghErr");
-    if (!project) { if (err) err.textContent = "Need a folder path."; return; }
+    if (!project) { if (err) err.textContent = "Need folder."; return; }
     fetch("/api/github/ship", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -372,8 +417,29 @@
     });
   }
 
+  // keyboard
+  document.addEventListener("keydown", function (e) {
+    var meta = e.metaKey || e.ctrlKey;
+    if (meta && e.key.toLowerCase() === "p") {
+      e.preventDefault();
+      if (current.path) playPath(current.path);
+    }
+    if (meta && e.key.toLowerCase() === "n") {
+      e.preventDefault();
+      newGameMode();
+    }
+    if (meta && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      if (search) search.focus();
+    }
+    if (e.key === "?" && !e.metaKey && !e.ctrlKey && document.activeElement !== input) {
+      openSheet("helpSheet");
+    }
+    if (e.key === "Escape") closeSheets();
+  });
+
   refreshHealth();
-  setInterval(refreshHealth, 15000);
+  setInterval(refreshHealth, 20000);
   loadProjects().then(function () {
     try {
       var saved = localStorage.getItem("dl.project") || localStorage.getItem("gm.project") || "";
@@ -383,6 +449,5 @@
       setCurrent("", "");
     }
   });
-
   if (input) input.focus();
 })();
