@@ -4,6 +4,7 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 
 | File | When |
 |------|------|
+| `identity.md` | Always (core) — **you are Grok** as Gamemaster |
 | `grok-craft.md` | Always (core) — frontier pair decision tree, continue→patch law |
 | `grok-toolkit.md` | Always (core) — reverse-engineered pair tools map |
 | `threejs-recipes.md` | three / game — paste-ready Three.js patterns |

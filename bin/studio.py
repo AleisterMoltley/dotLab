@@ -168,20 +168,21 @@ def update_design_md(project: Path, section: str, body: str) -> None:
 def role_director(
     brief: str, model: str, genre_hint: str = "", prefs: str = "", project: Path | None = None
 ) -> str:
+    import identity as identitylib
+
     knowledge = load_pack(
+        "identity.md",
         "craft-taste.md",
         "pair-partner.md",
         "feel-tables.md",
         "game-genres.md",
         "readable-spaces.md",
-        limit=3200,
+        limit=2800,
     )
     prefs = prefs or pref_block(project)
     sys_p = (
-        "You are DIRECTOR in Gamemaster Studio — pair-partner with elite taste.\n"
-        "Engine is Three.js. Worlds have lighting, NPCs, and a reason to walk.\n"
-        "Be opinionated: 'The fun is X. We cut Y.' Do not take every feature request.\n"
-        "Honor USER PREFERENCE MEMORY when present.\n"
+        identitylib.system_for("director", extra_packs=False)
+        + "\nHonor USER PREFERENCE MEMORY when present.\n"
         "Output MUST include:\n"
         "1) Pitch (2 sentences) — sharper than the brief\n"
         "2) Core Verb + what the player does at t=8s\n"
@@ -214,22 +215,23 @@ def role_architect(
     prefs: str = "",
     project: Path | None = None,
 ) -> str:
+    import identity as identitylib
+
     knowledge = load_pack(
+        "identity.md",
         "game-systems.md",
         "feel-tables.md",
         "threejs-cheatsheet.md",
+        "threejs-recipes.md",
         "physics-ragdoll.md",
         "readable-spaces.md",
         "solana-seeker.md",
-        limit=3000,
+        limit=2600,
     )
     prefs = prefs or pref_block(project)
     sys_p = (
-        "You are ARCHITECT in Gamemaster Studio.\n"
-        "ENGINE IS THREE.JS (Vite + vanilla ES modules). Never Unity/Godot/Phaser/R3F unless user named them.\n"
-        "Seeker = same Three.js game + Mobile Wallet Adapter (wallet is not the product).\n"
-        "Plan modules, files, data flow. No code except signatures/sketches.\n"
-        "Honor USER PREFERENCE MEMORY (tech/feel).\n"
+        identitylib.system_for("architect", extra_packs=False)
+        + "\nHonor USER PREFERENCE MEMORY (tech/feel).\n"
         "A complete slice needs: loop, input, camera, world/lighting, physics path (arcade OR Rapier),\n"
         "plus at least one of {dialogue tree, ragdoll, shader FX}.\n"
         "Output:\n"
@@ -262,21 +264,20 @@ def role_critic(
     prefs: str = "",
     project: Path | None = None,
 ) -> str:
+    import identity as identitylib
+
     knowledge = load_pack(
+        "identity.md",
         "craft-taste.md",
         "pair-partner.md",
         "playtest-harness.md",
         "game-systems.md",
-        limit=3500,
+        limit=3000,
     )
     prefs = prefs or pref_block(project)
     sys_p = (
-        "You are CRITIC / PLAYTESTER in Gamemaster Studio — strict but constructive.\n"
-        "Judge fun, fairness, clarity, scope, feel. Find bugs and boredom.\n"
-        "A gray plane + cube is a FAIL. Worlds need light, collision, and a living beat.\n"
-        "If they added systems instead of tuning CONFIG, say so. Protect the verb.\n"
-        "Ask: controls <10s? first death fair? juice on hit? next goal obvious? one more run?\n"
-        "If PLAYTEST METRICS exist: prioritize empirical data (FPS, errors, death→retry).\n"
+        identitylib.system_for("critic", extra_packs=False)
+        + "\nIf PLAYTEST METRICS exist: prioritize empirical data (FPS, errors, death→retry).\n"
         "Output:\n"
         "1) Severity list (P0/P1/P2) — max 8 findings\n"
         "2) Feel verdict (1–10) + why\n"
@@ -300,15 +301,17 @@ def role_critic(
 def role_pitch_variant(
     brief: str, model: str, seed: int, prefs: str = "", project: Path | None = None
 ) -> str:
+    import identity as identitylib
+
     # Slim packs only — council is latency-bound (3× parallel)
-    knowledge = load_pack("craft-taste.md", "feel-tables.md", "game-genres.md", limit=2200)
+    knowledge = load_pack("identity.md", "craft-taste.md", "feel-tables.md", "game-genres.md", limit=1800)
     prefs = prefs or pref_block(project)
     sys_p = (
-        f"You are DIRECTOR variant #{seed}. Create ONE sharp, unique game pitch.\n"
-        "Differentiate strongly from generic ideas. 1 core verb. Vertical slice only.\n"
-        "Honor USER PREFERENCE MEMORY.\n"
+        identitylib.system_for("director", extra_packs=False)
+        + f"\nYou are DIRECTOR variant #{seed}. Create ONE sharp, unique game pitch.\n"
+        "Differentiate strongly. 1 core verb. Vertical slice only. Honor prefs.\n"
         "Format: PITCH / VERB / t=8s / PILLARS (3) / SLICE / FEEL NUMBERS / FIRST DEATH / HOOK\n"
-        "English. Max 400 words. Be opinionated.\n"
+        "English. Max 400 words.\n"
     )
     # Prefer max MoE for quality; flash only if max unavailable
     pitch_model = model

@@ -1,4 +1,4 @@
-# Gamemaster FLASH — 7B for short QA / routing drafts. Never final game code alone.
+# Flash — identity.py
 FROM qwen2.5-coder:7b
 
 PARAMETER num_ctx 4096
@@ -11,9 +11,5 @@ PARAMETER num_gpu 99
 PARAMETER num_batch 256
 
 SYSTEM """
-You are Gamemaster FLASH — a tiny helper for a Three.js game studio.
-Be extremely short. Prefer one code fence or 3 bullets.
-Feel fixes: floaty→gravity↑, icy→accel/friction↓, stiff→friction↓.
-Engine: Three.js only. Never three/examples/jsm. fog=background.
-If asked to write a full game, say: use gamemaster max / Make this game.
+You are Gamemaster FLASH (tiny). Ultra short. Feel: floaty→grav↑. Full games → use max / Make this game.
 """

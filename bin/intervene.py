@@ -94,19 +94,6 @@ def detect_base() -> dict:
     }
 
 
-def render_modelfile(base: str, src: Path, num_ctx: int) -> str:
-    text = src.read_text(encoding="utf-8")
-    lines = []
-    for line in text.splitlines():
-        if line.startswith("FROM "):
-            lines.append(f"FROM {base}")
-        elif line.startswith("PARAMETER num_ctx "):
-            lines.append(f"PARAMETER num_ctx {num_ctx}")
-        else:
-            lines.append(line)
-    return "\n".join(lines) + "\n"
-
-
 def ollama_create(name: str, body: str) -> tuple[int, str]:
     tmp = CONFIG / f".Modelfile.{name.replace(':', '_')}"
     CONFIG.mkdir(parents=True, exist_ok=True)
@@ -120,14 +107,18 @@ def ollama_create(name: str, body: str) -> tuple[int, str]:
 
 
 def apply_modelfiles(bases: dict | None = None) -> dict:
+    import identity as identitylib
+
     bases = bases or detect_base()
-    mf = ROOT / "Modelfile"
-    mff = ROOT / "Modelfile.flash"
     results: dict = {"ok": True, "created": [], "errors": []}
 
-    # max
-    body = render_modelfile(bases["max_base"], mf, bases["num_ctx"])
-    print(f"  → create {DEFAULT_MODEL} FROM {bases['max_base']} ctx={bases['num_ctx']}")
+    # Sync repo Modelfiles from identity (single source of Grok)
+    for p in identitylib.write_modelfiles():
+        print(f"  ✓ sync {p.name}")
+
+    # max — full Grok identity
+    body = identitylib.modelfile_body(bases["max_base"], bases["num_ctx"])
+    print(f"  → create {DEFAULT_MODEL} FROM {bases['max_base']} ctx={bases['num_ctx']} (Grok identity)")
     code, out = ollama_create(DEFAULT_MODEL, body)
     if code == 0:
         results["created"].append(DEFAULT_MODEL)
@@ -138,21 +129,20 @@ def apply_modelfiles(bases: dict | None = None) -> dict:
         print(f"  ⚠ {DEFAULT_MODEL}: {out[-300:]}")
 
     # flash
-    if mff.is_file():
-        flash_ctx = min(4096, bases["num_ctx"])
-        body_f = render_modelfile(bases["flash_base"], mff, flash_ctx)
-        print(f"  → create {FLASH_MODEL} FROM {bases['flash_base']} ctx={flash_ctx}")
-        code, out = ollama_create(FLASH_MODEL, body_f)
-        if code == 0:
-            results["created"].append(FLASH_MODEL)
-            print(f"  ✓ {FLASH_MODEL}")
-        else:
-            print(f"  ⚠ {FLASH_MODEL}: {out[-200:]}")
+    flash_ctx = min(4096, bases["num_ctx"])
+    body_f = identitylib.flash_modelfile_body(bases["flash_base"], flash_ctx)
+    print(f"  → create {FLASH_MODEL} FROM {bases['flash_base']} ctx={flash_ctx}")
+    code, out = ollama_create(FLASH_MODEL, body_f)
+    if code == 0:
+        results["created"].append(FLASH_MODEL)
+        print(f"  ✓ {FLASH_MODEL}")
+    else:
+        print(f"  ⚠ {FLASH_MODEL}: {out[-200:]}")
 
     # dense (optional)
     code, tags = run(["ollama", "list"], timeout=20)
     if bases["dense_base"] in (tags or "") or DENSE_MODEL in (tags or ""):
-        body_d = render_modelfile(bases["dense_base"], mf, bases["num_ctx"])
+        body_d = identitylib.modelfile_body(bases["dense_base"], bases["num_ctx"])
         print(f"  → create {DENSE_MODEL} FROM {bases['dense_base']}")
         code, out = ollama_create(DENSE_MODEL, body_d)
         if code == 0:
@@ -161,8 +151,21 @@ def apply_modelfiles(bases: dict | None = None) -> dict:
         else:
             print(f"  ⚠ {DENSE_MODEL}: {out[-200:]}")
 
+    # Seed global prefs with Grok taste if missing/thin
+    try:
+        import prefs as prefslib
+
+        gpath = prefslib.GLOBAL_PREFS
+        g = prefslib.load_json(gpath)
+        if not g.get("identity"):
+            prefslib.save_json(gpath, g)
+            print(f"  ✓ prefs seeded with Grok taste → {gpath.name}")
+    except Exception as e:
+        print(f"  ⚠ prefs seed: {e}")
+
     profile = {
         "profile": "intervene",
+        "identity": "grok-gamemaster",
         "base_model": bases["max_base"],
         "custom_model": DEFAULT_MODEL,
         "flash_model": FLASH_MODEL,
@@ -170,7 +173,16 @@ def apply_modelfiles(bases: dict | None = None) -> dict:
         "num_ctx": bases["num_ctx"],
         "mem_gb": bases["mem_gb"],
         "updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "craft": ["slice", "patch", "verify", "kit", "grok-craft", "grok-toolkit"],
+        "craft": [
+            "identity",
+            "slice",
+            "patch",
+            "verify",
+            "kit",
+            "grok-craft",
+            "grok-toolkit",
+            "threejs-recipes",
+        ],
     }
     PROFILE_PATH.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
     results["profile"] = profile

@@ -43,7 +43,14 @@ TIERS = {
 
 # Knowledge packs by domain (order = priority, sizes capped in select)
 PACKS = {
-    "core": ["grok-craft.md", "grok-toolkit.md", "brain.md", "game-systems.md", "threejs-cheatsheet.md"],
+    "core": [
+        "identity.md",
+        "grok-craft.md",
+        "grok-toolkit.md",
+        "brain.md",
+        "game-systems.md",
+        "threejs-cheatsheet.md",
+    ],
     "three": ["threejs-advanced.md", "threejs-recipes.md", "threejs-ecosystem.md"],
     "shader": ["shaders-glsl-tsl.md", "multipass.md"],
     "game": ["feel-tables.md", "game-patterns.md", "game-genres.md", "threejs-recipes.md"],

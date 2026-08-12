@@ -20,6 +20,7 @@ from pathlib import Path
 
 from cloud import chat as llm_chat, require_backend
 from gmcommon import DEFAULT_MODEL, OLLAMA, ROOT, ollama_json
+import identity as identitylib
 
 MAX_STEPS = int(os.environ.get("GAMEMASTER_AGENT_STEPS", "20"))
 MAX_FILE = 120_000
@@ -28,13 +29,7 @@ MAX_TOOL_OUT = 24_000
 MODEL = DEFAULT_MODEL
 
 SYSTEM_EXTRA = """
-You are in AGENT MODE — local Grok file tools against the project root.
-You implement **Three.js games** (Vite + vanilla). Seeker = same game + MWA.
-Host already handles feel/enemies/palette via patch — do not waste turns on numbers.
-
-IMPORTANT: Exactly ONE tool block per reply. Then wait for TOOL RESULT.
-
-Format:
+Format — exactly ONE tool block per reply, then wait for TOOL RESULT:
 
 ```
 tool call TOOLNAME
@@ -42,28 +37,15 @@ key: value
 ```
 
 Tools:
-- list_dir  → path: .   oder path: src
-- read_file → path: src/main.js   optional start: N  end: M  (line range)
-- write_file → path: src/foo.js   and content: (full file contents)
+- list_dir → path: .
+- read_file → path: src/main.js  optional start: N end: M
+- write_file → path: src/foo.js  content: full file
 - search → query: regex
 - run → cmd: short safe command
 - kit → action: todo_add|todo_done|todo_list|wiki_add|map|art_test|feel|verify|pixel
-         text:/fact:/why:/id: as needed
-- done → summary: what was done + how to test
+- done → summary: what + how to test
 
-Game completeness when writing systems:
-- Place (lights, fog=bg, door-scale) · Body (accel/friction + spring camera) · Matter
-- Voice (dialogue JSON + overlay, never alert) · optional ragdoll/Rapier · shader accent
-- CONFIG from feel tables · juice.hit() on damage · WebAudio blip if no assets
-- no `new THREE.Vector3()` in the loop · complete files · protect the verb
-
-Efficiency:
-1) kit todo_add the next 3 steps, then one list_dir, then targeted read_file
-2) Write required files (write_file), kit wiki_add durable facts, kit feel after a controller
-3) Do not loop list_dir. Use PROJECT MAP. No long prose between tools.
-4) Always include subfolders, never just "main.js" if file is under src/.
-
-Never invent file contents. English only in done summary.
+Efficiency: MAP/WIKI first · write complete files · kit feel after controller · no list_dir loops.
 """
 
 
@@ -342,10 +324,12 @@ def load_knowledge(project: Path | None = None, task: str = "") -> str:
             chunks.append(ap.read_text(encoding="utf-8")[:2500])
     except Exception:
         for name in (
+            "identity.md",
             "grok-craft.md",
             "brain.md",
             "game-systems.md",
             "threejs-cheatsheet.md",
+            "threejs-recipes.md",
             "feel-tables.md",
             "agent-protocol.md",
         ):
@@ -446,9 +430,8 @@ def main() -> int:
         pass
 
     system = (
-        "You are Gamemaster agent — Three.js game implementer. File tools only as specified. "
-        "Honor USER PREFERENCE MEMORY. Complete runnable Three.js game code.\n"
-        "Prefer editing src/game.js. Read MAP.md or WIKI.md before list_dir.\n"
+        identitylib.system_for("agent", extra_packs=False)
+        + "\nHonor USER PREFERENCE MEMORY. Prefer editing src/game.js.\n"
         + SYSTEM_EXTRA
         + ("\n\n# Knowledge\n" + knowledge if knowledge else "")
     )

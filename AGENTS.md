@@ -38,6 +38,7 @@ Modelfile       baked Ollama system prompt
 | Prompt → playable slice | `bin/slice.py` + `templates/web-slice/game.js` |
 | Instant continue (feel/counts/palette) | `bin/patch.py` — no LLM |
 | Install Grok into Ollama | `bin/intervene.py` · `gamemaster intervene` |
+| **Grok identity (single source)** | `bin/identity.py` + `knowledge/identity.md` |
 | Grok decision tree | `knowledge/grok-craft.md` (core pack) |
 | Grok toolkit map | `knowledge/grok-toolkit.md` |
 | Three.js recipes | `knowledge/threejs-recipes.md` |

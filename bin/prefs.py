@@ -48,21 +48,31 @@ def empty_prefs() -> dict:
 
 
 def load_json(path: Path) -> dict:
+    try:
+        import identity as identitylib
+    except Exception:
+        identitylib = None  # type: ignore
+
     if not path.exists():
+        if identitylib:
+            return identitylib.seed_prefs_dict(None)
         return empty_prefs()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         base = empty_prefs()
         base.update({k: data.get(k, base[k]) for k in base})
-        # ensure types
         for k in ("likes", "dislikes", "notes", "history"):
             if not isinstance(base[k], list):
                 base[k] = []
         for k in ("feel", "tech"):
             if not isinstance(base[k], dict):
                 base[k] = {}
+        if identitylib:
+            base = identitylib.seed_prefs_dict(base)
         return base
     except Exception:
+        if identitylib:
+            return identitylib.seed_prefs_dict(None)
         return empty_prefs()
 
 

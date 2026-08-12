@@ -34,6 +34,8 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/turbo.py" "$@" ;;
     intervene|install-local|grok-local)
       shift; exec python3 "$ROOT/bin/intervene.py" "$@" ;;
+    identity|whoami)
+      shift; exec python3 "$ROOT/bin/identity.py" "$@" ;;
     patch|craft)
       shift; exec python3 "$ROOT/bin/patch.py" "$@" ;;
     live)

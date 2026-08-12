@@ -354,10 +354,11 @@ def summarize(spec: dict) -> str:
         "tps": "WASD move, Space jump, E talk when close, R restart.",
     }.get(spec.get("camera") or "tps", "WASD move, R restart.")
     return (
-        f"{spec['title']} is playable now — {spec['verb']}.\n"
-        f"Genre {spec['genre']} · {spec['setting']} · loop {spec['loop']}.\n"
+        f"The fun is: {spec['verb']}.\n"
+        f"{spec['title']} · {spec['genre']} · {spec['setting']} · loop {spec['loop']}.\n"
         f"{cam}\n"
-        "Click Play. The local model can still change files if you ask."
+        "Play it. Then tweak with words like floaty / more enemies / neon — instant, no model wait.\n"
+        "For dialogue, ragdoll, shaders: Continue with that system."
     )
 
 
@@ -634,13 +635,10 @@ npm run dev
 
 
 def ask_system(project: Path | None, user_text: str) -> str:
-    """Slim system prompt — prefill is the main local latency cost."""
-    craft_parts: list[str] = []
-    for name, cap in (("grok-craft.md", 1600), ("threejs-recipes.md", 900), ("brain.md", 800)):
-        bp = KNOWLEDGE / name
-        if bp.is_file():
-            craft_parts.append(bp.read_text(encoding="utf-8")[:cap])
-    craft = "\n\n".join(craft_parts)
+    """Grok identity + slim context — prefill is the main local latency cost."""
+    import identity as identitylib
+
+    craft = identitylib.system_for("ask", extra_packs=True)
     wiki = ""
     spec_txt = ""
     if project:
@@ -654,24 +652,15 @@ def ask_system(project: Path | None, user_text: str) -> str:
     try:
         import turbo
 
-        packs = turbo.select_knowledge(user_text, max_chars=1600)
+        packs = turbo.select_knowledge(user_text, max_chars=1400)
     except Exception:
         packs = ""
     return (
-        "You are Gamemaster — a game pair. Ship playable Three.js. Not chat.\n"
-        "A playable slice already exists. Prefer surgical file edits over rewrites.\n"
-        "If you cannot improve the slice, reply with controls only — no fences.\n\n"
         f"{craft}\n\n"
         f"PLAYER: {user_text}\n\n"
         f"SLICE:\n{spec_txt}\n\n"
         f"WIKI:\n{wiki}\n\n"
-        f"{packs}\n\n"
-        "Emit complete files only:\n"
-        "```js src/game.js\n"
-        "full file\n"
-        "```\n"
-        "Rules: Three.js, fog=background, CONFIG, no holes, no new Vector3 in loop, "
-        "no alert(), three/addons never examples/jsm, __GF_PLAYTEST__.\n"
+        f"{packs}\n"
     )
 
 

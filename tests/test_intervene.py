@@ -17,12 +17,15 @@ class TestIntervene(unittest.TestCase):
         self.assertIn("OLLAMA_NUM_PARALLEL=1", text)
         self.assertIn("OLLAMA_KEEP_ALIVE=24h", text)
 
-    def test_render_modelfile_swaps_from_and_ctx(self) -> None:
-        src = Path(intervene.ROOT) / "Modelfile"
-        body = intervene.render_modelfile("qwen2.5-coder:14b", src, 12288)
+    def test_identity_modelfile_is_grok(self) -> None:
+        import identity as identitylib
+
+        body = identitylib.modelfile_body("qwen2.5-coder:14b", 12288)
         self.assertIn("FROM qwen2.5-coder:14b", body)
         self.assertIn("PARAMETER num_ctx 12288", body)
+        self.assertIn("Grok", body)
         self.assertIn("Gamemaster", body)
+        self.assertIn("t=8s", body)
 
     def test_detect_base_shape(self) -> None:
         with mock.patch.object(intervene, "run", return_value=(0, "qwen3-coder:30b\nqwen2.5-coder:7b\n")):

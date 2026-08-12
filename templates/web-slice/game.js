@@ -1,3 +1,7 @@
+/**
+ * Grok craft slice — vertical playable loop.
+ * Host (slice/patch) owns SPEC+CONFIG; do not replace with a cube-on-plane.
+ */
 import * as THREE from 'three';
 
 const SPEC = __SPEC__;
@@ -199,8 +203,18 @@ export function createGame({ genre, title }) {
       const dx = player.pos.x - e.mesh.position.x;
       const dz = player.pos.z - e.mesh.position.z;
       const d = Math.hypot(dx, dz) || 1;
-      e.mesh.position.x += (dx / d) * e.speed * dt;
-      e.mesh.position.z += (dz / d) * e.speed * dt;
+      // telegraph: pulse when close, commit does not re-target mid-lunge
+      const threat = d < 4.5;
+      const speed = threat ? e.speed * 1.15 : e.speed * 0.55;
+      if (threat) {
+        e.mesh.material.emissiveIntensity = 0.7 + Math.sin(state.now * 14) * 0.5;
+        e.mesh.scale.setScalar(1 + Math.sin(state.now * 12) * 0.08);
+      } else {
+        e.mesh.material.emissiveIntensity = 0.55;
+        e.mesh.scale.setScalar(1);
+      }
+      e.mesh.position.x += (dx / d) * speed * dt;
+      e.mesh.position.z += (dz / d) * speed * dt;
       e.mesh.position.y = e.baseY + Math.sin(state.now * 3 + e.phase) * 0.25;
       e.mesh.rotation.y += 0.02;
       if (d < 1.15) hurt(1);
@@ -316,11 +330,13 @@ export function createGame({ genre, title }) {
         if (e.hp <= 0) {
           e.mesh.visible = false;
           blip(140, 0.08, 'square');
+          showBanner('+10');
           // respawn after a beat so the arena stays alive
           setTimeout(() => {
             if (state.dead) return;
             e.hp = 1;
             e.mesh.visible = true;
+            e.mesh.scale.setScalar(1);
             const a = Math.random() * Math.PI * 2;
             const r = 8 + Math.random() * 10;
             e.mesh.position.set(Math.cos(a) * r, e.baseY, Math.sin(a) * r - 4);
@@ -344,9 +360,11 @@ export function createGame({ genre, title }) {
   function die() {
     if (state.dead) return;
     state.dead = true;
+    state.shake = 1.1 * (SPEC.juice || 1);
     pt('recordDeath');
     updateHud();
     blip(70, 0.2, 'triangle');
+    showBanner('Dead — R for one more run');
   }
 
   function winPulse() {
@@ -418,8 +436,22 @@ export function createGame({ genre, title }) {
 
   function updateHud() {
     const lock = SPEC.camera === 'fps' && !pointer.locked ? ' · click to look' : '';
-    const dead = state.dead ? ' · dead — R restart' : '';
+    const dead = state.dead ? ' · R one more run' : '';
     hud.textContent = `${title} · ${SPEC.verb}${lock}${dead} · hp ${Math.max(0, state.hp)} · ${state.score}`;
+  }
+
+  function showBanner(msg) {
+    let el = document.getElementById('gm-banner');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'gm-banner';
+      el.style.cssText = 'position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);color:#fff;font:800 22px/1.3 system-ui,sans-serif;text-shadow:0 2px 12px #000;pointer-events:none;z-index:6;text-align:center;max-width:80vw';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.opacity = '0'; }, 2200);
   }
 
   function pt(method) {
