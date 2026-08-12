@@ -38,6 +38,7 @@ gamemaster — local Three.js game studio (Ollama, $0)
   gamemaster update [--quick|--knowledge|--modelfile]
   gamemaster github login|status|logout|commit|push|ship -p DIR
   gamemaster ship -p DIR -m "vertical slice"
+  gamemaster wiki show|add|map|prompt -p DIR
 
 Options:
   -f, --file PATH          attach file context
@@ -130,6 +131,15 @@ $(head -c 8000 "$ROOT/knowledge/$k")
 ## USER PREFS
 $PREF_BLOCK
 "
+      fi
+      if [[ -n "$PROJECT" ]]; then
+        WIKI_BLOCK=$(python3 "$ROOT/bin/wiki.py" -p "$PROJECT" prompt 2>/dev/null || true)
+        if [[ -n "$WIKI_BLOCK" && "$WIKI_BLOCK" != "(empty wiki/map)" ]]; then
+          extra+="
+## PROJECT WIKI + MAP
+$WIKI_BLOCK
+"
+        fi
       fi
     fi
   fi
@@ -264,6 +274,10 @@ if [[ $# -gt 0 ]]; then
     github|gh)
       shift
       exec python3 "$ROOT/bin/github.py" "$@"
+      ;;
+    wiki)
+      shift
+      exec python3 "$ROOT/bin/wiki.py" "$@"
       ;;
     ship)
       shift

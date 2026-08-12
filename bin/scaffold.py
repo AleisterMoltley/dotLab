@@ -238,6 +238,16 @@ Next: open chat `gamemaster -p {dest.name} --agent "Add jump + collectibles for 
     )
     write(dest / ".gitignore", GAME_GITIGNORE)
     write(
+        dest / "WIKI.md",
+        f"""# Wiki
+
+Living facts for this game. One bullet + **Why:**. Loaded into every Studio/Agent turn.
+
+- Engine is Three.js (Vite, vanilla). **Why:** Gamemaster invariant.
+- Genre: {genre}. **Why:** scaffold default — change if the verb moves.
+""",
+    )
+    write(
         dest / "DESIGN.md",
         f"""# {name}
 

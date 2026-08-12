@@ -153,6 +153,7 @@ def run_critic_on_report(project: Path, model: str) -> str:
         "See playtest metrics",
         prompt_extra,
         model,
+        project=project,
     )
     out = project / ".gamemaster" / "playtest" / "critic.md"
     out.write_text(critique, encoding="utf-8")

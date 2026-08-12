@@ -339,6 +339,14 @@ def load_knowledge(project: Path | None = None, task: str = "") -> str:
             chunks.insert(0, pb)
     except Exception:
         pass
+    try:
+        import wiki as wikilib  # type: ignore
+
+        wb = wikilib.prompt_block(project) if project else ""
+        if wb:
+            chunks.insert(0, wb)
+    except Exception:
+        pass
     return "\n\n".join(chunks)
 
 

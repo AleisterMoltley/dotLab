@@ -24,6 +24,7 @@ Gamemaster is an open-source local AI toolchain for **shipping playable Three.js
 | **Turbo** | Routes knowledge packs (world / physics / dialogue / shader / Seeker) |
 | **Update** | Self-update models + live package versions |
 | **GitHub** | Browser login · commit · create repo · push (`gamemaster ship`) |
+| **Wiki + map** | `WIKI.md` / `MAP.md` auto-loaded into Studio, Agent, and CLI |
 
 ## For humans and AIs working in this repo
 
@@ -146,6 +147,10 @@ gamemaster github commit -p ./Wilds -m "first walk"
 gamemaster github push -p ./Wilds
 gamemaster ship -p ./Wilds -m "vertical slice"   # commit + create private repo + push
 gamemaster github logout
+
+# Wiki + map (auto-injected into studio/agent)
+gamemaster wiki add -p ./Wilds "Gravity 28" --why "user said floaty"
+gamemaster wiki map -p ./Wilds
 ```
 
 - Default new repos are **private**. Pass `--public` to publish.

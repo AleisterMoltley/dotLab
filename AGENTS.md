@@ -38,6 +38,7 @@ Modelfile       baked Ollama system prompt
 | Play-while-build | `bin/live.py` + `live/dashboard.html` |
 | Chat server | `bin/server.py` + `chat/index.html` |
 | Prefs | `bin/prefs.py` |
+| Game wiki + file map (auto-loaded) | `bin/wiki.py` (`WIKI.md`, `MAP.md`) |
 | Install / PATH | `install.sh` |
 
 ## Invariants (do not break)
@@ -48,6 +49,7 @@ Modelfile       baked Ollama system prompt
 4. **Do not `git init` / ship `$HOME` or this repo** (`github.guard_project`).
 5. User-facing text: English. Code identifiers: English. Match the user language only in chat replies.
 6. After a behaviour change: `python3 tests/run.py` (must stay green, no Ollama).
+7. Per-game `WIKI.md` + `MAP.md` are auto-injected. Update the wiki when you learn a durable fact; do not re-walk the tree if a map exists.
 
 ## Cheap verify (always)
 

@@ -39,16 +39,27 @@ from pathlib import Path
 # Reuse agent tools + prefs
 import agent as agentlib  # noqa: E402
 import prefs as prefslib  # noqa: E402
+import wiki as wikilib  # noqa: E402
 from gmcommon import DEFAULT_MODEL, DENSE_MODEL, KNOWLEDGE, OLLAMA, ROOT, ensure_ollama
 
 NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "65536"))
 
 
 def pref_block(project: Path | None) -> str:
+    parts: list[str] = []
     try:
-        return prefslib.format_prompt_block(prefslib.load_merged(project))
+        pb = prefslib.format_prompt_block(prefslib.load_merged(project))
+        if pb:
+            parts.append(pb)
     except Exception:
-        return ""
+        pass
+    try:
+        wb = wikilib.prompt_block(project) if project else ""
+        if wb:
+            parts.append(wb)
+    except Exception:
+        pass
+    return "\n\n".join(parts)
 
 
 def learn_from_critic(project: Path, critique: str) -> None:
