@@ -51,7 +51,7 @@ PACKS = {
     "combat": ["combat-juice.md", "feel-tables.md"],
     "dialogue": ["dialogue-narrative.md"],
     "anim": ["threejs-animation.md"],
-    "art": ["asset-core.md", "tiles-ui.md"],
+    "art": ["asset-core.md", "tiles-ui.md", "pixel-kit.md"],
     "seeker": ["solana-seeker.md"],
     "agent": ["agent-protocol.md"],
     "playtest": ["playtest-harness.md", "prefs-and-playtest.md", "pair-partner.md"],
@@ -66,7 +66,7 @@ ROUTES = [
     (r"dialogue|dialog|npc|quest|narrative|bark|conversation|ink |typewriter|story beat", ["dialogue", "world", "game", "core"]),
     (r"worldclaw|open.?world|terrain|biome|heightfield|village|region|landmark|explorable", ["world", "physics", "three", "core"]),
     (r"mixer|gltf|skinned|mixamo|crossfade|root motion|ik\b|animation clip", ["anim", "art", "three", "core"]),
-    (r"sprite|tileset|atlas|pixel art|icon set|art-test|texture", ["art", "anim", "core"]),
+    (r"sprite|tileset|atlas|pixel.?art|pixel kit|bakeCanvas|layeredRect|nearest.?filter|icon set|art-test|texture", ["art", "anim", "core"]),
     (r"seeker|solana|mwa|wallet|seed.?vault|spl-token|anchor|dapp", ["seeker", "core", "game", "three"]),
     (r"playtest|metric|screenshot|critic|feel|coyote|juice|shake|hitstop", ["playtest", "combat", "game", "core"]),
     (r"platformer|runner|fps|tps|racing|rpg|card|idle|tower|genre|arena|horror|stealth|rhythm", ["game", "combat", "core", "three", "physics"]),
@@ -135,12 +135,13 @@ def route_task(prompt: str, mode: str = "auto") -> dict:
         elif re.search(
             r"shader|glsl|wgsl|tsl|seeker|ragdoll|dialogue|npc|physics|three\.?js|gltf|"
             r"combat|village|jump|camera|enemy|arena|runner|platform|feel|juice|"
+            r"pixel|sprite|tileset|"
             r"\b(fix|collision|controller|player|game|world|tps|fps)\b",
             p,
         ):
             tier, reason = "max", "default-coding"
         elif len(prompt) < 100 and not re.search(
-            r"shader|glsl|game|world|ragdoll|dialogue|"
+            r"shader|glsl|game|world|ragdoll|dialogue|pixel|sprite|"
             r"\b(code|function|class|file|bug|error)\b",
             p,
         ):

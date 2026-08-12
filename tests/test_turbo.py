@@ -18,6 +18,10 @@ class TestRoute(unittest.TestCase):
         r = turbo.route_task("shadertoy water and toon rim")
         self.assertEqual(r["tier"], "max")
 
+    def test_pixel_art_is_max(self) -> None:
+        r = turbo.route_task("pixel art sprite")
+        self.assertEqual(r["tier"], "max")
+
     def test_forced_dense(self) -> None:
         r = turbo.route_task("anything", mode="dense")
         self.assertEqual(r["tier"], "dense")
@@ -39,6 +43,11 @@ class TestKnowledge(unittest.TestCase):
     def test_worldclaw_pulls_world(self) -> None:
         k = turbo.select_knowledge("open world terrain biomes worldclaw", max_chars=28000)
         self.assertIn("world-building.md", k)
+
+    def test_pixel_art_pulls_kit(self) -> None:
+        k = turbo.select_knowledge("pixel art bakeCanvas layeredRect sprite", max_chars=28000)
+        self.assertIn("pixel-kit.md", k)
+        self.assertIn("bakeCanvas", k)
 
     def test_packs_files_exist(self) -> None:
         missing = []

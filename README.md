@@ -18,7 +18,7 @@ Gamemaster is an open-source local AI toolchain for **shipping playable Three.js
 | **Agent** | File tools: list / read / write / search / run |
 | **Worlds** | WorldClaw: prompt → regions → heightfield → editable instances |
 | **Systems** | Physics (arcade / Rapier), ragdoll, dialogue trees, animation, shaders |
-| **Scaffolds** | Web game, open world, Solana Seeker app/game, Shader Lab |
+| **Scaffolds** | Web game, open world, pixel grove (Canvas2D bake → Three.js quads), Solana Seeker app/game, Shader Lab |
 | **Playtest** | Playwright headless run + screenshots + metrics |
 | **Prefs** | Learns your feel (tight jumps, mobile-first, …) |
 | **Turbo** | Routes knowledge packs (world / physics / dialogue / shader / Seeker) |
@@ -84,6 +84,7 @@ gamemaster live -p ./my-game
 # Scaffolds
 gamemaster scaffold web-game --genre platformer --name Skyjump
 gamemaster scaffold world-game --name Wilds
+gamemaster scaffold pixel-game --name Grove
 gamemaster scaffold seeker-game --genre idle --name ClaimQuest
 gamemaster scaffold shader-lab --name NeonFrag
 
@@ -156,6 +157,7 @@ gamemaster wiki map -p ./Wilds
 gamemaster kit todo -p ./Wilds --add "first fair death"
 gamemaster kit feel -p ./Wilds
 gamemaster kit art-test -p ./Wilds
+gamemaster kit pixel -p ./Wilds      # vendor lib/pixel into src/pixel
 ```
 
 - Default new repos are **private**. Pass `--public` to publish.
@@ -184,8 +186,10 @@ gamemaster/
   tests/                 Cheap suite (no Ollama)
   bin/server.py + chat/  Local browser chat UI
   knowledge/             Three.js game packs (worlds, physics, ragdoll, dialogue, shaders, Seeker)
+  lib/pixel/             Canvas2D bake + Three.js nearest-quad bridge
   templates/shader-lab/  FragCoord-class multipass editor
   templates/world-game/  Explorable WorldClaw world
+  templates/pixel-game/  Bake sprites, stamp as Three.js quads
   playtest/              Playwright runner
   config/                Ollama env, Continue snippet
 ```

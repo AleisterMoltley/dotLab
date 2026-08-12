@@ -13,7 +13,8 @@ Layout:
 bin/            CLI + Python (one concern per file)
 bin/gmcommon.py shared ROOT / OLLAMA / run / gitignore / slugify
 knowledge/      LLM packs (injected by turbo, not imported as code)
-templates/      copied by scaffold (shader-lab, world-game)
+templates/      copied by scaffold (shader-lab, world-game, pixel-game)
+lib/pixel/      Canvas2D bake + Three.js nearest-quad bridge
 chat/           browser chat UI (served by bin/server.py)
 live/           Play window (served by bin/live.py)
 playtest/       Playwright runner
@@ -34,12 +35,13 @@ Modelfile       baked Ollama system prompt
 | Studio roles / pipeline | `bin/studio.py` (Director/Architect/Critic/pipelines) |
 | Agent tools | `bin/agent.py` (`parse_tools`, `run_tool`) |
 | New project starter | `bin/scaffold.py` + optional `templates/<name>/` |
+| Pixel bake / sprite vocab | `lib/pixel/` + `knowledge/pixel-kit.md` + `templates/pixel-game/` |
 | World generation | `bin/worldclaw.py` + `templates/world-game/` |
 | Play-while-build | `bin/live.py` + `live/dashboard.html` |
 | Chat server | `bin/server.py` + `chat/index.html` |
 | Prefs | `bin/prefs.py` |
 | Game wiki + file map (auto-loaded) | `bin/wiki.py` (`WIKI.md`, `MAP.md`) |
-| Grok kit (todos, feel audit, art-test) | `bin/kit.py` — also agent tool `kit` |
+| Grok kit (todos, feel audit, art-test, pixel vendor) | `bin/kit.py` — also agent tool `kit` |
 | Slice verify (P0 gate, no Ollama) | `bin/verify.py` — agent `done` + studio after coder |
 | Install / PATH | `install.sh` |
 

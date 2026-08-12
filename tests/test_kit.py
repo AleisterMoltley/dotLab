@@ -60,6 +60,15 @@ class TestKit(unittest.TestCase):
             out = agent.run_tool(p, "kit", {"action": "todo_add", "text": "body"})
             self.assertIn("OK added", out)
 
+    def test_vendor_pixel(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            p = Path(raw)
+            out = kit.vendor_pixel(p)
+            self.assertIn("OK vendored", out)
+            self.assertTrue((p / "src" / "pixel" / "three-bridge.js").is_file())
+            again = kit.run_kit(p, "pixel", {})
+            self.assertIn("already", again)
+
     def test_read_file_range(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             p = Path(raw)

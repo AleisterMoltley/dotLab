@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Gamemaster — Project Scaffolder
-Creates runnable starters: web-game, seeker-app, seeker-game (any genre).
+Creates runnable starters: web-game, world-game, pixel-game, seeker-app, seeker-game, shader-lab.
 """
 from __future__ import annotations
 
@@ -614,6 +614,55 @@ Walk the world → talk to one NPC → change a flag → see the place react
         )
 
 
+def scaffold_pixel_game(dest: Path, name: str) -> None:
+    """Vite + Three.js with vendored Canvas2D pixel kit as textures."""
+    src = TEMPLATES / "pixel-game"
+    lib = ROOT / "lib" / "pixel"
+    if not src.is_dir() or not lib.is_dir():
+        raise SystemExit("pixel-game template or lib/pixel missing")
+    for item in src.iterdir():
+        target = dest / item.name
+        if item.is_dir():
+            shutil.copytree(item, target)
+        else:
+            shutil.copy2(item, target)
+        print(f"  + {target}")
+    pixel_dest = dest / "src" / "pixel"
+    shutil.copytree(lib, pixel_dest, dirs_exist_ok=True)
+    print(f"  + {pixel_dest}/")
+    pkg_path = dest / "package.json"
+    if pkg_path.exists():
+        pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+        pkg["name"] = slugify(name)
+        pkg_path.write_text(json.dumps(pkg, indent=2) + "\n", encoding="utf-8")
+    for stamped in (dest / "index.html", dest / "README.md"):
+        if stamped.exists():
+            stamped.write_text(
+                stamped.read_text(encoding="utf-8").replace("Pixel Grove", name),
+                encoding="utf-8",
+            )
+    gi = dest / ".gitignore"
+    if not gi.exists():
+        write(gi, GAME_GITIGNORE)
+    if not (dest / "DESIGN.md").exists():
+        write(
+            dest / "DESIGN.md",
+            f"""# {name}
+
+## Engine
+Three.js (Vite) + lib/pixel bake (nearest quads)
+
+## Core loop
+Walk the grove — baked sprites, live camera
+
+## Backlog
+- [ ] Tune CONFIG feel
+- [ ] Bake more props with pixelart.js
+- [ ] One juice FX (pxJelly on land)
+""",
+        )
+
+
 def scaffold_shader_lab(dest: Path, name: str) -> None:
     """Copy FragCoord-class multipass shader lab template."""
     src = TEMPLATES / "shader-lab"
@@ -649,6 +698,7 @@ def main() -> int:
         choices=[
             "web-game",
             "world-game",
+            "pixel-game",
             "seeker-app",
             "seeker-game",
             "shader-lab",
@@ -675,6 +725,7 @@ def main() -> int:
     name = args.name or {
         "web-game": f"Web {args.genre.title()}",
         "world-game": "World",
+        "pixel-game": "Pixel Grove",
         "seeker-app": "Seeker App",
         "seeker-game": f"Seeker {args.genre.title()}",
         "shader-lab": "Shader Lab",
@@ -692,6 +743,8 @@ def main() -> int:
         scaffold_web_game(dest, name, args.genre)
     elif kind == "world-game":
         scaffold_world_game(dest, name)
+    elif kind == "pixel-game":
+        scaffold_pixel_game(dest, name)
     elif kind == "seeker-app":
         scaffold_seeker_app(dest, name, genre=None)
     elif kind == "seeker-game":
@@ -701,10 +754,12 @@ def main() -> int:
 
     print("\n✅ Done.")
     print(f"   cd {dest}")
-    if kind in ("web-game", "world-game", "shader-lab"):
+    if kind in ("web-game", "world-game", "pixel-game", "shader-lab"):
         print("   npm i && npm run dev")
         if kind == "world-game":
             print(f'   gamemaster worldclaw generate -p "{dest}" "coastal village, pine ridge"')
+        if kind == "pixel-game":
+            print("   # bake sprites in src/main.js — Three.js stays the engine")
     else:
         print("   npm i && npx expo start")
     print(f'   gamemaster -p "{dest}" --agent "Expand vertical slice"')

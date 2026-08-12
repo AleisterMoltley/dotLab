@@ -9,6 +9,7 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 | `craft-taste.md` | extra taste essays (if routed) |
 | `asset-core.md` | sprites, sheets, engine-ready defaults |
 | `tiles-ui.md` | seamless tiles, HUD, icon sets |
+| `pixel-kit.md` | Canvas2D bake → Three.js nearest quads |
 | `pair-partner.md` | Always (core) — how to talk / iterate |
 | `game-systems.md` | Always (core) — file tree, loop, completeness |
 | `threejs-cheatsheet.md` | Always (core) — boot, imports, loops |

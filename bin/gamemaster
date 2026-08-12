@@ -28,7 +28,7 @@ gamemaster — local Three.js game studio (Ollama, $0)
   Worlds · physics · ragdoll · dialogue · shaders · Solana Seeker
 
   gamemaster [options] [prompt...]
-  gamemaster scaffold web-game|world-game|seeker-app|seeker-game|shader-lab [--genre X]
+  gamemaster scaffold web-game|world-game|pixel-game|seeker-app|seeker-game|shader-lab [--genre X]
   gamemaster worldclaw generate -p DIR "medieval village, snow peaks"
   gamemaster studio plan|build|council|review|parallel -p DIR "brief" [--playtest] [--live]
   gamemaster live -p DIR
@@ -39,7 +39,7 @@ gamemaster — local Three.js game studio (Ollama, $0)
   gamemaster github login|status|logout|commit|push|ship -p DIR
   gamemaster ship -p DIR -m "vertical slice"
   gamemaster wiki show|add|map|prompt -p DIR
-  gamemaster kit todo|art-test|feel|verify -p DIR
+  gamemaster kit todo|art-test|feel|verify|pixel -p DIR
   gamemaster verify -p DIR
 
 Options:
@@ -56,6 +56,7 @@ Examples:
   gamemaster "Third-person controller with coyote time and ragdoll death"
   gamemaster scaffold world-game --name Wilds
   gamemaster worldclaw generate -p ./Wilds "coastal village, pine ridge, desert canyon"
+  gamemaster scaffold pixel-game --name Grove
   gamemaster scaffold seeker-game --genre runner --name NeonDash
   gamemaster -p ./game --agent "Add NPC dialogue tree and interact prompt"
   gamemaster studio build -p ./game "open-world village slice" --live

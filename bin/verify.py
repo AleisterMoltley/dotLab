@@ -43,13 +43,21 @@ CHECKS_META = {
 }
 
 
+def _is_pixel_kit(folder: Path) -> bool:
+    """Vendored Canvas2D kit — comments use ellipsis; do not grade as slice holes."""
+    return (folder / "bake.js").is_file() and (folder / "three-bridge.js").is_file()
+
+
 def iter_js(project: Path) -> list[Path]:
     out: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(project):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        root = Path(dirpath)
+        if _is_pixel_kit(root):
+            continue
         for name in filenames:
             if name.endswith((".js", ".mjs", ".ts")):
-                out.append(Path(dirpath) / name)
+                out.append(root / name)
     return out
 
 

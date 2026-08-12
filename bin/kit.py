@@ -8,19 +8,27 @@ CLI:
   gamemaster kit todo -p DIR --done 1
   gamemaster kit art-test -p DIR
   gamemaster kit feel -p DIR
+  gamemaster kit pixel -p DIR
 
-Agent: tool call kit / action: todo_add|todo_done|todo_list|wiki_add|map|art_test|feel
+Agent: tool call kit / action: todo_add|todo_done|todo_list|wiki_add|map|art_test|feel|pixel
 """
 from __future__ import annotations
 
 import argparse
 import json
 import re
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from gmcommon import ROOT  # noqa: F401
+
+PIXEL_HINT = (
+    "Bake static sprites once (bakeCanvas / makeBakedSprite). "
+    "Live eyes/juice only. Stamp with spriteMesh from three-bridge.js — "
+    "do not replace Three.js with a canvas game."
+)
 
 TODOS = ".gamemaster/todos.json"
 FEEL_KEYS = (
@@ -180,6 +188,19 @@ def feel_audit(project: Path) -> str:
     return "\n".join(lines)
 
 
+def vendor_pixel(project: Path) -> str:
+    """Copy lib/pixel into the game so bake + three-bridge are local."""
+    src = ROOT / "lib" / "pixel"
+    dest = project / "src" / "pixel"
+    if not src.is_dir():
+        return "ERROR: lib/pixel missing from Gamemaster"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_dir() and (dest / "three-bridge.js").is_file():
+        return f"OK pixel kit already at src/pixel/\n{PIXEL_HINT}"
+    shutil.copytree(src, dest, dirs_exist_ok=True)
+    return f"OK vendored pixel kit → src/pixel/\n{PIXEL_HINT}"
+
+
 def run_kit(project: Path, action: str, args: dict | None = None) -> str:
     args = args or {}
     a = (action or "").strip().lower().replace("-", "_")
@@ -216,9 +237,11 @@ def run_kit(project: Path, action: str, args: dict | None = None) -> str:
             return verifylib.evaluate(project)["report"]
         except Exception as e:
             return f"ERROR verify: {e}"
+    if a in ("pixel", "pixel_kit", "vendor_pixel"):
+        return vendor_pixel(project)
     return (
         "ERROR: unknown kit action. Use: todo_list, todo_add, todo_done, "
-        "wiki_add, map, art_test, feel, verify"
+        "wiki_add, map, art_test, feel, verify, pixel"
     )
 
 
@@ -233,6 +256,7 @@ def main() -> int:
     sub.add_parser("art-test", parents=[shared])
     sub.add_parser("feel", parents=[shared])
     sub.add_parser("verify", parents=[shared])
+    sub.add_parser("pixel", parents=[shared])
     args = ap.parse_args()
     project = Path(args.project).expanduser().resolve()
     if not project.is_dir():
@@ -251,6 +275,9 @@ def main() -> int:
         return 0
     if args.cmd == "verify":
         print(run_kit(project, "verify"))
+        return 0
+    if args.cmd == "pixel":
+        print(vendor_pixel(project))
         return 0
     print(feel_audit(project))
     return 0

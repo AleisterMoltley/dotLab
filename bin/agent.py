@@ -45,7 +45,7 @@ Tools:
 - write_file → path: src/foo.js   and content: (full file contents)
 - search → query: regex
 - run → cmd: short safe command
-- kit → action: todo_add|todo_done|todo_list|wiki_add|map|art_test|feel|verify
+- kit → action: todo_add|todo_done|todo_list|wiki_add|map|art_test|feel|verify|pixel
          text:/fact:/why:/id: as needed
 - done → summary: what was done + how to test
 

@@ -54,10 +54,11 @@ Tiles: anonymous texture; if you can point at a clump twice it failed. Side-view
 UI: no text in images; states same geometry; HTML overlay for copy.
 Preview: `kit art_test`. Exact text/HUD/diagrams = **code**, not a picture model.
 Palette: 8 hex in WIKI.md.
+Pixel kit: `bakeCanvas` + `layeredRect` once → `spriteMesh` nearest quad. Live eyes/juice only. Never replace Three.js with a canvas game. `kit pixel` vendors `src/pixel`.
 
 ## Tools (use, don't narrate)
 
-`kit todo_add/done/list` · `kit wiki_add` · `kit map` · `kit feel` · `kit art_test`
+`kit todo_add/done/list` · `kit wiki_add` · `kit map` · `kit feel` · `kit art_test` · `kit pixel`
 `search` · `read_file` + start/end · write complete files · `done`
 
 ## Stop
