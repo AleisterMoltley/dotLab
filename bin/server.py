@@ -46,6 +46,30 @@ def has_model(names: list[str], model: str) -> bool:
     return any(n == model or n.startswith(model + ":") for n in names)
 
 
+def status_label(h: dict | None = None) -> tuple[bool, str]:
+    h = h or health_payload()
+    if h.get("backend") == "cloud" and h.get("ok"):
+        return True, f"cloud · {h.get('provider') or ''} · {h.get('model') or ''} · paid"
+    if h.get("ok"):
+        return True, f"online · {h.get('model') or MODEL} · $0"
+    if not h.get("ollama"):
+        return False, "Ollama not answering — open Ollama.app"
+    return False, "Model missing — ./install.sh"
+
+
+def index_html() -> bytes:
+    raw = (CHAT_DIR / "index.html").read_text(encoding="utf-8")
+    ok, label = status_label()
+    klass = "ok" if ok else "bad"
+    raw = raw.replace(
+        '<span class="dot" id="dot"></span>',
+        f'<span class="dot {klass}" id="dot"></span>',
+        1,
+    )
+    raw = raw.replace(">starting…</span>", f">{label}</span>", 1)
+    return raw.encode()
+
+
 def health_payload() -> dict:
     """Instant. Never talks to Ollama — tags are cached at process start."""
     cloud = cloudlib.status_dict()
@@ -173,6 +197,15 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store, max-age=0")
         super().end_headers()
 
+    def _bytes(self, status: int, body: bytes, content_type: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _json(self, status: int, data: dict) -> None:
         raw = json.dumps(data).encode()
         self.send_response(status)
@@ -230,7 +263,7 @@ class Handler(SimpleHTTPRequestHandler):
             models = [{"name": n} for n in (_TAGS.get("names") or [])]
             return self._json(200, {"models": models, "error": _TAGS.get("error") or ""})
         if path in ("/", "/index.html"):
-            self.path = "/index.html"
+            return self._bytes(200, index_html(), "text/html; charset=utf-8")
         return super().do_GET()
 
     def do_POST(self) -> None:

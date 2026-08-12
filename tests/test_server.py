@@ -32,6 +32,14 @@ class TestHealth(unittest.TestCase):
         self.assertEqual(h["backend"], "ollama")
         self.assertTrue(h["has_model"])
 
+    def test_index_html_bakes_status(self) -> None:
+        server.remember_tags(["gamemaster:latest"], ok=True)
+        with mock.patch.object(server.cloudlib, "status_dict", return_value={"enabled": False}):
+            html = server.index_html().decode()
+        self.assertIn("online · gamemaster · $0", html)
+        self.assertIn('class="dot ok"', html)
+        self.assertNotIn("starting…", html)
+
     def test_health_does_not_call_ollama(self) -> None:
         server.remember_tags(["gamemaster:latest"], ok=True)
         with mock.patch.object(server.cloudlib, "status_dict", return_value={"enabled": False}):
