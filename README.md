@@ -76,6 +76,8 @@ source ./config/ollama-env.sh
 gamemaster turbo warmup
 ```
 
+Games you scaffold or start from the chat live in **`~/Gamemaster/Projects`**. Open that folder in Finder, or use **Your games** on the start screen.
+
 ## First game (five minutes)
 
 ```bash

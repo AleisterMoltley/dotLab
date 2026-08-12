@@ -43,6 +43,20 @@ class TestHealth(unittest.TestCase):
         self.assertIn("GM.bootSend", html)
         self.assertTrue((server.CHAT_DIR / "app.js").is_file())
 
+    def test_projects_root_in_payload(self) -> None:
+        import os
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as raw:
+            os.environ["GAMEMASTER_PROJECTS"] = raw
+            self.addCleanup(lambda: os.environ.pop("GAMEMASTER_PROJECTS", None))
+            (Path(raw) / "demo").mkdir()
+            (Path(raw) / "demo" / "package.json").write_text("{}", encoding="utf-8")
+            listed = server.list_game_projects()
+            self.assertEqual(listed[0]["name"], "demo")
+            self.assertEqual(server.projects_root(), Path(raw))
+
     def test_health_does_not_call_ollama(self) -> None:
         server.remember_tags(["gamemaster:latest"], ok=True)
         with mock.patch.object(server.cloudlib, "status_dict", return_value={"enabled": False}):

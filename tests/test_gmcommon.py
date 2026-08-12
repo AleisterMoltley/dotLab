@@ -22,6 +22,25 @@ class TestGmcommon(unittest.TestCase):
         self.assertEqual(g.slugify_repo("My Game v2"), "my-game-v2")
         self.assertIn(".", g.slugify_repo("foo.bar"))
 
+    def test_list_game_projects(self) -> None:
+        import os
+
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw) / "Projects"
+            os.environ["GAMEMASTER_PROJECTS"] = str(root)
+            self.addCleanup(lambda: os.environ.pop("GAMEMASTER_PROJECTS", None))
+            empty = g.list_game_projects()
+            self.assertEqual(empty, [])
+            game = root / "wilds"
+            game.mkdir(parents=True)
+            (game / "package.json").write_text("{}", encoding="utf-8")
+            (root / "notes").mkdir()
+            (root / "notes" / "readme.txt").write_text("x", encoding="utf-8")
+            found = g.list_game_projects()
+            self.assertEqual(len(found), 1)
+            self.assertEqual(found[0]["name"], "wilds")
+            self.assertEqual(g.projects_root(), root)
+
     def test_looks_like_game(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             p = Path(raw)

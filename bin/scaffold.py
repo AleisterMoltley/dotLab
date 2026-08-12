@@ -712,7 +712,7 @@ def main() -> int:
     ap.add_argument(
         "--out",
         default=None,
-        help="Output directory (default under ~/GamemasterProjects)",
+        help="Output directory (default ~/Gamemaster/Projects)",
     )
     args = ap.parse_args()
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -16,7 +17,17 @@ from urllib.parse import parse_qs, urlparse
 
 import cloud as cloudlib  # noqa: E402
 import github as githublib  # noqa: E402
-from gmcommon import CHAT_DIR, DEFAULT_MODEL, OLLAMA, ROOT, ensure_ollama
+from gmcommon import (
+    CHAT_DIR,
+    DEFAULT_MODEL,
+    OLLAMA,
+    ROOT,
+    ensure_ollama,
+    list_game_projects,
+    looks_like_game,
+    projects_root,
+    slugify_project,
+)
 
 PORT = int(os.environ.get("GAMEMASTER_PORT", "8765"))
 MODEL = os.environ.get("GAMEMASTER_MODEL", DEFAULT_MODEL)
@@ -251,6 +262,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_response(204)
             self.end_headers()
             return
+        if path == "/api/projects":
+            return self._json(200, {"root": str(projects_root()), "projects": list_game_projects()})
         if path in ("/api/health", "/api/cloud"):
             if path == "/api/health":
                 return self._json(200, health_payload())
@@ -270,6 +283,47 @@ class Handler(SimpleHTTPRequestHandler):
             return self._bytes(200, index_html(), "text/html; charset=utf-8")
         return super().do_GET()
 
+    def _projects_post(self, path: str, raw: bytes) -> None:
+        try:
+            body = json.loads(raw.decode() or "{}")
+        except json.JSONDecodeError:
+            body = {}
+        target = Path(str(body.get("path") or "")).expanduser()
+        if path.endswith("/reveal"):
+            if not target.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            cmd = ["open", str(target)] if sys.platform == "darwin" else ["xdg-open", str(target)]
+            from gmcommon import run
+
+            run(cmd, timeout=8)
+            return self._json(200, {"ok": True, "path": str(target)})
+        if path.endswith("/play"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            subprocess.Popen(
+                [sys.executable, str(ROOT / "bin" / "live.py"), "-p", str(target)],
+                cwd=str(ROOT),
+                start_new_session=True,
+            )
+            return self._json(200, {"ok": True, "path": str(target)})
+        if path.endswith("/new"):
+            name = slugify_project(str(body.get("name") or "new-game"))
+            dest = projects_root() / name
+            if dest.exists() and any(dest.iterdir()):
+                return self._json(409, {"ok": False, "error": "folder exists", "path": str(dest)})
+            dest.mkdir(parents=True, exist_ok=True)
+            import scaffold as scaffoldlib
+
+            kind = str(body.get("kind") or "web-game")
+            if kind == "pixel-game":
+                scaffoldlib.scaffold_pixel_game(dest, name)
+            elif kind == "world-game":
+                scaffoldlib.scaffold_world_game(dest, name)
+            else:
+                scaffoldlib.scaffold_web_game(dest, name, str(body.get("genre") or "arena"))
+            return self._json(200, {"ok": True, "name": dest.name, "path": str(dest)})
+        return self._json(404, {"ok": False, "error": "unknown project action"})
+
     def do_POST(self) -> None:
         path = urlparse(self.path).path
         if path.startswith("/api/github"):
@@ -277,6 +331,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length else b"{}"
+        if path.startswith("/api/projects"):
+            return self._projects_post(path, body)
         if path == "/api/ask":
             try:
                 payload = json.loads(body.decode() or "{}")

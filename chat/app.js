@@ -4,6 +4,45 @@
   var sendBtn = document.getElementById("send");
   var projectEl = document.getElementById("project");
   var history = [];
+  var current = { path: "", name: "" };
+
+  function setCurrent(path, name) {
+    current.path = path || "";
+    current.name = name || (path ? path.split("/").pop() : "");
+    if (projectEl) projectEl.value = current.path;
+    try { localStorage.setItem("gm.project", current.path); } catch (e) {}
+    var nowName = document.getElementById("nowName");
+    if (nowName) nowName.textContent = current.name || "—";
+    document.body.classList.toggle("has-project", !!current.path);
+    if (sendBtn && current.path) sendBtn.textContent = "Continue";
+  }
+
+  function api(path, body) {
+    var opt = { headers: { "Content-Type": "application/json" } };
+    if (body) { opt.method = "POST"; opt.body = JSON.stringify(body); }
+    return fetch(path, opt).then(function (r) { return r.json(); });
+  }
+
+  function loadProjects() {
+    return api("/api/projects").then(function (d) {
+      var rootEl = document.getElementById("projectsRoot");
+      if (rootEl && d.root) rootEl.textContent = d.root;
+      var box = document.getElementById("games");
+      var list = document.getElementById("gameList");
+      if (!box || !list) return d;
+      var items = d.projects || [];
+      if (!items.length) { box.hidden = true; list.innerHTML = ""; return d; }
+      box.hidden = false;
+      list.innerHTML = items.map(function (p) {
+        return '<div class="game" data-path="' + p.path.replace(/"/g, "") + '" data-name="' + p.name.replace(/"/g, "") + '">' +
+          "<div><b>" + p.name + "</b><span>" + p.path + "</span></div>" +
+          '<button type="button" data-act="open">Open</button>' +
+          '<button type="button" data-act="play">Play</button>' +
+          '<button type="button" data-act="show">Folder</button></div>';
+      }).join("");
+      return d;
+    });
+  }
 
   function addMsg(role, text) {
     var el = document.createElement("div");
@@ -23,7 +62,16 @@
     document.body.classList.add("has-chat");
     input.value = "";
     addMsg("user", text);
-    var extra = projectEl && projectEl.value ? "\n\nExisting project: " + projectEl.value : "";
+    var start = Promise.resolve(current.path);
+    if (!current.path) {
+      start = api("/api/projects/new", { name: text.slice(0, 40), kind: "web-game" }).then(function (d) {
+        if (d.path) setCurrent(d.path, d.name);
+        loadProjects();
+        return d.path || "";
+      });
+    }
+    start.then(function (path) {
+    var extra = path ? "\n\nSave files in this existing project: " + path : "";
     history.push({ role: "user", content: text + extra });
     var body = addMsg("bot", "Writing the game…");
     if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "Working…"; }
@@ -48,10 +96,14 @@
         body.textContent = "Could not reach the model. Keep the Gamemaster terminal open and check Ollama.app.\n\n" + e.message;
       })
       .then(function () {
-        if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = "Make this game"; }
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = current.path ? "Continue" : "Make this game";
+        }
         if (input) input.focus();
         log.scrollTop = log.scrollHeight;
       });
+    });
     return false;
   };
 
@@ -78,13 +130,45 @@
   if (btnMore && more) btnMore.onclick = function () { more.classList.add("show"); };
   if (moreClose && more) moreClose.onclick = function () { more.classList.remove("show"); };
 
-  if (projectEl) {
+  var gameList = document.getElementById("gameList");
+  if (gameList) gameList.addEventListener("click", function (e) {
+    var btn = e.target.closest("button");
+    var row = e.target.closest(".game");
+    if (!btn || !row) return;
+    var path = row.getAttribute("data-path");
+    var name = row.getAttribute("data-name");
+    var act = btn.getAttribute("data-act");
+    if (act === "open") {
+      setCurrent(path, name);
+      if (input) {
+        input.placeholder = "What should we change in " + name + "?";
+        input.focus();
+      }
+    }
+    if (act === "show") api("/api/projects/reveal", { path: path });
+    if (act === "play") api("/api/projects/play", { path: path });
+  });
+
+  var revealRoot = document.getElementById("btnRevealRoot");
+  if (revealRoot) {
+    revealRoot.onclick = function () { api("/api/projects/reveal", { path: document.getElementById("projectsRoot").textContent }); };
+  }
+  var nowPlay = document.getElementById("nowPlay");
+  var nowShow = document.getElementById("nowShow");
+  if (nowPlay) nowPlay.onclick = function () { if (current.path) api("/api/projects/play", { path: current.path }); };
+  if (nowShow) nowShow.onclick = function () { if (current.path) api("/api/projects/reveal", { path: current.path }); };
+
+  loadProjects().then(function () {
     try {
-      projectEl.value = localStorage.getItem("gm.project") || "";
-      projectEl.addEventListener("change", function () {
-        localStorage.setItem("gm.project", projectEl.value);
-      });
+      var saved = localStorage.getItem("gm.project") || "";
+      if (saved) setCurrent(saved, saved.split("/").pop());
     } catch (e) {}
+  });
+
+  if (projectEl) {
+    projectEl.addEventListener("change", function () {
+      setCurrent(projectEl.value, projectEl.value.split("/").pop());
+    });
   }
 
   var ghModal = document.getElementById("ghModal");

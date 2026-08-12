@@ -110,6 +110,54 @@ def looks_like_game(project: Path) -> bool:
     return any((project / m).exists() for m in GAME_MARKERS)
 
 
+def projects_root() -> Path:
+    """Default place new games are written. Created on first use."""
+    raw = os.environ.get("GAMEMASTER_PROJECTS")
+    root = Path(raw).expanduser() if raw else Path.home() / "Gamemaster" / "Projects"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def project_search_roots() -> list[Path]:
+    roots = [projects_root()]
+    if os.environ.get("GAMEMASTER_PROJECTS"):
+        return roots
+    legacy = Path.home() / "GrokGameStudio" / "Projects"
+    if legacy.is_dir() and legacy.resolve() != roots[0].resolve():
+        roots.append(legacy)
+    return roots
+
+
+def list_game_projects() -> list[dict[str, Any]]:
+    seen: set[Path] = set()
+    found: list[dict[str, Any]] = []
+    for root in project_search_roots():
+        try:
+            children = list(root.iterdir())
+        except OSError:
+            continue
+        for child in children:
+            try:
+                if not child.is_dir() or child.name.startswith("."):
+                    continue
+                key = child.resolve()
+                if key in seen or not looks_like_game(child):
+                    continue
+                seen.add(key)
+                st = child.stat()
+                found.append(
+                    {
+                        "name": child.name,
+                        "path": str(key),
+                        "mtime": int(st.st_mtime),
+                    }
+                )
+            except OSError:
+                continue
+    found.sort(key=lambda r: r["mtime"], reverse=True)
+    return found
+
+
 def ensure_game_gitignore(project: Path) -> None:
     gi = project / ".gitignore"
     if not gi.exists():

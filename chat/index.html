@@ -47,8 +47,30 @@
       max-width: 560px; margin: 8vh auto 0; text-align: center;
     }
     #empty h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.03em; font-weight: 750; }
-    #empty p { margin: 0 0 28px; color: var(--muted); font-size: 16px; }
-    body.has-chat #empty { display: none; }
+    #empty p { margin: 0 0 12px; color: var(--muted); font-size: 16px; }
+    body.has-chat #empty h1, body.has-chat #empty > p { display: none; }
+    .where { font-size: 13px; color: var(--muted); margin: 0 0 20px; }
+    .where button { border: 0; background: none; color: var(--sky); cursor: pointer; font: inherit; padding: 0; }
+    #games { text-align: left; max-width: 560px; margin: 0 auto 8px; }
+    #games h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+    .game {
+      display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: center;
+      padding: 8px 10px; margin: 0 0 6px; background: var(--card);
+      border: 1px solid var(--line); border-radius: 10px;
+    }
+    .game b { font-size: 14px; }
+    .game span { display: block; font-size: 11px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+    .game button {
+      border: 1px solid var(--line); background: #0c0e14; color: var(--text);
+      border-radius: 8px; padding: 6px 8px; font-size: 12px; cursor: pointer;
+    }
+    .now {
+      display: none; max-width: 680px; margin: 0 auto 10px;
+      padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px;
+      font-size: 13px; color: var(--muted);
+    }
+    body.has-project .now { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .now strong { color: var(--text); }
     .msg {
       max-width: 680px; margin: 0 auto 12px;
       padding: 12px 14px; border-radius: 12px;
@@ -150,10 +172,24 @@
     <div id="log">
       <div id="empty">
         <h1>Describe a game</h1>
-        <p>Write what the player does. You get playable Three.js code.</p>
+        <p>Write what the player does. A folder is created and you can reopen it later.</p>
+        <p class="where">Saved in <span id="projectsRoot">~/Gamemaster/Projects</span>
+          · <button type="button" id="btnRevealRoot">Show folder</button></p>
+        <div id="games" hidden>
+          <h2>Your games</h2>
+          <div id="gameList"></div>
+        </div>
       </div>
     </div>
     <div class="dock">
+      <div class="now" id="now">
+        <span>Working on <strong id="nowName">—</strong></span>
+        <span>
+          <button type="button" class="more" id="nowPlay">Play</button>
+          ·
+          <button type="button" class="more" id="nowShow">Show folder</button>
+        </span>
+      </div>
       <form id="composer" action="/api/ask" method="post" onsubmit="return window.GM.bootSend(event)">
         <textarea id="input" name="q" required placeholder="The player runs, jumps, and grabs coins…"></textarea>
         <div class="bar">
