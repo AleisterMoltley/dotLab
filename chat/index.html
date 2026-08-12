@@ -6,191 +6,102 @@
   <title>Gamemaster</title>
   <style>
     :root {
-      --bg: #07080c;
-      --panel: #101218;
-      --panel2: #161922;
-      --line: #262a35;
-      --text: #eef1f6;
-      --muted: #8b93a7;
+      --bg: #08090d;
+      --card: #12141b;
+      --line: #2a2e3a;
+      --text: #f2f4f8;
+      --muted: #8e96a8;
       --mint: #5ee9b5;
-      --mint-dim: #0d2b22;
-      --sky: #5ec8ff;
-      --warn: #f5c16c;
-      --bad: #ff7a7a;
+      --sky: #6ec8ff;
+      --bad: #ff8080;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
     body {
-      font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif;
-      color: var(--text);
-      background: var(--bg);
-      display: grid;
-      grid-template-rows: 56px 1fr;
+      font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif;
+      color: var(--text); background: var(--bg);
+      display: grid; grid-template-rows: 52px 1fr;
     }
     header {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 0 16px; border-bottom: 1px solid var(--line);
-      background: #0c0e14;
+      padding: 0 18px; border-bottom: 1px solid var(--line);
     }
-    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 750; }
     .logo {
-      width: 32px; height: 32px; border-radius: 9px;
+      width: 28px; height: 28px; border-radius: 8px;
       background: linear-gradient(145deg, var(--mint), var(--sky));
-      color: #042016; font-weight: 900; font-size: 11px;
-      display: grid; place-items: center; letter-spacing: .04em;
+      color: #042016; font: 800 10px/28px sans-serif; text-align: center;
     }
-    .brand h1 { margin: 0; font-size: 15px; font-weight: 700; }
-    .brand p { margin: 1px 0 0; font-size: 11px; color: var(--muted); }
-    .header-right { display: flex; align-items: center; gap: 8px; }
     .status {
       display: flex; align-items: center; gap: 8px;
       font-size: 12px; color: var(--muted);
-      padding: 6px 12px; border: 1px solid var(--line);
-      border-radius: 999px; background: var(--panel);
     }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
-    .dot.ok { background: var(--mint); box-shadow: 0 0 8px var(--mint); }
+    .dot.ok { background: var(--mint); }
     .dot.bad { background: var(--bad); }
-    button.ghost {
-      appearance: none; border: 1px solid var(--line); background: var(--panel);
-      color: var(--text); border-radius: 999px; padding: 6px 12px;
-      font-size: 12px; font-weight: 650; cursor: pointer;
-    }
-    button.ghost:hover { border-color: #3a4152; }
+    header .more { background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; }
 
-    #desk {
-      display: grid;
-      grid-template-columns: 232px 1fr;
-      min-height: 0;
+    #stage { min-height: 0; display: grid; grid-template-rows: 1fr auto; }
+    #log { overflow: auto; padding: 28px 20px 8px; }
+    #empty {
+      max-width: 560px; margin: 8vh auto 0; text-align: center;
     }
-    aside {
-      border-right: 1px solid var(--line);
-      background: #0b0d12;
-      padding: 14px 12px 20px;
-      overflow: auto;
-    }
-    aside h2 {
-      margin: 16px 0 8px; font-size: 10px; letter-spacing: .14em;
-      text-transform: uppercase; color: var(--muted); font-weight: 700;
-    }
-    aside h2:first-child { margin-top: 0; }
-    aside button.act {
-      width: 100%; text-align: left;
-      background: var(--panel); border: 1px solid var(--line);
-      color: var(--text); border-radius: 10px;
-      padding: 9px 10px; margin: 0 0 6px;
-      font-size: 13px; font-weight: 600; cursor: pointer;
-    }
-    aside button.act:hover { border-color: #3d4558; background: var(--panel2); }
-    aside button.act small { display: block; font-weight: 500; color: var(--muted); font-size: 11px; margin-top: 2px; }
-    #project {
-      width: 100%; background: #07080c; color: var(--text);
-      border: 1px solid var(--line); border-radius: 10px;
-      padding: 8px 10px; font: 12px ui-monospace, Menlo, monospace;
-    }
-
-    .col {
-      min-width: 0; display: grid;
-      grid-template-rows: 1fr auto;
-    }
-    #log {
-      overflow: auto; padding: 22px 24px 12px;
-      max-width: 920px; width: 100%; margin: 0 auto;
-    }
+    #empty h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.03em; font-weight: 750; }
+    #empty p { margin: 0 0 28px; color: var(--muted); font-size: 16px; }
+    body.has-chat #empty { display: none; }
     .msg {
-      margin: 0 0 12px; padding: 12px 14px;
-      border-radius: 12px; border: 1px solid var(--line);
-      background: var(--panel); line-height: 1.55;
+      max-width: 680px; margin: 0 auto 12px;
+      padding: 12px 14px; border-radius: 12px;
+      border: 1px solid var(--line); background: var(--card);
     }
-    .msg.user { background: #121a28; margin-left: 14%; }
-    .msg.bot { background: #101410; margin-right: 8%; }
-    .msg.system {
-      background: transparent; border-style: dashed;
-      color: var(--muted); text-align: center; font-size: 13px;
-    }
-    .msg .role {
-      font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
-      color: var(--muted); font-weight: 700; margin-bottom: 6px;
-    }
+    .msg.user { background: #152033; }
+    .msg .role { font-size: 11px; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
     .msg.bot .role { color: var(--mint); }
-    .msg.user .role { color: var(--sky); }
     .msg .body { white-space: pre-wrap; word-break: break-word; }
-    .msg pre {
-      background: #07080c; border: 1px solid var(--line);
-      border-radius: 8px; padding: 10px; overflow-x: auto;
-      font-size: 12px; margin: 8px 0 0;
-    }
-    .welcome {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-      margin: 16px 0 8px;
-    }
-    .welcome button {
-      text-align: left; background: var(--panel2);
-      border: 1px solid var(--line); border-radius: 12px;
-      padding: 12px; color: var(--text); cursor: pointer;
-    }
-    .welcome button:hover { border-color: #4a5368; }
-    .welcome strong { display: block; margin-bottom: 4px; }
-    .welcome span { color: var(--muted); font-size: 12px; }
+    .msg.system { display: none; }
 
-    .dock {
-      border-top: 1px solid var(--line);
-      background: #0c0e14;
-      padding: 12px 16px 16px;
-    }
+    .dock { padding: 16px 20px 22px; }
     #composer {
-      max-width: 920px; margin: 0 auto;
-      display: grid; grid-template-columns: 1fr auto;
-      gap: 10px; align-items: end;
+      max-width: 680px; margin: 0 auto;
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 16px; padding: 10px;
     }
     #input {
-      width: 100%; min-height: 64px; max-height: 180px; resize: vertical;
-      background: var(--panel); color: var(--text);
-      border: 1px solid var(--line); border-radius: 12px;
-      padding: 12px 14px; font: inherit; outline: none;
+      width: 100%; min-height: 72px; resize: none; border: 0; outline: none;
+      background: transparent; color: var(--text); font: inherit; padding: 8px 8px 4px;
     }
-    #input:focus { border-color: #3d6a88; box-shadow: 0 0 0 3px rgba(94,200,255,.12); }
+    .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 2px; }
+    .examples { display: flex; flex-wrap: wrap; gap: 6px; }
+    .examples button {
+      border: 1px solid var(--line); background: #0c0e14; color: var(--muted);
+      border-radius: 999px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+    }
+    .examples button:hover { color: var(--text); }
     #send {
-      appearance: none; border: 0; height: 64px; min-width: 108px;
-      border-radius: 12px; font-weight: 800; cursor: pointer;
-      background: linear-gradient(160deg, var(--mint), #2fbf86);
-      color: #042016;
+      border: 0; border-radius: 10px; padding: 10px 16px;
+      background: var(--mint); color: #042016; font-weight: 800; cursor: pointer;
     }
     #send:disabled { opacity: .45; cursor: wait; }
-    .hint { max-width: 920px; margin: 8px auto 0; color: var(--muted); font-size: 11px; }
+    .fine { max-width: 680px; margin: 8px auto 0; text-align: center; font-size: 11px; color: var(--muted); }
 
-    .modal-bg {
-      position: fixed; inset: 0; z-index: 40;
-      background: rgba(0,0,0,.55); display: none; place-items: center; padding: 20px;
+    .sheet {
+      display: none; position: fixed; inset: 0; z-index: 30;
+      background: rgba(0,0,0,.5); place-items: end center;
     }
-    .modal-bg.show { display: grid; }
-    .modal {
-      width: min(440px, 100%); background: var(--panel);
-      border: 1px solid var(--line); border-radius: 16px; padding: 18px;
+    .sheet.show { display: grid; }
+    .sheet .box {
+      width: min(420px, 100%); background: var(--card);
+      border: 1px solid var(--line); border-radius: 16px 16px 0 0; padding: 16px;
     }
-    .modal h2 { margin: 0 0 6px; font-size: 16px; }
-    .modal p { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
-    .modal label { display: block; font-size: 11px; color: var(--muted); margin: 10px 0 4px; }
-    .modal input {
-      width: 100%; background: #07080c; color: var(--text);
-      border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit;
+    .sheet label { display: block; font-size: 11px; color: var(--muted); margin: 10px 0 4px; }
+    .sheet input {
+      width: 100%; background: #0a0b10; color: var(--text);
+      border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit;
     }
-    .modal .row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-    .modal .row button {
-      flex: 1; min-width: 100px; height: 40px; border-radius: 10px; font-weight: 700;
-      cursor: pointer; border: 1px solid var(--line); background: #18181f; color: var(--text);
-    }
-    .modal .row button.primary { background: var(--mint); color: #042016; border: 0; }
-    .modal .err { color: var(--bad); font-size: 12px; min-height: 1.2em; }
-
-    @media (max-width: 800px) {
-      #desk { grid-template-columns: 1fr; }
-      aside { display: none; }
-      .welcome { grid-template-columns: 1fr; }
-    }
+    .sheet .row { display: flex; gap: 8px; margin-top: 14px; }
+    .sheet button { flex: 1; height: 36px; border-radius: 8px; border: 1px solid var(--line); background: #18181f; color: var(--text); cursor: pointer; }
   </style>
   <script>
-    /* Tiny boot — works even if app.js fails to load. */
     window.GM = window.GM || {};
     window.GM.bootSend = function (ev) {
       if (ev) ev.preventDefault();
@@ -200,6 +111,7 @@
       var btn = document.getElementById('send');
       var text = (ta && ta.value || '').replace(/^\s+|\s+$/g, '');
       if (!text || !log) return false;
+      document.body.classList.add('has-chat');
       ta.value = '';
       if (btn) btn.disabled = true;
       var u = document.createElement('div');
@@ -209,9 +121,8 @@
       log.appendChild(u);
       var b = document.createElement('div');
       b.className = 'msg bot';
-      b.innerHTML = '<div class="role">Gamemaster</div><div class="body">…</div>';
+      b.innerHTML = '<div class="role">Gamemaster</div><div class="body">Writing…</div>';
       log.appendChild(b);
-      log.scrollTop = log.scrollHeight;
       fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -220,104 +131,71 @@
         b.querySelector('.body').textContent = (d && (d.text || d.error)) || 'No reply';
       }).catch(function (e) {
         b.querySelector('.body').textContent = 'Error: ' + e;
-      }).then(function () {
-        if (btn) btn.disabled = false;
-        if (ta) ta.focus();
-      });
+      }).then(function () { if (btn) btn.disabled = false; if (ta) ta.focus(); });
       return false;
     };
   </script>
 </head>
 <body>
   <header>
-    <div class="brand">
-      <div class="logo">GM</div>
-      <div>
-        <h1>Gamemaster</h1>
-        <p>Local Three.js studio</p>
-      </div>
-    </div>
-    <div class="header-right">
-      <button type="button" class="ghost" id="btnGh">GitHub</button>
-      <div class="status" id="status">
-        <span class="dot" id="dot"></span>
-        <span id="statusText">starting…</span>
-      </div>
+    <div class="brand"><div class="logo">GM</div> Gamemaster</div>
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">starting…</span>
+      <button type="button" class="more" id="btnMore">More</button>
     </div>
   </header>
 
-  <div id="desk">
-    <aside>
-      <h2>Project</h2>
-      <input id="project" type="text" placeholder="/path/to/game" spellcheck="false" />
-
-      <h2>New slice</h2>
-      <button type="button" class="act" data-fill="Walkable village: WASD, spring camera, one NPC with a 3-node dialogue tree, ragdoll on death.">
-        Village walk<small>Talk, flag, retry</small>
-      </button>
-      <button type="button" class="act" data-fill="Tight platformer: coyote 100ms, jump buffer 90ms, gravity 26, one juice hitstop.">
-        Platformer feel<small>Coyote + buffer</small>
-      </button>
-      <button type="button" class="act" data-fill="Pixel grove: bakeCanvas sprites on nearest quads, WASD, CONFIG feel knobs.">
-        Pixel grove<small>Bake, then Three.js</small>
-      </button>
-      <button type="button" class="act" data-fill="Multipass water shader: Buffer A feedback, Image composite, no examples/jsm.">
-        Shader lab<small>Multipass GLSL</small>
-      </button>
-
-      <h2>Studio</h2>
-      <button type="button" class="act" data-fill="Studio plan: one verb at t=8s, kill list, CONFIG numbers, first fair death.">
-        Plan<small>Director + architect</small>
-      </button>
-      <button type="button" class="act" data-fill="Implement a complete vertical slice now. Complete files. CONFIG. fog=bg. No holes.">
-        Build<small>Write the slice</small>
-      </button>
-    </aside>
-
-    <div class="col">
-      <div id="log">
-        <div class="msg system">Tell it the game. One verb. What the player does at 8 seconds.</div>
-        <div class="welcome">
-          <button type="button" data-fill="Third-person village: walk, talk to one NPC, ragdoll on death, fog matches background.">
-            <strong>Open world</strong>
-            <span>Walk, talk, one flag that changes the place</span>
-          </button>
-          <button type="button" data-fill="One-thumb runner: lane switch, jump, first death in 20s, restart under 3s, juice on hit.">
-            <strong>Runner</strong>
-            <span>One thumb, fair first death, juice</span>
-          </button>
+  <div id="stage">
+    <div id="log">
+      <div id="empty">
+        <h1>Describe a game</h1>
+        <p>Write what the player does. You get playable Three.js code.</p>
+      </div>
+    </div>
+    <div class="dock">
+      <form id="composer" action="/api/ask" method="post" onsubmit="return window.GM.bootSend(event)">
+        <textarea id="input" name="q" required placeholder="The player runs, jumps, and grabs coins…"></textarea>
+        <div class="bar">
+          <div class="examples">
+            <button type="button" data-fill="The player walks a small village, talks to one person, then goes home.">Village</button>
+            <button type="button" data-fill="The player jumps between platforms. Missing a jump restarts fast.">Jumper</button>
+            <button type="button" data-fill="A tiny pixel forest. Walk around trees. Camera follows.">Pixel forest</button>
+          </div>
+          <button type="submit" id="send">Make this game</button>
         </div>
-      </div>
-      <div class="dock">
-        <form id="composer" action="/api/ask" method="post" onsubmit="return window.GM.bootSend(event)">
-          <textarea id="input" name="q" rows="3" required placeholder="What does the player do?"></textarea>
-          <button type="submit" id="send">Send</button>
-        </form>
-        <div class="hint">Enter sends · Shift+Enter newline · local Ollama, $0 unless you turned cloud on</div>
-      </div>
+      </form>
+      <div class="fine">First answer can take half a minute while the model wakes up.</div>
     </div>
   </div>
 
-  <div class="modal-bg" id="ghModal">
-    <div class="modal">
-      <h2 id="ghTitle">GitHub</h2>
-      <p id="ghLead">Sign in to commit and push a game.</p>
-      <label for="ghProject">Game folder</label>
-      <input id="ghProject" type="text" placeholder="/Users/you/Gamemaster/Projects/Wilds" />
-      <label for="ghMsg">Commit message</label>
-      <input id="ghMsg" type="text" placeholder="vertical slice" />
-      <label class="check" style="display:flex;align-items:center;gap:8px;margin-top:10px">
-        <input id="ghPrivate" type="checkbox" checked /> Private repo
-      </label>
-      <div class="err" id="ghErr"></div>
+  <div class="sheet" id="more">
+    <div class="box">
+      <strong>Optional</strong>
+      <label for="project">Game folder (if you already have one)</label>
+      <input id="project" type="text" placeholder="/path/to/my-game" />
+      <div class="row">
+        <button type="button" id="btnGh">GitHub…</button>
+        <button type="button" id="moreClose">Done</button>
+      </div>
+    </div>
+  </div>
+  <div class="sheet" id="ghModal">
+    <div class="box">
+      <strong id="ghTitle">GitHub</strong>
+      <p id="ghLead">Sign in to push a game folder.</p>
+      <label for="ghProject">Folder</label>
+      <input id="ghProject" type="text" />
+      <label for="ghMsg">Message</label>
+      <input id="ghMsg" type="text" value="vertical slice" />
+      <p id="ghErr" class="fine"></p>
       <div class="row">
         <button type="button" id="ghLogin">Sign in</button>
-        <button type="button" class="primary" id="ghShip">Ship</button>
+        <button type="button" id="ghShip">Ship</button>
         <button type="button" id="ghClose">Close</button>
       </div>
     </div>
   </div>
-
   <script src="/app.js"></script>
 </body>
 </html>
