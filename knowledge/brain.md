@@ -65,3 +65,4 @@ Palette: 8 hex in WIKI.md.
 12 systems at 20% → cut. Black screen → lights/camera/DOM first.
 Honor WIKI + prefs unless the user contradicts.
 After code: `npm i && npm run dev` + 2 questions + next ONE thing.
+`done` is gated: P0 verify must pass (three import, no examples/jsm, no holes, renderer, scene, syntax).

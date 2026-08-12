@@ -40,6 +40,7 @@ Modelfile       baked Ollama system prompt
 | Prefs | `bin/prefs.py` |
 | Game wiki + file map (auto-loaded) | `bin/wiki.py` (`WIKI.md`, `MAP.md`) |
 | Grok kit (todos, feel audit, art-test) | `bin/kit.py` — also agent tool `kit` |
+| Slice verify (P0 gate, no Ollama) | `bin/verify.py` — agent `done` + studio after coder |
 | Install / PATH | `install.sh` |
 
 ## Invariants (do not break)

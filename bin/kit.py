@@ -209,9 +209,16 @@ def run_kit(project: Path, action: str, args: dict | None = None) -> str:
         return write_art_test(project)
     if a in ("feel", "feel_audit", "audit"):
         return feel_audit(project)
+    if a in ("verify", "score"):
+        try:
+            import verify as verifylib
+
+            return verifylib.evaluate(project)["report"]
+        except Exception as e:
+            return f"ERROR verify: {e}"
     return (
         "ERROR: unknown kit action. Use: todo_list, todo_add, todo_done, "
-        "wiki_add, map, art_test, feel"
+        "wiki_add, map, art_test, feel, verify"
     )
 
 
@@ -225,6 +232,7 @@ def main() -> int:
     p_todo.add_argument("--done", default="")
     sub.add_parser("art-test", parents=[shared])
     sub.add_parser("feel", parents=[shared])
+    sub.add_parser("verify", parents=[shared])
     args = ap.parse_args()
     project = Path(args.project).expanduser().resolve()
     if not project.is_dir():
@@ -240,6 +248,9 @@ def main() -> int:
         return 0
     if args.cmd == "art-test":
         print(write_art_test(project))
+        return 0
+    if args.cmd == "verify":
+        print(run_kit(project, "verify"))
         return 0
     print(feel_audit(project))
     return 0

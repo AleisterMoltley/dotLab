@@ -39,7 +39,8 @@ gamemaster — local Three.js game studio (Ollama, $0)
   gamemaster github login|status|logout|commit|push|ship -p DIR
   gamemaster ship -p DIR -m "vertical slice"
   gamemaster wiki show|add|map|prompt -p DIR
-  gamemaster kit todo|art-test|feel -p DIR
+  gamemaster kit todo|art-test|feel|verify -p DIR
+  gamemaster verify -p DIR
 
 Options:
   -f, --file PATH          attach file context
@@ -283,6 +284,10 @@ if [[ $# -gt 0 ]]; then
     kit)
       shift
       exec python3 "$ROOT/bin/kit.py" "$@"
+      ;;
+    verify|score)
+      shift
+      exec python3 "$ROOT/bin/verify.py" "$@"
       ;;
     ship)
       shift

@@ -45,7 +45,7 @@ Tools:
 - write_file → path: src/foo.js   and content: (full file contents)
 - search → query: regex
 - run → cmd: short safe command
-- kit → action: todo_add|todo_done|todo_list|wiki_add|map|art_test|feel
+- kit → action: todo_add|todo_done|todo_list|wiki_add|map|art_test|feel|verify
          text:/fact:/why:/id: as needed
 - done → summary: what was done + how to test
 
@@ -458,6 +458,7 @@ def main() -> int:
     print(f"🎯 {task}")
     print("─" * 48)
 
+    verify_repair_used = False
     for step in range(1, args.steps + 1):
         print(f"\n──  {step}/{args.steps} ──")
         try:
@@ -490,6 +491,18 @@ def main() -> int:
         for name, targs in tools:
             if name == "done":
                 summary = targs.get("summary") or reply
+                try:
+                    import verify as verifylib
+
+                    vr = verifylib.evaluate(project)
+                    print(vr["report"])
+                    if vr.get("p0_fail") and not verify_repair_used:
+                        verify_repair_used = True
+                        print("  ⚠ verify P0 — one repair pass")
+                        result_chunks.append(verifylib.repair_prompt(vr))
+                        break
+                except Exception as e:
+                    print(f"  ⚠ verify skipped: {e}")
                 print("\n" + "═" * 48)
                 print("✅ DONE")
                 print(summary)

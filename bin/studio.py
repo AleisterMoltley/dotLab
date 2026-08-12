@@ -591,6 +591,21 @@ def pipeline_build(
     write_session(project, "03-coder-log.txt", code_out)
     print(code_out[-2000:])
 
+    try:
+        import verify as verifylib
+
+        vr = verifylib.evaluate(project)
+        write_session(project, "03b-verify.txt", vr["report"])
+        print(vr["report"])
+        if vr.get("p0_fail"):
+            banner("🔧 VERIFY REPAIR (P0)")
+            repair_out = run_coder_agent(
+                project, verifylib.repair_prompt(vr), model, steps=10
+            )
+            write_session(project, "03c-verify-repair.txt", repair_out)
+    except Exception as e:
+        print(f"  ⚠ verify: {e}")
+
     banner("🧪 CRITIC")
     critic_model = model
     try:

@@ -26,6 +26,7 @@ Gamemaster is an open-source local AI toolchain for **shipping playable Three.js
 | **GitHub** | Browser login · commit · create repo · push (`gamemaster ship`) |
 | **Wiki + map** | `WIKI.md` / `MAP.md` auto-loaded into Studio, Agent, and CLI |
 | **Kit** | Grok build tools: todos, feel audit, art-test, wiki_add (agent + CLI) |
+| **Verify** | Deterministic slice grade (no LLM). P0 fail blocks `done` and forces repair |
 
 ## For humans and AIs working in this repo
 

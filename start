@@ -40,6 +40,8 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/wiki.py" "$@" ;;
     kit)
       shift; exec python3 "$ROOT/bin/kit.py" "$@" ;;
+    verify|score)
+      shift; exec python3 "$ROOT/bin/verify.py" "$@" ;;
     ship)
       shift; exec python3 "$ROOT/bin/github.py" ship "$@" ;;
   esac

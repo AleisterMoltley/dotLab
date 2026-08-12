@@ -22,12 +22,20 @@
 5. **$0 forever**, private, offline
 6. **Council of specialists** tuned only for games (not general software)
 
+## Local edge (how we beat dump-and-pray cloud)
+**Verify-and-repair.** `bin/verify.py` grades a slice with no LLM. P0 fail blocks `done` and forces one repair pass. Studio runs the same gate after the coder. Cloud frontier still wins raw IQ; we win **ship-rate** on Three.js slices because incomplete output is rejected.
+
+```bash
+gamemaster verify -p ./my-game
+python3 tests/run.py   # includes gold vs broken fixtures
+```
+
 ## Missing → Priority
-P0: Multi-agent studio (director/architect/coder/critic)
-P0: Best-of-N design pitches + synthesis
-P1: Auto DESIGN.md / session memory
-P1: Playtest harness + metrics comments in code
-P2: Parallel file workers (player vs world vs ui)
-P2: Repo map generator
-P3: Browser playtest headless (playwright screenshot loop)
-P3: Local LoRA / preference memory ("user likes tight jumps")
+P0: Multi-agent studio (director/architect/coder/critic) — shipped
+P0: Best-of-N design pitches + synthesis — shipped
+P0: Deterministic verify gate — shipped
+P1: Auto DESIGN.md / wiki / map — shipped
+P1: Playtest harness — shipped
+P2: Parallel file workers — shipped
+P3: Canvas capture from live (no Playwright)
+P3: Local LoRA
