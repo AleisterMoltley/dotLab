@@ -18,9 +18,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-OLLAMA = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
-DEFAULT_MODEL = os.environ.get("GAMEMASTER_MODEL", "gamemaster")
-ROOT = Path(__file__).resolve().parent.parent
+from gmcommon import DEFAULT_MODEL, OLLAMA, ROOT, ensure_ollama, ollama_json
+
 MAX_STEPS = int(os.environ.get("GAMEMASTER_AGENT_STEPS", "20"))
 MAX_FILE = 120_000
 MAX_TOOL_OUT = 24_000
@@ -65,15 +64,7 @@ Never invent file contents. English only in done summary.
 
 
 def http_json(path: str, payload: dict | None = None, timeout: float = 600.0) -> dict:
-    data = None if payload is None else json.dumps(payload).encode()
-    req = urllib.request.Request(
-        f"{OLLAMA}{path}",
-        data=data,
-        headers={"Content-Type": "application/json"} if data else {},
-        method="POST" if data is not None else "GET",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+    return ollama_json(path, payload, timeout=timeout)
 
 
 def chat(messages: list[dict], model: str, temperature: float = 0.2, num_ctx: int | None = None) -> str:
@@ -92,22 +83,6 @@ def chat(messages: list[dict], model: str, temperature: float = 0.2, num_ctx: in
     }
     res = http_json("/api/chat", payload)
     return (res.get("message") or {}).get("content") or ""
-
-
-def ensure_ollama() -> None:
-    try:
-        http_json("/api/tags")
-    except Exception:
-        if sys.platform == "darwin":
-            os.system("open -a Ollama >/dev/null 2>&1")
-            for _ in range(40):
-                time.sleep(0.4)
-                try:
-                    http_json("/api/tags")
-                    return
-                except Exception:
-                    pass
-        raise SystemExit("Ollama not reachable. open -a Ollama")
 
 
 def parse_tool_body(body: str) -> dict:

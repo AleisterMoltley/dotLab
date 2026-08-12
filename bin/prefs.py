@@ -29,8 +29,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-GLOBAL_PREFS = ROOT / "config" / "user-prefs.json"
+from gmcommon import CONFIG, ROOT
+
+GLOBAL_PREFS = CONFIG / "user-prefs.json"
 
 
 def empty_prefs() -> dict:

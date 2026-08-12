@@ -25,6 +25,14 @@ Gamemaster is an open-source local AI toolchain for **shipping playable Three.js
 | **Update** | Self-update models + live package versions |
 | **GitHub** | Browser login · commit · create repo · push (`gamemaster ship`) |
 
+## For humans and AIs working in this repo
+
+Read **[AGENTS.md](AGENTS.md)** first (where to edit, invariants, cheap tests).
+
+```bash
+python3 tests/run.py        # ~1s, no Ollama — run after every patch
+```
+
 ## Requirements
 
 - macOS or Linux (Apple Silicon recommended, 32GB+ RAM ideal)
@@ -149,17 +157,21 @@ gamemaster github logout
 
 ```
 gamemaster/
+  AGENTS.md              Map for humans + AIs (read first)
   Modelfile              Three.js game-world system prompt
   install.sh             Pull models + create gamemaster / gamemaster-dense
+  bin/gmcommon.py        Shared ROOT / Ollama / gitignore / slugify
   bin/gamemaster         Main CLI
   bin/studio.py          Multi-agent production
   bin/agent.py           Tool-using implementer
   bin/scaffold.py        Project generators
   bin/worldclaw.py       Open-world generator (spec → terrain → instances)
+  bin/github.py          Login / commit / push / ship
   bin/playtest.py        Dev server + Playwright
   bin/prefs.py           Preference memory
   bin/turbo.py           Routing + warmup + bench
   bin/self-update.py     Keep models/docs fresh
+  tests/                 Cheap suite (no Ollama)
   bin/server.py + chat/  Local browser chat UI
   knowledge/             Three.js game packs (worlds, physics, ragdoll, dialogue, shaders, Seeker)
   templates/shader-lab/  FragCoord-class multipass editor

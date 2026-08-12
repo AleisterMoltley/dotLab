@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
-Gamemaster ↔ GitHub
+Gamemaster ↔ GitHub  (CLI + HTTP for chat/live)
 
-Users sign in with the GitHub CLI (browser / device code / token),
-then commit and push game projects.
+Change login/commit/push/ship here only. UIs call handle_http().
+Do not git-init $HOME or ROOT — guard_project() is mandatory before ensure_repo().
 
-  gamemaster github login
-  gamemaster github status
-  gamemaster github ship -p ./my-game -m "vertical slice"
+  gamemaster github login|status|ship -p DIR
 """
 from __future__ import annotations
 
@@ -15,7 +13,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import threading
@@ -23,60 +20,18 @@ import time
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = ROOT / "config" / "github.json"
+from gmcommon import (
+    CONFIG,
+    ROOT,
+    ensure_game_gitignore,
+    looks_like_game,
+    run,
+    slugify_repo,
+    which,
+)
+
+CONFIG_PATH = CONFIG / "github.json"
 SCOPES = "repo,workflow,read:org"
-
-GAME_GITIGNORE = """# Gamemaster game
-node_modules/
-dist/
-build/
-.vite/
-.DS_Store
-.gamemaster/
-.env
-.env.*
-*.pem
-*.key
-__pycache__/
-*.pyc
-.idea/
-.vscode/
-"""
-
-
-# ── process helpers ──────────────────────────────────────────────────
-
-
-def which(name: str) -> str | None:
-    return shutil.which(name)
-
-
-def run(
-    cmd: list[str],
-    cwd: Path | None = None,
-    timeout: float = 120.0,
-    input_text: str | None = None,
-    env: dict[str, str] | None = None,
-) -> tuple[int, str]:
-    try:
-        p = subprocess.run(
-            cmd,
-            cwd=str(cwd) if cwd else None,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            input=input_text,
-            env=env,
-        )
-        out = (p.stdout or "") + (("\n" + p.stderr) if p.stderr else "")
-        return p.returncode, out.strip()
-    except subprocess.TimeoutExpired:
-        return 124, "timeout"
-    except FileNotFoundError:
-        return 127, f"not found: {cmd[0]}"
-    except Exception as e:
-        return 1, str(e)
 
 
 def require_git() -> str:
@@ -350,16 +305,6 @@ def login_cli() -> int:
 # ── git / repo ───────────────────────────────────────────────────────
 
 
-def slugify(name: str) -> str:
-    s = re.sub(r"[^a-zA-Z0-9._-]+", "-", (name or "").strip().lower()).strip("-.")
-    return s or "game"
-
-
-def looks_like_game(project: Path) -> bool:
-    markers = ("package.json", "DESIGN.md", "index.html", "src", "App.tsx", "vite.config.js", "vite.config.ts")
-    return any((project / m).exists() for m in markers)
-
-
 def guard_project(project: Path) -> None:
     home = Path.home().resolve()
     if project == home or project == Path("/"):
@@ -391,20 +336,6 @@ def git_dir(project: Path) -> Path | None:
     return Path(out.splitlines()[0])
 
 
-def ensure_gitignore(project: Path) -> None:
-    gi = project / ".gitignore"
-    if gi.exists():
-        text = gi.read_text(encoding="utf-8", errors="ignore")
-        extra = []
-        for line in ("node_modules/", ".gamemaster/", ".env", "dist/"):
-            if line not in text:
-                extra.append(line)
-        if extra:
-            gi.write_text(text.rstrip() + "\n" + "\n".join(extra) + "\n", encoding="utf-8")
-        return
-    gi.write_text(GAME_GITIGNORE, encoding="utf-8")
-
-
 def ensure_identity(project: Path) -> None:
     git = require_git()
     code, name = run([git, "-C", str(project), "config", "--get", "user.name"], timeout=8)
@@ -428,7 +359,7 @@ def ensure_repo(project: Path) -> None:
     if root is None or root.resolve() != project.resolve():
         run([git, "-C", str(project), "init", "-b", "main"], timeout=15)
         run([git, "-C", str(project), "branch", "-M", "main"], timeout=8)
-    ensure_gitignore(project)
+    ensure_game_gitignore(project)
     ensure_identity(project)
 
 
@@ -529,7 +460,7 @@ def create_remote(
     guard_project(project)
     ensure_repo(project)
     remember_project(project)
-    repo_name = slugify(name or project.name)
+    repo_name = slugify_repo(name or project.name)
     desc = description or f"{project.name} — made with Gamemaster"
     cmd = [
         gh,

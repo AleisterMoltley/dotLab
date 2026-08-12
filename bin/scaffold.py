@@ -12,25 +12,7 @@ import shutil
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-TEMPLATES = ROOT / "templates"
-
-GAME_GITIGNORE = """# Gamemaster game
-node_modules/
-dist/
-build/
-.vite/
-.DS_Store
-.gamemaster/
-.env
-.env.*
-*.pem
-*.key
-__pycache__/
-*.pyc
-.idea/
-.vscode/
-"""
+from gmcommon import GAME_GITIGNORE, ROOT, TEMPLATES, slugify_project
 
 GENRES = [
     "arena",
@@ -55,8 +37,7 @@ GENRES = [
 
 
 def slugify(name: str) -> str:
-    s = re.sub(r"[^a-zA-Z0-9]+", "-", name.strip().lower()).strip("-")
-    return s or "gamemaster-project"
+    return slugify_project(name)
 
 
 def write(path: Path, content: str) -> None:

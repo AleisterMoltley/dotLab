@@ -22,9 +22,9 @@ import time
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from gmcommon import DEFAULT_MODEL, ROOT
+
 PLAYTEST_DIR = ROOT / "playtest"
-DEFAULT_MODEL = os.environ.get("GAMEMASTER_MODEL", "gamemaster")
 
 
 def ensure_playwright() -> None:

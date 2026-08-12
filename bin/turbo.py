@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Gamemaster TURBO — Speed without quality loss.
+Gamemaster TURBO — routing + slim knowledge (no quality loss).
+
+PACKS / ROUTES / route_task / select_knowledge are the knobs.
+New knowledge file → knowledge/INDEX.md + PACKS + ROUTES.
 
 Philosophy (frontier-inspired, local-adapted):
   1. Prompt processing dominates agents → SLIM context, stable prefixes, keep-alive
@@ -28,14 +31,13 @@ import time
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-OLLAMA = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+from gmcommon import DEFAULT_MODEL, DENSE_MODEL, KNOWLEDGE, OLLAMA, ROOT, ollama_json
 
 # Stable tier names → ollama tags
 TIERS = {
     "flash": os.environ.get("GAMEMASTER_FLASH", "qwen2.5-coder:7b"),
-    "max": os.environ.get("GAMEMASTER_MODEL", "gamemaster"),
-    "dense": os.environ.get("GAMEMASTER_DENSE", "gamemaster-dense"),
+    "max": DEFAULT_MODEL,
+    "dense": DENSE_MODEL,
 }
 
 # Knowledge packs by domain (order = priority, sizes capped in select)
@@ -73,15 +75,7 @@ ROUTES = [
 
 
 def http_json(path: str, payload: dict | None = None, timeout: float = 120.0) -> dict:
-    data = None if payload is None else json.dumps(payload).encode()
-    req = urllib.request.Request(
-        f"{OLLAMA}{path}",
-        data=data,
-        headers={"Content-Type": "application/json"} if data else {},
-        method="POST" if data is not None else "GET",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+    return ollama_json(path, payload, timeout=timeout)
 
 
 def models_available() -> set[str]:
@@ -201,7 +195,7 @@ def select_knowledge(prompt: str, max_chars: int = 28000) -> str:
     per = max(2000, max_chars // max(1, len(ordered)))
     for pid in ordered:
         for name in PACKS.get(pid, []):
-            path = ROOT / "knowledge" / name
+            path = KNOWLEDGE / name
             if not path.exists():
                 continue
             text = path.read_text(encoding="utf-8")[:per]

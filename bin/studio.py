@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Gamemaster STUDIO — Multi-Agent Game Production (local, $0)
+Gamemaster STUDIO — Multi-agent production (local, $0).
+
+Roles + pipelines live here. Coder is bin/agent.py. Play window is bin/live.py.
+Do not add a second orchestrator.
 
 Roles (consult + execute), inspired by Cursor/Codex multi-agent + Grok design taste:
 
@@ -34,14 +37,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # Reuse agent tools + prefs
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 import agent as agentlib  # noqa: E402
 import prefs as prefslib  # noqa: E402
+from gmcommon import DEFAULT_MODEL, DENSE_MODEL, KNOWLEDGE, OLLAMA, ROOT, ensure_ollama
 
-ROOT = Path(__file__).resolve().parent.parent
-OLLAMA = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
-DEFAULT_MODEL = os.environ.get("GAMEMASTER_MODEL", "gamemaster")
-DENSE_MODEL = os.environ.get("GAMEMASTER_DENSE", "gamemaster-dense")
 NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "65536"))
 
 
@@ -127,26 +126,10 @@ def chat(
     return (res.get("message") or {}).get("content") or ""
 
 
-def ensure_ollama() -> None:
-    try:
-        urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=2)
-    except Exception:
-        if sys.platform == "darwin":
-            os.system("open -a Ollama >/dev/null 2>&1")
-            for _ in range(40):
-                time.sleep(0.35)
-                try:
-                    urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=2)
-                    return
-                except Exception:
-                    pass
-        raise SystemExit("Ollama not reachable")
-
-
 def load_pack(*names: str, limit: int = 6000) -> str:
     chunks = []
     for n in names:
-        p = ROOT / "knowledge" / n
+        p = KNOWLEDGE / n
         if p.exists():
             chunks.append(f"## {n}\n{p.read_text(encoding='utf-8')[:limit]}")
     return "\n\n".join(chunks)

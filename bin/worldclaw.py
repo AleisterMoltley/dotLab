@@ -29,9 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent.parent
-OLLAMA = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
-DEFAULT_MODEL = os.environ.get("GAMEMASTER_MODEL", "gamemaster")
+from gmcommon import DEFAULT_MODEL, OLLAMA, ROOT
 CONFIG_PATH = ROOT / "config" / "worldclaw.json"
 EXAMPLE_CONFIG = ROOT / "config" / "worldclaw.example.json"
 

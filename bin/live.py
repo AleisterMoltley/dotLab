@@ -38,10 +38,8 @@ from queue import Empty, Queue
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-ROOT = Path(__file__).resolve().parent.parent
-LIVE_DIR = ROOT / "live"
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 import github as githublib  # noqa: E402
+from gmcommon import LIVE_DIR, ROOT
 DEFAULT_LIVE_PORT = int(os.environ.get("GAMEMASTER_LIVE_PORT", "8767"))
 DEFAULT_GAME_PORT = int(os.environ.get("GAMEMASTER_GAME_PORT", "5173"))
 

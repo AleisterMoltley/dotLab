@@ -14,37 +14,12 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 import github as githublib  # noqa: E402
+from gmcommon import CHAT_DIR, DEFAULT_MODEL, OLLAMA, ROOT, ensure_ollama
 
-ROOT = Path(__file__).resolve().parent.parent
-CHAT_DIR = ROOT / "chat"
-OLLAMA = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
 PORT = int(os.environ.get("GAMEMASTER_PORT", "8765"))
-MODEL = os.environ.get("GAMEMASTER_MODEL", "gamemaster")
+MODEL = os.environ.get("GAMEMASTER_MODEL", DEFAULT_MODEL)
 NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "65536"))
-
-
-def ollama_up() -> bool:
-    try:
-        with urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=1.5) as r:
-            return r.status == 200
-    except Exception:
-        return False
-
-
-def ensure_ollama(timeout: float = 25.0) -> bool:
-    if ollama_up():
-        return True
-    # macOS: App starten
-    if sys.platform == "darwin":
-        os.system("open -a Ollama >/dev/null 2>&1")
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if ollama_up():
-            return True
-        time.sleep(0.4)
-    return ollama_up()
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -188,7 +163,7 @@ def main() -> int:
     print("║   Gamemaster — startet…        ║")
     print("╚══════════════════════════════════════════╝")
 
-    if not ensure_ollama():
+    if not ensure_ollama(fatal=False):
         print("❌ Ollama not reachable. Open Ollama.app and try again.")
         print("   Download: https://ollama.com")
         return 1

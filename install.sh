@@ -188,6 +188,7 @@ ${GREEN}════════════════════════
   Scaffold:  gamemaster scaffold world-game --name Wilds
   World:     gamemaster worldclaw generate -p ./Wilds "coast + pines"
   GitHub:    gamemaster github login && gamemaster ship -p ./Wilds
+  Tests:     python3 tests/run.py
   Playtest:  gamemaster playtest -p ./my-game --critic
   Turbo:     gamemaster turbo warmup
 

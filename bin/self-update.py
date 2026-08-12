@@ -18,9 +18,9 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from gmcommon import CONFIG, ROOT, ensure_ollama
+
 LIVE = ROOT / "knowledge" / "live"
-CONFIG = ROOT / "config"
 VERSION_PATH = CONFIG / "version.json"
 
 # Sources (best-effort; failures are non-fatal)
@@ -177,23 +177,6 @@ def update_knowledge_live() -> dict:
 
     (LIVE / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return meta
-
-
-def ollama_up() -> bool:
-    code, _ = run(["curl", "-sf", "http://127.0.0.1:11434/api/tags"], timeout=5)
-    return code == 0
-
-
-def ensure_ollama() -> None:
-    if ollama_up():
-        return
-    if sys.platform == "darwin":
-        run(["open", "-a", "Ollama"])
-        for _ in range(40):
-            time.sleep(0.4)
-            if ollama_up():
-                return
-    raise SystemExit("Ollama not reachable")
 
 
 def pull_models(profile: str = "dual") -> None:
