@@ -98,13 +98,29 @@ if [[ "$MODE" == "agent" ]]; then
 fi
 
 PORT="${GAMEMASTER_PORT:-8765}"
-if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  if curl -sf "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; then
-    if [[ "$(uname)" == "Darwin" ]]; then open "http://127.0.0.1:${PORT}/"; else xdg-open "http://127.0.0.1:${PORT}/" 2>/dev/null || true; fi
-    exit 0
+# A previous double-click leaves python on :8765. Reusing it exits this
+# script (Terminal then runs `; exit` and the window vanishes) and the
+# browser talks to stale code. Always take the port back.
+if command -v lsof >/dev/null 2>&1; then
+  pids="$(lsof -nP -t -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "${pids}" ]]; then
+    echo "↻ Replacing process on :$PORT"
+    # shellcheck disable=SC2086
+    kill ${pids} 2>/dev/null || true
+    sleep 0.4
+    pids="$(lsof -nP -t -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "${pids}" ]]; then
+      # shellcheck disable=SC2086
+      kill -9 ${pids} 2>/dev/null || true
+      sleep 0.2
+    fi
   fi
-  PORT=$((PORT + 1))
-  export GAMEMASTER_PORT="$PORT"
+  if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    PORT=$((PORT + 1))
+    export GAMEMASTER_PORT="$PORT"
+    echo "↻ :8765 still busy — using :$PORT"
+  fi
 fi
 
+echo "→ Chat http://127.0.0.1:${PORT}/  (leave this window open)"
 exec /usr/bin/env python3 "$ROOT/bin/server.py"

@@ -167,6 +167,12 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.flush()
         self.wfile.write(json.dumps({"message": {"content": ""}, "done": True}).encode() + b"\n")
 
+    def end_headers(self) -> None:
+        path = urlparse(getattr(self, "path", "") or "").path
+        if path in ("/", "/index.html") or path.endswith(".html"):
+            self.send_header("Cache-Control", "no-store, max-age=0")
+        super().end_headers()
+
     def _json(self, status: int, data: dict) -> None:
         raw = json.dumps(data).encode()
         self.send_response(status)
@@ -288,7 +294,7 @@ def main() -> int:
             remember_tags([], ok=False, error=str(e)[:160])
 
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    url = f"http://127.0.0.1:{PORT}/"
+    url = f"http://127.0.0.1:{PORT}/?t={int(time.time())}"
     print(f"✓ Chat: {url}")
     print("  Browser will open. Fenster offen lassen. Beenden: Ctrl+C")
     print("")
