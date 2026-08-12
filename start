@@ -58,6 +58,10 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/slots.py" "$@" ;;
     golden|ci-golden)
       shift; exec python3 "$ROOT/bin/golden.py" "$@" ;;
+    antislope|anti-slop)
+      shift; exec python3 "$ROOT/bin/antislope.py" "$@" ;;
+    eval-briefs|eval)
+      shift; exec python3 "$ROOT/bin/eval_briefs.py" "$@" ;;
     ship)
       shift; exec python3 "$ROOT/bin/github.py" ship "$@" ;;
     cloud)

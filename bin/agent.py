@@ -581,16 +581,22 @@ def main() -> int:
         pass
 
     knowledge = "" if args.no_knowledge else load_knowledge(project, task)
-    # Slice RAG: few successful snippets (cheap prefill)
+    # Slice RAG + anti-slop gallery
     try:
         import rag as raglib
         import security as seclib
+        import antislope as aslib
+        import quality as qualitylib
 
-        rb = raglib.prompt_block(task, k=3, max_chars=2800)
+        rb = raglib.prompt_block(task, k=3, max_chars=2200)
         if rb:
             knowledge = (
-                knowledge + "\n\n" + seclib.isolate_untrusted(rb, source="rag", max_chars=2800)
-            ) if knowledge else seclib.isolate_untrusted(rb, source="rag", max_chars=2800)
+                knowledge + "\n\n" + seclib.isolate_untrusted(rb, source="rag", max_chars=2200)
+            ) if knowledge else seclib.isolate_untrusted(rb, source="rag", max_chars=2200)
+        gal = aslib.gallery_prompt_block(task, max_chars=1600)
+        if gal:
+            knowledge = (knowledge + "\n\n" + gal) if knowledge else gal
+        knowledge = (knowledge or "") + "\n\n" + aslib.SLOT_JSON_ONLY + "\n" + qualitylib.CODER_PATCH_INSTRUCTION
     except Exception:
         pass
     route = {"model": model, "num_ctx": 16384, "num_predict": 6144, "temperature": 0.18, "tier": "max"}

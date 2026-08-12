@@ -33,10 +33,11 @@ Silence on hit = broken. Fair death: telegraph 0.25–0.45s, commit does NOT tra
 ENGINE: Three.js Vite vanilla. three + three/addons — NEVER examples/jsm. fog=background.
 Zero external assets default. No new Vector3 in loop. SRGB+ACES. Seeker=same game+MWA.
 
-HOST (instant — do not re-do): slice · patch · verify · src/craft (juice/audio/palette).
-You own: multi-weapon, AI personalities, city LOD, dialogue, ragdoll, shaders, full content.
-Prefer surgical edits. Fence: ```js src/game.js
-Product name: dotLab (local offline studio). Host tools: slice, patch, verify, craft.
+HOST (instant — do not re-do): slice · patch · verify · src/craft · src/kits (immutable).
+You own: multi-weapon, AI, city LOD, dialogue, ragdoll, shaders — via src/systems/* patches only.
+NEVER rewrite src/craft/* or full large game.js. Prefer slot JSON + apply_patch.
+FAIL slop: green capsule, purple fog, silence on hit, CONFIG 1/1/1, alert().
+Product name: dotLab (local offline studio). Host tools: slice, patch, verify, craft, antislope.
 """
 
 DIRECTOR = """ROLE: DIRECTOR (Grok taste).
@@ -53,10 +54,11 @@ Perf: no alloc in loop, shadow budget, dispose. No code dumps — signatures onl
 """
 
 CODER = """ROLE: CODER (Grok implementer).
-PATCH-ONLY preferred. Prefer @@ file / @@ search / @@ replace / @@ end surgical edits.
-New modules only under src/systems|player|world|fx|ui|npc|weapons. Do NOT full-replace large src/game.js.
-Host owns CONFIG/feel/juice/audio/palette/slots. You own novelty content + wiring.
-Complete code. fog=background. juice on hit. done only if P0 would pass.
+PATCH-ONLY. @@ file / @@ search / @@ replace / @@ end.
+New modules: src/systems|player|world|fx|ui|npc|weapons|slots only.
+IMMUTABLE: src/craft/* src/kits/* — never touch.
+Host owns CONFIG/feel/juice/audio/palette. You fill slot JSON + novelty wiring.
+Silence on hit = FAIL. done only if verify P0 would pass.
 """
 
 CRITIC = """ROLE: CRITIC (Grok playtest).

@@ -659,6 +659,14 @@ game.start();
                 written.append(rel)
     except Exception:
         pass
+    try:
+        import antislope as aslib
+
+        aslib.ensure_kits_readme(dest)
+        aslib.format_project(dest)
+        written.append("src/kits/README.md")
+    except Exception:
+        pass
     hexes = " ".join(
         f"{k}=#{v:06x}" for k, v in pal.items() if k not in ("fogNear", "fogFar")
     )

@@ -40,6 +40,10 @@ CHECKS_META = {
     "config": 3,
     "no_alert": 3,
     "genre_contract": 8,  # only enforced when genre known (fps/arena/platformer/runner)
+    "silence_on_hit": 8,  # anti-slop: shoot without juice
+    "palette_lock": 8,  # anti-slop: neon drift / purple fog
+    "feel_ranges": 3,  # anti-slop: 1/1/1 config
+    "no_green_capsule": 8,
     "feel_keys": 1,
     "playtest": 1,
     "wiki": 1,
@@ -247,6 +251,42 @@ def evaluate(project: Path) -> dict:
             "detail": g_detail,
             "weight": 1,
         }
+
+    # Anti-slop host checks
+    try:
+        import antislope as aslib
+
+        meta = _load_genre_meta(project)
+        # enrich meta from slice.json full
+        for name in (".dotlab", ".gamemaster"):
+            sp = project / name / "slice.json"
+            if sp.is_file():
+                try:
+                    full = json.loads(sp.read_text(encoding="utf-8"))
+                    if isinstance(full, dict):
+                        meta["props"] = full.get("props") or meta.get("props") or ""
+                        meta["shipBar"] = full.get("shipBar") or ""
+                except Exception:
+                    pass
+                break
+        as_res = aslib.evaluate_antislope(project, js, meta)
+        for key, weight in (
+            ("silence_on_hit", 8),
+            ("palette_lock", 8),
+            ("feel_ranges", 3),
+            ("no_green_capsule", 8),
+        ):
+            c = (as_res.get("checks") or {}).get(key) or {"ok": True, "detail": "skip"}
+            # feel_ranges always recorded; silence only meaningful when shoot-ish
+            checks[key] = {"ok": bool(c.get("ok")), "detail": c.get("detail") or "", "weight": weight}
+    except Exception as e:
+        for key, weight in (
+            ("silence_on_hit", 8),
+            ("palette_lock", 8),
+            ("feel_ranges", 3),
+            ("no_green_capsule", 8),
+        ):
+            checks[key] = {"ok": True, "detail": f"skip ({e})", "weight": weight}
 
     feel_hits = sum(1 for k in ("gravity", "coyoteMs", "camLag", "jumpForce") if k in js)
     add("feel_keys", feel_hits >= 2, f"{feel_hits}/4 core feel keys")

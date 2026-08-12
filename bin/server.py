@@ -521,6 +521,13 @@ class Handler(SimpleHTTPRequestHandler):
             if not target.is_dir():
                 return self._json(400, {"ok": False, "error": "not a folder"})
             return self._json(200, ops.quality_score(target))
+        if path.endswith("/taste"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            action = str(body.get("action") or body.get("taste") or "").strip()
+            if action not in ("keep", "tighter", "juice", "accept", "tight", "more-juice"):
+                return self._json(400, {"ok": False, "error": "action keep|tighter|juice"})
+            return self._json(200, ops.taste(target, action))
         if path.endswith("/new"):
             prompt = str(body.get("prompt") or body.get("name") or "new game").strip()
             name = slugify_project(str(body.get("name") or prompt[:48] or "new-game"))

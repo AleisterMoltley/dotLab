@@ -1,0 +1,22 @@
+[
+  {"id": "fps-neon", "brief": "neon skill fps dash ads hitstop waves", "genre": "fps", "min_score": 75},
+  {"id": "fps-alley", "brief": "rain alley drone hunter first person shooter", "genre": "fps", "min_score": 75},
+  {"id": "arena-waves", "brief": "top down arena twin stick clear waves", "genre": "arena", "min_score": 75},
+  {"id": "platform-dusk", "brief": "tight platformer coyote jump dusk ledges", "genre": "platformer", "min_score": 75},
+  {"id": "platform-ice", "brief": "icy platformer snappy jumps crystals", "genre": "platformer", "min_score": 70},
+  {"id": "runner-neon", "brief": "endless neon runner dodge hazards", "genre": "runner", "min_score": 70},
+  {"id": "horror-street", "brief": "stealth horror dark street reach the door", "genre": "horror", "min_score": 65},
+  {"id": "adventure-village", "brief": "dusk village walk talk one NPC bark", "genre": "adventure", "min_score": 65},
+  {"id": "racing-gates", "brief": "hover racer hit gates coastal track", "genre": "racing", "min_score": 65},
+  {"id": "rpg-talk", "brief": "small rpg talk and collect in market", "genre": "rpg", "min_score": 65},
+  {"id": "tower-hold", "brief": "tower defense hold the bridge", "genre": "tower-defense", "min_score": 60},
+  {"id": "puzzle-blocks", "brief": "block puzzle push crates one room", "genre": "puzzle", "min_score": 60},
+  {"id": "de-fps-de", "brief": "ego shooter neon stadt drohnen dash", "genre": "fps", "min_score": 75},
+  {"id": "de-jump", "brief": "plattformer wald springen coyote", "genre": "platformer", "min_score": 70},
+  {"id": "slop-trap-capsule", "brief": "simple green capsule player on plane", "genre": "adventure", "min_score": 50, "note": "host must still ship themed slice not literal capsule"},
+  {"id": "slop-trap-purple", "brief": "purple mystical fog open world vibe", "genre": "adventure", "min_score": 50},
+  {"id": "seeker-offline", "brief": "seeker runner same three.js game offline loop", "genre": "runner", "min_score": 65},
+  {"id": "boss-wave", "brief": "fps three waves elite captain novelty", "genre": "fps", "min_score": 75},
+  {"id": "fair-death", "brief": "arena fair first death telegraph restart under 3s", "genre": "arena", "min_score": 75},
+  {"id": "juice-check", "brief": "shooter with hitstop screen shake hitmarker callouts", "genre": "fps", "min_score": 80}
+]

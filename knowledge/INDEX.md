@@ -39,6 +39,11 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 | `fun-first-design.md` | slim pointer at craft |
 | `studio-playbook.md` | which studio mode |
 | `quality-pipeline.md` | patch-only, director JSON, draft→max, best-of-N, RAG, LoRA pairs |
+| `anti-slop/fail-green-capsule.md` | FAIL gallery: capsule slop |
+| `anti-slop/fail-purple-fog.md` | FAIL gallery: purple fog |
+| `anti-slop/fail-silence-hit.md` | FAIL gallery: no juice on hit |
+| `anti-slop/fail-config-ones.md` | FAIL gallery: CONFIG 1/1/1 |
+| `anti-slop/fail-alert-dialogue.md` | FAIL gallery: alert() dialogue |
 | `live/LATEST.md` | auto npm versions |
 | `speed-without-quality-loss.md` | turbo philosophy (human + env docs; not auto-routed) |
 | `gap-analysis.md` | studio vs cloud gaps (human; not auto-routed) |

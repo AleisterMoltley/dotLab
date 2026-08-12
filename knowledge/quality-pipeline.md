@@ -60,7 +60,25 @@ gamemaster slots -p ./game --director-json path.json
 ```bash
 gamemaster golden
 gamemaster golden --json
+gamemaster golden --screenshots   # optional Playwright
+gamemaster eval-briefs            # 20 fixed briefs → host slice ship-rate
+gamemaster antislope check -p DIR
+gamemaster antislope taste -p DIR tighter|juice|keep
 ```
+
+## Anti-slop layer
+
+| Gate | Mechanism |
+|------|-----------|
+| Immutable craft/kits | write blocked on `src/craft/*`, `src/kits/*` |
+| Silence on hit | verify P0 for shoot loops |
+| Palette lock | reject purple/green fog on neon ship-bar |
+| Feel ranges | reject CONFIG 1/1/1 |
+| Format-on-write | Biome → Prettier → normalize |
+| Gallery RAG | `knowledge/anti-slop/*` injected into agent |
+| Taste buttons | Keep / Tighter / Juice (host, no LLM) |
+| Brief eval | `evals/briefs.json` + `eval-briefs` |
+| Screenshots | golden `--screenshots` + RGB histogram slop hints |
 
 ## Scoreboard (not tok/s)
 

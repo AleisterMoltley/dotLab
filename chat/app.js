@@ -33,7 +33,7 @@
   }
 
   function setProjectButtons(on) {
-    ["nowPlay", "nowShow", "nowTerm", "nowEditor", "nowZip", "nowVerify", "nowAgent", "nowDup", "nowRename", "nowDel",
+    ["nowPlay", "nowShow", "nowTerm", "nowEditor", "nowZip", "nowVerify", "nowKeep", "nowTighter", "nowJuice", "nowAgent", "nowDup", "nowRename", "nowDel",
       "toolPlay", "toolFolder", "toolDup", "toolDel", "toolEditor", "toolTerm", "toolZip", "toolVerify", "toolAgent"].forEach(function (id) {
       var el = $(id);
       if (el) el.disabled = !on;
@@ -87,7 +87,7 @@
     var hint = $("composerHint");
     if (hint) {
       hint.textContent = current.path
-        ? "Craft = instant · Deep = agent · Enter send"
+        ? "Craft · Keep/Tighter/Juice · Deep · Enter"
         : "Enter send · ⌘P play · ⌘N new";
     }
     if (!current.path) {
@@ -353,6 +353,27 @@
     });
   }
 
+  function runTaste(action) {
+    if (!current.path) {
+      toast("Select a project first");
+      return;
+    }
+    api("/api/projects/taste", { path: current.path, action: action }).then(function (d) {
+      if (!d || !d.ok) {
+        addMsg("bot", "Taste " + action + ": " + ((d && d.error) || "failed"));
+        return;
+      }
+      var sum = d.summary || (action + " applied");
+      addMsg("bot", "Taste · " + action + "\n" + sum);
+      toast(action + " ✓");
+      var frame = $("playFrame");
+      if (frame && frame.getAttribute("src")) {
+        frame.src = frame.getAttribute("src");
+      }
+      runVerify(current.path, true);
+    });
+  }
+
   function openTerminal(path) {
     if (!path) return;
     api("/api/projects/terminal", { path: path }).then(function (d) {
@@ -459,6 +480,9 @@
     return [
       { id: "play", label: "Play project", key: "⌘P", need: true, run: function () { playPath(current.path); } },
       { id: "verify", label: "Verify P0", key: "⌘⇧V", need: true, run: function () { runVerify(current.path); } },
+      { id: "keep", label: "Taste: Keep feel", key: "", need: true, run: function () { runTaste("keep"); } },
+      { id: "tighter", label: "Taste: Tighter", key: "", need: true, run: function () { runTaste("tighter"); } },
+      { id: "juice", label: "Taste: More juice", key: "", need: true, run: function () { runTaste("juice"); } },
       { id: "deep", label: "Deep agent…", key: "", need: true, run: function () { openSheet("agentSheet"); } },
       { id: "zip", label: "Export zip", key: "", need: true, run: function () { exportZip(current.path); } },
       { id: "ship", label: "Ship GitHub", key: "", need: false, run: function () {
@@ -690,6 +714,11 @@
       input.focus();
     });
   });
+  document.querySelectorAll("[data-taste]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      runTaste(btn.getAttribute("data-taste") || "keep");
+    });
+  });
   document.querySelectorAll("[data-craft]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       if (!current.path) return;
@@ -777,6 +806,9 @@
   bind("toolZip", function () { closeSheets(); if (current.path) exportZip(current.path); });
   bind("nowVerify", function () { if (current.path) runVerify(current.path); });
   bind("toolVerify", function () { closeSheets(); if (current.path) runVerify(current.path); });
+  bind("nowKeep", function () { runTaste("keep"); });
+  bind("nowTighter", function () { runTaste("tighter"); });
+  bind("nowJuice", function () { runTaste("juice"); });
   bind("toolTrash", function () { closeSheets(); showTrash(); });
   bind("trashClose", closeSheets);
   bind("btnPalette", openPalette);

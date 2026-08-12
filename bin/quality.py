@@ -43,6 +43,12 @@ PROTECTED_FULL_REPLACE = frozenset(
 )
 PROTECTED_MIN_LINES = 80  # below this, full replace still ok
 
+# Host craft/kits — never full-replace (anti-slop immutable)
+IMMUTABLE_PREFIXES = (
+    "src/craft/",
+    "src/kits/",
+)
+
 ALLOWED_NEW_PREFIXES = (
     "src/systems/",
     "src/player/",
@@ -51,7 +57,7 @@ ALLOWED_NEW_PREFIXES = (
     "src/ui/",
     "src/npc/",
     "src/weapons/",
-    "src/craft/",
+    "src/slots/",
 )
 
 # ── Patch grammar ───────────────────────────────────────────────────────
@@ -374,6 +380,19 @@ def _allowed_write_path(rel: str, *, is_new: bool) -> tuple[bool, str]:
 
 def apply_search_replace(project: Path, path: str, search: str, replace: str) -> dict[str, Any]:
     rel = path.strip().lstrip("./")
+    while rel.startswith("./"):
+        rel = rel[2:]
+    try:
+        import antislope as aslib
+
+        if aslib.is_immutable_path(rel):
+            return {
+                "ok": False,
+                "path": rel,
+                "error": f"immutable host kit ({rel})",
+            }
+    except Exception:
+        pass
     try:
         import security as seclib
 
@@ -401,6 +420,12 @@ def apply_search_replace(project: Path, path: str, search: str, replace: str) ->
     else:
         text = text.replace(search, replace, 1)
     dest.write_text(text, encoding="utf-8")
+    try:
+        import antislope as aslib
+
+        aslib.format_file(dest)
+    except Exception:
+        pass
     return {"ok": True, "path": rel, "mode": "search_replace"}
 
 
@@ -657,6 +682,18 @@ def apply_full_write(
     while rel.startswith("./"):
         rel = rel[2:]
     try:
+        import antislope as aslib
+
+        if aslib.is_immutable_path(rel) and not force:
+            return {
+                "ok": False,
+                "path": rel,
+                "error": f"immutable host kit ({rel}) — use src/systems/ or slots JSON",
+            }
+    except Exception:
+        if any(rel.startswith(p) for p in IMMUTABLE_PREFIXES) and not force:
+            return {"ok": False, "path": rel, "error": f"immutable: {rel}"}
+    try:
         import security as seclib
 
         sok, serr = seclib.write_allowed(project, rel)
@@ -702,6 +739,12 @@ def apply_full_write(
         except OSError:
             pass
     dest.write_text(content if content.endswith("\n") else content + "\n", encoding="utf-8")
+    try:
+        import antislope as aslib
+
+        aslib.format_file(dest)
+    except Exception:
+        pass
     return {"ok": True, "path": rel, "mode": "full"}
 
 

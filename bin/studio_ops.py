@@ -602,3 +602,24 @@ def quality_score(project: Path) -> dict[str, Any]:
         return {"ok": True, **qualitylib.score_project(project)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def taste(project: Path, action: str) -> dict[str, Any]:
+    """Dashboard Keep / Tighter / Juice — host only."""
+    from gmcommon import looks_like_game
+
+    project = project.expanduser().resolve()
+    if not looks_like_game(project):
+        return {"ok": False, "error": "not a game project"}
+    try:
+        import antislope as aslib
+
+        result = aslib.taste_action(project, action)
+        try:
+            cached_verify(project, force=True)
+        except Exception:
+            pass
+        session_note(project, "taste", action, {"ok": result.get("ok")})
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
