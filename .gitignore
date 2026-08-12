@@ -16,6 +16,7 @@ config/bench-latest.json
 config/warmup.log
 config/warmup.err
 config/active-profile.json
+config/worldclaw.json
 knowledge/live/*
 !knowledge/live/LATEST.md
 .gamemaster/

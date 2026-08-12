@@ -30,6 +30,7 @@ Start CONFIG: move 6.2 / accel 42 / friction 26 / grav 22–28 / jump 8.2 / coyo
 Place (light, fog=bg, scale) · Body (controller+spring cam) · Matter (capsule or Rapier) · Life (NPC or noun) · Voice (JSON dialogue, never alert) · Juice · Retry <3s · `__GF_PLAYTEST__`.
 
 Whole world = 2 biomes, 1 talk, 1 physics toy, 1 shader accent, 1 flag that changes the place.
+WorldClaw: `P=F_plan` → `T=F_terrain` → `O=F_region` → `Compose(T,O)`. Intent extracts only; plan completes. `--offline` if no Ollama.
 
 ## Engine
 

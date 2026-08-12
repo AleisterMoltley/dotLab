@@ -2,18 +2,22 @@
 
 Generate **explorable places**, not empty planes. Y-up, meters, 1 unit = 1 m.
 
-## WorldClaw pipeline (local)
+## WorldClaw pipeline (paper arXiv:2608.05248, local)
 
 ```
-prompt → spec P (regions, colors, landforms)
-      → heightfield T + scatter
-      → regional instances O (houses, NPCs, props) — separately editable
-      → contact refine (sink / float / overlap)
-assets: public/world/{spec,heightfield,instances,meta}.json
-run:    gamemaster worldclaw generate -p DIR "medieval village, snow peaks, desert"
+q  →  P = F_plan(q)           intent (explicit only) + scene plan (complete P)
+      T = F_terrain(P)        I_layout partition → Eq.6 height + code-native scatter
+      O = F_region(P, T)      R+ detail regions → place → contact seat
+      S = Compose(T, O)       public/world/{spec,layout,heightfield,instances,meta}.json
+run:  gamemaster worldclaw generate -p DIR "medieval village, snow peaks, desert"
+      gamemaster worldclaw generate --offline …   # heuristic F_plan, no Ollama
 ```
 
-Spec rules: 3–6 regions, distinct `terrain_type`, `center`/`radius` 0–1, `layout_color`, `material.color`, objects only on `detail_level: high`. Do not invent themes the prompt did not imply.
+P = (R, C_terrain, C_object). Intent must not invent biomes. Plan may complete counts, landforms, hex colors.
+
+Scatter = rocks/vegetation (code-native, paper “3D coding”). Houses/docks/ships = regional editable instances. Hunyuan/SAM/Blender are optional; without an `endpoint` in `config/worldclaw.json` we stay procedural.
+
+Spec rules: 3–6 regions, distinct `terrain_type`, `center`/`radius` 0–1, `layout_color`, `material.color`, objects on `detail_level: high`. Spatial `relation`: cluster | scatter | waterfront | ridge | compound.
 
 ## Terrain
 

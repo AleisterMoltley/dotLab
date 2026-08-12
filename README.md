@@ -77,6 +77,7 @@ gamemaster studio council -p ./my-game "tight arena shooter" --build --live
 # Generated open world
 gamemaster scaffold world-game --name Wilds
 gamemaster worldclaw generate -p ./Wilds "coastal village, pine ridge, desert canyon"
+gamemaster worldclaw generate --offline -p ./Wilds "snow village"
 
 # Live window only (play + watch file changes)
 gamemaster live -p ./my-game

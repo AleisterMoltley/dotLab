@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { composeWorld } from './world/loader.js';
+import { setInstanceDebug } from './world/instances.js';
 
 /** Explorable WorldClaw world — free-viewpoint walk (WASD + mouse). */
 export function createWorldGame() {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87a8c4);
-  scene.fog = new THREE.Fog(0x87a8c4, 40, 220);
+  const bg = 0x87a8c4;
+  scene.background = new THREE.Color(bg);
+  scene.fog = new THREE.Fog(bg, 40, 220);
 
   const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
   camera.position.set(0, 8, 16);
@@ -27,17 +29,35 @@ export function createWorldGame() {
   sun.shadow.camera.right = 80;
   sun.shadow.camera.top = 80;
   sun.shadow.camera.bottom = -80;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   scene.add(hemi, sun);
 
+  const CONFIG = {
+    moveSpeed: 14,
+    accel: 28,
+    friction: 18,
+    gravity: 28,
+    jumpForce: 9,
+    coyoteMs: 100,
+    camLag: 8,
+    mouseSens: 0.002,
+  };
+
   let terrainApi = null;
+  let instanceGroup = null;
   let yaw = 0;
   let pitch = -0.25;
   const player = { x: 0, y: 5, z: 0, vy: 0, onGround: false };
   const keys = Object.create(null);
-  const CONFIG = { moveSpeed: 14, gravity: 28, jumpForce: 9, mouseSens: 0.002 };
+  const _fwd = new THREE.Vector3();
+  const _right = new THREE.Vector3();
+  const _ideal = new THREE.Vector3();
 
-  addEventListener('keydown', (e) => { keys[e.code] = true; });
+  addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if (e.code === 'Digit1') setInstanceDebug(instanceGroup, false);
+    if (e.code === 'Digit2') setInstanceDebug(instanceGroup, true);
+  });
   addEventListener('keyup', (e) => { keys[e.code] = false; });
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
@@ -58,27 +78,21 @@ export function createWorldGame() {
     pitch = THREE.MathUtils.clamp(pitch - e.movementY * CONFIG.mouseSens, -1.2, 0.6);
   });
 
-  function updateCamera() {
-    const dist = 0.1;
-    camera.position.set(
-      player.x + Math.sin(yaw) * Math.cos(pitch) * -8,
-      player.y + 3.5 - pitch * 4,
-      player.z + Math.cos(yaw) * Math.cos(pitch) * -8
-    );
-    camera.lookAt(player.x, player.y + 1.2, player.z);
-  }
-
   function update(dt) {
     if (!terrainApi) return;
-    const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-    let mx = 0, mz = 0;
-    if (keys['KeyW'] || keys['ArrowUp']) { mx += fwd.x; mz += fwd.z; }
-    if (keys['KeyS'] || keys['ArrowDown']) { mx -= fwd.x; mz -= fwd.z; }
-    if (keys['KeyA'] || keys['ArrowLeft']) { mx -= right.x; mz -= right.z; }
-    if (keys['KeyD'] || keys['ArrowRight']) { mx += right.x; mz += right.z; }
+    _fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+    _right.set(Math.cos(yaw), 0, -Math.sin(yaw));
+    let mx = 0;
+    let mz = 0;
+    if (keys.KeyW || keys.ArrowUp) { mx += _fwd.x; mz += _fwd.z; }
+    if (keys.KeyS || keys.ArrowDown) { mx -= _fwd.x; mz -= _fwd.z; }
+    if (keys.KeyA || keys.ArrowLeft) { mx -= _right.x; mz -= _right.z; }
+    if (keys.KeyD || keys.ArrowRight) { mx += _right.x; mz += _right.z; }
     const len = Math.hypot(mx, mz);
-    if (len > 0) { mx = (mx / len) * CONFIG.moveSpeed * dt; mz = (mz / len) * CONFIG.moveSpeed * dt; }
+    if (len > 0) {
+      mx = (mx / len) * CONFIG.moveSpeed * dt;
+      mz = (mz / len) * CONFIG.moveSpeed * dt;
+    }
     player.x += mx;
     player.z += mz;
 
@@ -92,10 +106,15 @@ export function createWorldGame() {
     } else {
       player.onGround = false;
     }
-    if (player.onGround && keys['Space']) {
-      player.vy = CONFIG.jumpForce;
-    }
-    updateCamera();
+    if (player.onGround && keys.Space) player.vy = CONFIG.jumpForce;
+
+    _ideal.set(
+      player.x + Math.sin(yaw) * Math.cos(pitch) * -8,
+      player.y + 3.5 - pitch * 4,
+      player.z + Math.cos(yaw) * Math.cos(pitch) * -8,
+    );
+    camera.position.lerp(_ideal, 1 - Math.exp(-CONFIG.camLag * dt));
+    camera.lookAt(player.x, player.y + 1.2, player.z);
   }
 
   let last = performance.now();
@@ -114,8 +133,9 @@ export function createWorldGame() {
       const meta = metaRes.ok ? await metaRes.json() : {};
       const world = await composeWorld(scene);
       terrainApi = world.terrain;
+      instanceGroup = world.instanceGroup;
       player.y = terrainApi.sampleHeight(0, 0) + 2;
-      hud.innerHTML = `<strong>${meta.theme || 'WorldClaw World'}</strong><br><small>${meta.instance_count ?? '?'} instances · WASD move · click to look · Space jump</small>`;
+      hud.innerHTML = `<strong>${meta.theme || 'WorldClaw World'}</strong><br><small>${meta.instance_count ?? '?'} instances · WASD · click look · Space jump · 1 RGB / 2 instance</small>`;
       requestAnimationFrame(frame);
     } catch (err) {
       hud.textContent = `WorldClaw: ${err.message}`;
@@ -123,11 +143,16 @@ export function createWorldGame() {
     }
   }
 
-  window.__GF_PLAYTEST__ = window.__GF_PLAYTEST__ || {};
+  window.__GF_PLAYTEST__ = {
+    recordDeath() {},
+    recordRestart() {},
+    recordJump() {},
+  };
 
   return {
     start() { boot(); },
     scene,
+    CONFIG,
     get player() { return player; },
   };
 }

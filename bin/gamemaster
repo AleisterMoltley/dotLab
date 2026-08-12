@@ -29,7 +29,7 @@ gamemaster — local Three.js game studio (Ollama, $0)
 
   gamemaster [options] [prompt...]
   gamemaster scaffold web-game|world-game|pixel-game|seeker-app|seeker-game|shader-lab [--genre X]
-  gamemaster worldclaw generate -p DIR "medieval village, snow peaks"
+  gamemaster worldclaw generate -p DIR "medieval village, snow peaks" [--offline]
   gamemaster studio plan|build|council|review|parallel -p DIR "brief" [--playtest] [--live]
   gamemaster live -p DIR
   gamemaster playtest -p DIR [--critic] [--duration SEC]
