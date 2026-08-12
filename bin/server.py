@@ -22,6 +22,58 @@ PORT = int(os.environ.get("GAMEMASTER_PORT", "8765"))
 MODEL = os.environ.get("GAMEMASTER_MODEL", DEFAULT_MODEL)
 NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "65536"))
 
+_TAGS: dict = {"ts": 0.0, "names": [], "ok": False, "error": ""}
+
+
+def peek_ollama_tags(timeout: float = 2.0) -> dict:
+    """Fast Ollama probe — never block the UI for minutes."""
+    global _TAGS
+    try:
+        with urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=timeout) as r:
+            data = json.loads(r.read().decode())
+        names = [m.get("name") or "" for m in data.get("models") or []]
+        _TAGS = {"ts": time.time(), "names": names, "ok": True, "error": ""}
+    except Exception as e:
+        _TAGS = {
+            "ts": time.time(),
+            "names": list(_TAGS.get("names") or []),
+            "ok": False,
+            "error": str(e)[:160],
+        }
+    return _TAGS
+
+
+def has_model(names: list[str], model: str) -> bool:
+    return any(n == model or n.startswith(model + ":") for n in names)
+
+
+def health_payload() -> dict:
+    cloud = cloudlib.status_dict()
+    if cloud.get("enabled"):
+        return {
+            "ok": True,
+            "backend": "cloud",
+            "provider": cloud.get("provider") or "",
+            "model": cloud.get("model") or "",
+            "ollama": False,
+            "has_model": True,
+            "local": False,
+            "error": "",
+        }
+    tags = peek_ollama_tags(2.0)
+    names = tags.get("names") or []
+    found = has_model(names, MODEL)
+    return {
+        "ok": bool(tags.get("ok") and found),
+        "backend": "ollama",
+        "provider": "",
+        "model": MODEL,
+        "ollama": bool(tags.get("ok")),
+        "has_model": found,
+        "local": True,
+        "error": "" if found else (tags.get("error") or "model missing"),
+    }
+
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -152,15 +204,24 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         if self._github("GET"):
             return
-        if self.path.startswith("/api/cloud"):
+        path = urlparse(self.path).path
+        if path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
+        if path in ("/api/health", "/api/cloud"):
+            if path == "/api/health":
+                return self._json(200, health_payload())
             return self._json(200, cloudlib.status_dict())
-        if self.path.startswith("/api/tags"):
+        if path.startswith("/api/tags"):
             if cloudlib.active_provider():
                 st = cloudlib.status_dict()
                 name = st.get("model") or st.get("provider") or "cloud"
                 return self._json(200, {"models": [{"name": name, "cloud": True}]})
-            return self._proxy("/api/tags")
-        if self.path in ("/", "/index.html"):
+            tags = peek_ollama_tags(2.0)
+            models = [{"name": n} for n in (tags.get("names") or [])]
+            return self._json(200 if tags.get("ok") else 503, {"models": models, "error": tags.get("error") or ""})
+        if path in ("/", "/index.html"):
             self.path = "/index.html"
         return super().do_GET()
 
