@@ -34,6 +34,8 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/turbo.py" "$@" ;;
     live)
       shift; exec python3 "$ROOT/bin/live.py" "$@" ;;
+    worldclaw|world)
+      shift; exec python3 "$ROOT/bin/worldclaw.py" "$@" ;;
     github|gh)
       shift; exec python3 "$ROOT/bin/github.py" "$@" ;;
     wiki)
@@ -55,6 +57,7 @@ for a in "$@"; do
     -h|--help)
       echo "Usage: ./start | ./start --term | ./start studio build -p DIR 'brief'"
       echo "       ./start turbo warmup | ./start scaffold web-game --genre runner"
+      echo "       ./start worldclaw generate -p DIR 'biomes' | ./start verify -p DIR"
       exit 0
       ;;
     *) AGENT_ARGS+=("$a") ;;
