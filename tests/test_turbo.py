@@ -27,8 +27,9 @@ class TestRoute(unittest.TestCase):
 class TestKnowledge(unittest.TestCase):
     def test_core_always_present(self) -> None:
         k = turbo.select_knowledge("hello", max_chars=12000)
-        self.assertIn("craft-taste.md", k)
+        self.assertIn("brain.md", k)
         self.assertIn("game-systems.md", k)
+        self.assertIn("t=8s", k)
 
     def test_combat_pulls_juice(self) -> None:
         k = turbo.select_knowledge("third person village combat", max_chars=28000)

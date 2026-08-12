@@ -38,6 +38,8 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/github.py" "$@" ;;
     wiki)
       shift; exec python3 "$ROOT/bin/wiki.py" "$@" ;;
+    kit)
+      shift; exec python3 "$ROOT/bin/kit.py" "$@" ;;
     ship)
       shift; exec python3 "$ROOT/bin/github.py" ship "$@" ;;
   esac

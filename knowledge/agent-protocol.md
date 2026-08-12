@@ -31,6 +31,36 @@ cmd: npm test
 ```
 
 ```
+tool call kit
+action: todo_add
+text: tune gravity after first play
+```
+
+```
+tool call kit
+action: wiki_add
+fact: Gravity 28
+why: user said floaty
+```
+
+```
+tool call kit
+action: feel
+```
+
+```
+tool call kit
+action: art_test
+```
+
+```
+tool call read_file
+path: src/game.js
+start: 1
+end: 80
+```
+
+```
 tool call done
 summary: What was done and how to test
 ```

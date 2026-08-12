@@ -4,7 +4,11 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 
 | File | When |
 |------|------|
-| `craft-taste.md` | Always (core) — verb, juice stack, kill list |
+| `brain.md` | Always (core) — compressed Grok essence (law) |
+| `grok-loop.md` | extra loop detail (if routed) |
+| `craft-taste.md` | extra taste essays (if routed) |
+| `asset-core.md` | sprites, sheets, engine-ready defaults |
+| `tiles-ui.md` | seamless tiles, HUD, icon sets |
 | `pair-partner.md` | Always (core) — how to talk / iterate |
 | `game-systems.md` | Always (core) — file tree, loop, completeness |
 | `threejs-cheatsheet.md` | Always (core) — boot, imports, loops |

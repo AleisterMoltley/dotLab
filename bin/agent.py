@@ -41,10 +41,12 @@ key: value
 
 Tools:
 - list_dir  → path: .   oder path: src
-- read_file → path: src/main.js   (ALWAYS relative path including folders, z.B. src/foo.js)
+- read_file → path: src/main.js   optional start: N  end: M  (line range)
 - write_file → path: src/foo.js   and content: (full file contents)
 - search → query: regex
 - run → cmd: short safe command
+- kit → action: todo_add|todo_done|todo_list|wiki_add|map|art_test|feel
+         text:/fact:/why:/id: as needed
 - done → summary: what was done + how to test
 
 Game completeness when writing systems:
@@ -54,9 +56,9 @@ Game completeness when writing systems:
 - no `new THREE.Vector3()` in the loop · complete files · protect the verb
 
 Efficiency:
-1) One list_dir, then targeted read_file with full path (src/...)
-2) Write ALL required files in sequence (write_file), then done immediately
-3) Do not loop list_dir. No long prose between tools.
+1) kit todo_add the next 3 steps, then one list_dir, then targeted read_file
+2) Write required files (write_file), kit wiki_add durable facts, kit feel after a controller
+3) Do not loop list_dir. Use PROJECT MAP. No long prose between tools.
 4) Always include subfolders, never just "main.js" if file is under src/.
 
 Never invent file contents. English only in done summary.
@@ -191,7 +193,22 @@ def resolve_existing_file(project: Path, path: str) -> Path | None:
     return None
 
 
-def tool_read(project: Path, path: str) -> str:
+def _slice_lines(text: str, start: str | None, end: str | None) -> str:
+    lines = text.splitlines()
+    try:
+        a = max(1, int(start)) if start else 1
+    except ValueError:
+        a = 1
+    try:
+        b = int(end) if end else len(lines)
+    except ValueError:
+        b = len(lines)
+    b = min(len(lines), max(a, b))
+    chunk = "\n".join(lines[a - 1 : b])
+    return f"lines {a}-{b} / {len(lines)}\n{chunk}"
+
+
+def tool_read(project: Path, path: str, start: str | None = None, end: str | None = None) -> str:
     f = resolve_existing_file(project, path)
     if f is None:
         return f"ERROR: File missing: {path} — use list_dir and full path z.B. src/{path}"
@@ -202,8 +219,13 @@ def tool_read(project: Path, path: str) -> str:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         return "ERROR: binary file"
-    rel = f.relative_to(project)
-    return f"[path: {rel}]\n{text}"
+    root = project.resolve()
+    try:
+        rel = f.resolve().relative_to(root)
+    except ValueError:
+        rel = f.name
+    body = _slice_lines(text, start, end) if (start or end) else text
+    return f"[path: {rel}]\n{body}"
 
 
 def tool_write(project: Path, path: str, content: str) -> str:
@@ -288,13 +310,22 @@ def run_tool(project: Path, name: str, args: dict) -> str:
         if name == "list_dir":
             return tool_list_dir(project, args.get("path", "."))
         if name == "read_file":
-            return tool_read(project, args.get("path", ""))
+            return tool_read(
+                project,
+                args.get("path", ""),
+                start=args.get("start"),
+                end=args.get("end"),
+            )
         if name == "write_file":
             return tool_write(project, args.get("path", ""), args.get("content", ""))
         if name == "search":
             return tool_search(project, args.get("query", ""), args.get("glob", ""))
         if name == "run":
             return tool_run(project, args.get("cmd", ""))
+        if name == "kit":
+            import kit as kitlib
+
+            return kitlib.run_kit(project, args.get("action", ""), args)
         if name == "done":
             return args.get("summary", "done")
         return f"ERROR: unknown tool {name}"

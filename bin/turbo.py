@@ -42,7 +42,7 @@ TIERS = {
 
 # Knowledge packs by domain (order = priority, sizes capped in select)
 PACKS = {
-    "core": ["craft-taste.md", "pair-partner.md", "game-systems.md", "threejs-cheatsheet.md"],
+    "core": ["brain.md", "game-systems.md", "threejs-cheatsheet.md"],
     "three": ["threejs-advanced.md", "threejs-ecosystem.md"],
     "shader": ["shaders-glsl-tsl.md", "fragcoord-parity.md"],
     "game": ["feel-tables.md", "game-patterns.md", "game-genres.md"],
@@ -51,6 +51,7 @@ PACKS = {
     "combat": ["combat-juice.md", "feel-tables.md"],
     "dialogue": ["dialogue-narrative.md"],
     "anim": ["threejs-animation.md"],
+    "art": ["asset-core.md", "tiles-ui.md"],
     "seeker": ["solana-seeker.md"],
     "agent": ["agent-protocol.md"],
     "playtest": ["playtest-harness.md", "prefs-and-playtest.md", "pair-partner.md"],
@@ -64,7 +65,8 @@ ROUTES = [
     (r"ragdoll|rapier|cannon|collider|rigid.?body|softbody|cloth|vehicle|suspension|physics|physic", ["physics", "anim", "three", "core"]),
     (r"dialogue|dialog|npc|quest|narrative|bark|conversation|ink |typewriter|story beat", ["dialogue", "world", "game", "core"]),
     (r"worldclaw|open.?world|terrain|biome|heightfield|village|region|landmark|explorable", ["world", "physics", "three", "core"]),
-    (r"mixer|gltf|skinned|mixamo|crossfade|root motion|ik\b|animation clip", ["anim", "three", "core"]),
+    (r"mixer|gltf|skinned|mixamo|crossfade|root motion|ik\b|animation clip", ["anim", "art", "three", "core"]),
+    (r"sprite|tileset|atlas|pixel art|icon set|art-test|texture", ["art", "anim", "core"]),
     (r"seeker|solana|mwa|wallet|seed.?vault|spl-token|anchor|dapp", ["seeker", "core", "game", "three"]),
     (r"playtest|metric|screenshot|critic|feel|coyote|juice|shake|hitstop", ["playtest", "combat", "game", "core"]),
     (r"platformer|runner|fps|tps|racing|rpg|card|idle|tower|genre|arena|horror|stealth|rhythm", ["game", "combat", "core", "three", "physics"]),

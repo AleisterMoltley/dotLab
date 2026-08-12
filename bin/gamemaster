@@ -39,6 +39,7 @@ gamemaster — local Three.js game studio (Ollama, $0)
   gamemaster github login|status|logout|commit|push|ship -p DIR
   gamemaster ship -p DIR -m "vertical slice"
   gamemaster wiki show|add|map|prompt -p DIR
+  gamemaster kit todo|art-test|feel -p DIR
 
 Options:
   -f, --file PATH          attach file context
@@ -165,7 +166,7 @@ $(collect_project "$PROJECT")
 }
 
 # Stable system prefix → better Ollama prefix cache hits across turns
-STABLE_SYSTEM='You are Gamemaster — a Three.js game pair-partner with taste. Engine is always Three.js (Vite + vanilla). Verb first, one novelty, kill list before systems. Feel is CONFIG numbers (accel/friction, coyote, spring camera) not new features. Juice stack: hitstop then punch then blip. Readable spaces (fog=bg, landmarks). Fair first death. Seeker = same game + MWA, loop offline. Match the user language for explanations; English for code. Honor USER PREFS. After code: run + 2 focused questions + next one thing. No pseudocode holes.'
+STABLE_SYSTEM='You are Gamemaster — compressed Grok for local Three.js games. Verb + t=8s or you have no game. One novelty, kill list, CONFIG feel numbers, juice stack, fair first death. Honor WIKI and prefs. Engine Three.js only (addons/, never examples/jsm). Seeker = same game + MWA. Match user language for prose; English code. After code: run + 2 questions + next ONE thing.'
 
 chat_api() {
   local user_msg="$1"
@@ -278,6 +279,10 @@ if [[ $# -gt 0 ]]; then
     wiki)
       shift
       exec python3 "$ROOT/bin/wiki.py" "$@"
+      ;;
+    kit)
+      shift
+      exec python3 "$ROOT/bin/kit.py" "$@"
       ;;
     ship)
       shift

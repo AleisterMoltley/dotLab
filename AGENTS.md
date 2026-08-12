@@ -29,7 +29,7 @@ Modelfile       baked Ollama system prompt
 | CLI flags / subcommands | `bin/gamemaster` then `start` if the same verb exists |
 | GitHub login / commit / push | `bin/github.py` + `chat/index.html` + `live/dashboard.html` |
 | Knowledge routing | `bin/turbo.py` (`PACKS`, `ROUTES`, `route_task`) |
-| Model identity / taste | `Modelfile` then `gamemaster update --modelfile` |
+| Model identity / taste | `knowledge/brain.md` + `Modelfile` then `gamemaster update --modelfile` |
 | New domain facts for the LLM | `knowledge/*.md` + add to `knowledge/INDEX.md` + `turbo.PACKS` |
 | Studio roles / pipeline | `bin/studio.py` (Director/Architect/Critic/pipelines) |
 | Agent tools | `bin/agent.py` (`parse_tools`, `run_tool`) |
@@ -39,6 +39,7 @@ Modelfile       baked Ollama system prompt
 | Chat server | `bin/server.py` + `chat/index.html` |
 | Prefs | `bin/prefs.py` |
 | Game wiki + file map (auto-loaded) | `bin/wiki.py` (`WIKI.md`, `MAP.md`) |
+| Grok kit (todos, feel audit, art-test) | `bin/kit.py` — also agent tool `kit` |
 | Install / PATH | `install.sh` |
 
 ## Invariants (do not break)
