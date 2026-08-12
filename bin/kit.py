@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Grok-style game kit — the tools used to *build* a slice, not just chat.
+Game kit — the tools used to *build* a slice, not just chat.
 
 CLI:
   gamemaster kit todo -p DIR
@@ -246,7 +246,7 @@ def run_kit(project: Path, action: str, args: dict | None = None) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Gamemaster game kit (Grok tools)")
+    ap = argparse.ArgumentParser(description="Gamemaster game kit")
     shared = argparse.ArgumentParser(add_help=False)
     shared.add_argument("-p", "--project", default=".", help="Game directory")
     sub = ap.add_subparsers(dest="cmd", required=True)

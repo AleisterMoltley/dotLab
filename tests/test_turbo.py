@@ -41,7 +41,7 @@ class TestKnowledge(unittest.TestCase):
         self.assertIn("feel-tables.md", k)
 
     def test_worldclaw_pulls_world(self) -> None:
-        k = turbo.select_knowledge("open world terrain biomes worldclaw", max_chars=28000)
+        k = turbo.select_knowledge("open world terrain biomes worlds generate", max_chars=28000)
         self.assertIn("world-building.md", k)
 
     def test_pixel_art_pulls_kit(self) -> None:

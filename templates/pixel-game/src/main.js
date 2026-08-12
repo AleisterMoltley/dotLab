@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { bakeCanvas } from './pixel/bake.js';
-import { layeredRect, disc } from './pixel/pixelart.js';
+import { layeredRect, disc } from './pixel/draw.js';
 import { spriteMesh, markCanvasDirty } from './pixel/three-bridge.js';
 
 const CONFIG = {

@@ -86,7 +86,7 @@ Do **not** dump a feature list. Build in this order:
 4. One physical toy (ragdoll death OR crate OR water shader)
 5. Save flags so the conversation changes once
 
-Use WorldClaw (`gamemaster worldclaw generate`) when they want generated open worlds.
+Use `gamemaster worlds generate` when they want generated open worlds.
 
 ## Anti-patterns
 - R3F unless the project is already React

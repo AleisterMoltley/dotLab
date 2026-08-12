@@ -1,15 +1,14 @@
 import * as THREE from 'three';
 
 /**
- * WorldClaw global terrain T — height field from I_layout (paper Eq. 6).
- * Vertex colors blend regional materials (same weights as the layout partition).
+ * Height-field terrain. Vertex colors follow the region layout.
  */
 export async function loadTerrain(scene) {
   const [hfRes, specRes] = await Promise.all([
     fetch('/world/heightfield.json'),
     fetch('/world/spec.json'),
   ]);
-  if (!hfRes.ok) throw new Error('Missing heightfield — run: gamemaster worldclaw generate');
+  if (!hfRes.ok) throw new Error('Missing heightfield — run: gamemaster worlds generate');
   const heightfield = await hfRes.json();
   const spec = specRes.ok ? await specRes.json() : { regions: [] };
 
@@ -50,7 +49,7 @@ export async function loadTerrain(scene) {
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
-  mesh.name = 'WorldClawTerrain';
+  mesh.name = 'Terrain';
   scene.add(mesh);
 
   const hasWater = (spec.regions || []).some((r) => r.terrain_type === 'water');
@@ -67,7 +66,7 @@ export async function loadTerrain(scene) {
     );
     water.rotation.x = -Math.PI / 2;
     water.position.y = 0.35;
-    water.name = 'WorldClawWater';
+    water.name = 'Water';
     scene.add(water);
   }
 

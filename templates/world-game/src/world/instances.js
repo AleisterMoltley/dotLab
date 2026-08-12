@@ -21,7 +21,7 @@ function makeMesh(inst) {
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = inst.id;
-  mesh.userData.worldclaw = { ...inst, editable: inst.editable !== false };
+  mesh.userData.world = { ...inst, editable: inst.editable !== false };
   mesh.userData.baseColor = inst.color || '#64748b';
   mesh.position.set(inst.position.x, inst.position.y, inst.position.z);
   mesh.rotation.y = inst.rotation_y || 0;
@@ -33,15 +33,14 @@ function makeMesh(inst) {
 }
 
 /**
- * Load editable instance-level assets O (WorldClaw §2.3).
- * Scatter batches as InstancedMesh; regional objects stay unique + editable.
+ * Load instances. Scatter is InstancedMesh; regional objects stay unique.
  */
 export async function loadInstances(scene, _terrain) {
   const res = await fetch('/world/instances.json');
   if (!res.ok) return { group: new THREE.Group(), instances: [] };
   const data = await res.json();
   const group = new THREE.Group();
-  group.name = 'WorldClawInstances';
+  group.name = 'Instances';
   const built = [];
 
   const scatter = data.filter((i) => i.kind === 'terrain_asset');
@@ -69,7 +68,7 @@ export async function loadInstances(scene, _terrain) {
     im.castShadow = true;
     im.receiveShadow = true;
     im.name = `scatter:${proto.category}`;
-    im.userData.worldclaw = { kind: 'terrain_asset', category: proto.category, count: list.length };
+    im.userData.world = { kind: 'terrain_asset', category: proto.category, count: list.length };
     list.forEach((inst, i) => {
       dummy.position.set(inst.position.x, inst.position.y, inst.position.z);
       dummy.rotation.set(0, inst.rotation_y || 0, 0);
@@ -99,7 +98,7 @@ export function setInstanceDebug(group, on) {
   group.traverse((obj) => {
     if (!obj.isMesh || !obj.material) return;
     if (obj.isInstancedMesh) {
-      obj.material.color.set(on ? '#f472b6' : (obj.userData.worldclaw?.category === 'pine' ? '#14532d' : '#57534e'));
+      obj.material.color.set(on ? '#f472b6' : (obj.userData.world?.category === 'pine' ? '#14532d' : '#57534e'));
       return;
     }
     const base = obj.userData.baseColor;

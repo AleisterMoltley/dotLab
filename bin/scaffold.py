@@ -569,7 +569,7 @@ tjc update   # keep knowledge + models current
 
 
 def scaffold_world_game(dest: Path, name: str) -> None:
-    """Copy explorable Three.js world template (WorldClaw-ready)."""
+    """Copy explorable Three.js world template."""
     src = TEMPLATES / "world-game"
     if not src.is_dir():
         raise SystemExit(f"Template missing: {src}")
@@ -599,13 +599,13 @@ def scaffold_world_game(dest: Path, name: str) -> None:
             f"""# {name}
 
 ## Engine
-Three.js (Vite) · WorldClaw-ready
+Three.js (Vite) · Worlds-ready
 
 ## Core loop
 Walk the world → talk to one NPC → change a flag → see the place react
 
 ## Backlog
-- [ ] `gamemaster worldclaw generate -p . "your biomes"`
+- [ ] `gamemaster worlds generate -p . "your biomes"`
 - [ ] Player controller + follow cam
 - [ ] One dialogue tree
 - [ ] Collision on terrain + houses
@@ -657,14 +657,14 @@ Walk the grove — baked sprites, live camera
 
 ## Backlog
 - [ ] Tune CONFIG feel
-- [ ] Bake more props with pixelart.js
+- [ ] Bake more props with draw.js
 - [ ] One juice FX (pxJelly on land)
 """,
         )
 
 
 def scaffold_shader_lab(dest: Path, name: str) -> None:
-    """Copy FragCoord-class multipass shader lab template."""
+    """Copy multipass shader lab template."""
     src = TEMPLATES / "shader-lab"
     if not src.is_dir():
         raise SystemExit(f"Template missing: {src}")
@@ -731,7 +731,7 @@ def main() -> int:
         "shader-lab": "Shader Lab",
     }[kind]
 
-    default_root = Path.home() / "GrokGameStudio" / "Projects"
+    default_root = Path.home() / "Gamemaster" / "Projects"
     dest = Path(args.out).expanduser() if args.out else default_root / slugify(name)
     if dest.exists() and any(dest.iterdir()):
         print(f"❌ Target not empty: {dest}", file=sys.stderr)
@@ -757,7 +757,7 @@ def main() -> int:
     if kind in ("web-game", "world-game", "pixel-game", "shader-lab"):
         print("   npm i && npm run dev")
         if kind == "world-game":
-            print(f'   gamemaster worldclaw generate -p "{dest}" "coastal village, pine ridge"')
+            print(f'   gamemaster worlds generate -p "{dest}" "coastal village, pine ridge"')
         if kind == "pixel-game":
             print("   # bake sprites in src/main.js — Three.js stays the engine")
     else:

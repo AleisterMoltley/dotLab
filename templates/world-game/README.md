@@ -1,17 +1,15 @@
-# WorldClaw World (Gamemaster)
+# Open world
 
-Local Three.js port of Tencent Hunyuan WorldClaw (arXiv:2608.05248):
-
-`P = F_plan(q)` → `T = F_terrain(P)` → `O = F_region(P, T)` → `S = Compose(T, O)`
+Prompt → regions → height field → editable instances. Walk it in the browser.
 
 ```bash
-gamemaster worldclaw generate -p . "medieval village with snow mountains and desert"
-# no Ollama: add --offline (heuristic plan)
+gamemaster worlds generate -p . "medieval village with snow mountains and desert"
+# no LLM: add --offline
 
 npm install
 npm run dev
 ```
 
-Walk: WASD + click to look. `1` appearance · `2` instance masks.
+WASD + click to look. `1` appearance · `2` instance colors.
 
-Assets in `public/world/` — regional objects are separately editable; scatter is instanced.
+Generated files live in `public/world/`. Regional objects are unique meshes; scatter is instanced.

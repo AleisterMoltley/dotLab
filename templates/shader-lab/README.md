@@ -1,6 +1,6 @@
-# Gamemaster Shader Lab (FragCoord-class)
+# Gamemaster Shader Lab
 
-Lokaler Multipass-GLSL-Editor — Features im Geist von [FragCoord.xyz](https://fragcoord.xyz/explore):
+Local multipass GLSL editor:
 
 - Live-Preview, hot reload (Ctrl/Cmd+Enter)
 - **Common + Buffer A–D + Image** multipass (ping-pong feedback)

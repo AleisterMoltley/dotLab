@@ -15,7 +15,7 @@ For **every** genre: Core Loop → Feel → Systems → Vertical Slice in <1 Ses
 ## 3. Third-Person Adventure / Open World
 - Loop: explore → interact → combat/puzzle → story beat
 - Systems: follow cam, interact prompts, inventory, quest flags, heightfield, NPCs
-- World: 2+ biomes, 1 landmark per region, WorldClaw when generated
+- World: 2+ biomes, 1 landmark per region, `worlds generate` when generated
 - Seeker: large interact button, simplified camera orbit
 
 ## 4. FPS

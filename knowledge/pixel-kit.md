@@ -4,7 +4,7 @@ Do **not** replace Three.js with a canvas game. Paint pixels offscreen, upload w
 
 ```js
 import { bakeCanvas } from './pixel/bake.js';
-import { layeredRect, makeBakedSprite } from './pixel/pixelart.js';
+import { layeredRect, makeBakedSprite } from './pixel/draw.js';
 import { spriteMesh } from './pixel/three-bridge.js';
 
 const PAL = { shadow: '#3a2414', body: '#8b5a2b', hilite: '#d4a574' };
@@ -21,10 +21,10 @@ scene.add(spriteMesh(hero, 16)); // 1m tall
 - Huge worlds: `new BakeScene({ width, height, chunkSize: 256, drawChunk, dynamic })` then `render(ctx, { viewport })`.
 - Always `imageSmoothingEnabled = false`. bake.js pins `colorSpace: 'srgb'`.
 
-## Vocab (pixelart.js)
+## Vocab (`draw.js`)
 `layeredRect` / `bevelRect` / `disc` / materials (`plankWood`, `metalPanel`, `stone`, `glass`) / tiles + `makeAutotile` / HUD bars / `makeBakedSprite(draw, { size, frames, rows, outline })`.
 
-## FX (pixelart-fx.js)
+## FX (`fx.js`)
 `pxWiggle` foliage, `pxShake` hit, `pxJelly` land, `pxGlitch` damage, `pxCracks` impact. Pass `cacheKey` + `frames: 16` when many instances share a sprite.
 
 ## Three.js

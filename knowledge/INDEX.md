@@ -4,8 +4,8 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 
 | File | When |
 |------|------|
-| `brain.md` | Always (core) — compressed Grok essence (law) |
-| `grok-loop.md` | extra loop detail (if routed) |
+| `brain.md` | Always (core) — craft law |
+| `session-loop.md` | extra loop detail (if routed) |
 | `craft-taste.md` | extra taste essays (if routed) |
 | `asset-core.md` | sprites, sheets, engine-ready defaults |
 | `tiles-ui.md` | seamless tiles, HUD, icon sets |
@@ -18,14 +18,14 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 | `feel-tables.md` | genre numbers |
 | `game-patterns.md` | loop templates |
 | `game-genres.md` | genre → systems |
-| `world-building.md` | WorldClaw, terrain, biomes |
+| `world-building.md` | Worlds generator, terrain, biomes |
 | `readable-spaces.md` | first room, landmarks, light |
 | `physics-ragdoll.md` | arcade / Rapier / ragdoll |
 | `combat-juice.md` | frames, AI states, juice module |
 | `dialogue-narrative.md` | JSON trees, flags, UI |
 | `threejs-animation.md` | mixer, IK-lite, Mixamo |
 | `shaders-glsl-tsl.md` | GLSL / Shadertoy / TSL |
-| `fragcoord-parity.md` | multipass lab |
+| `multipass.md` | multipass shader lab |
 | `solana-seeker.md` | MWA, Seeker UX, same Three.js game |
 | `agent-protocol.md` | tool-call format |
 | `playtest-harness.md` | metrics hooks |

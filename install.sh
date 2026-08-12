@@ -149,7 +149,7 @@ ln -sfn "$ROOT/bin/playtest.py" "$BIN_DIR/gamemaster-playtest"
 ln -sfn "$ROOT/bin/prefs.py" "$BIN_DIR/gamemaster-prefs"
 ln -sfn "$ROOT/bin/turbo.py" "$BIN_DIR/gamemaster-turbo"
 ln -sfn "$ROOT/bin/self-update.py" "$BIN_DIR/gamemaster-update"
-ln -sfn "$ROOT/bin/worldclaw.py" "$BIN_DIR/gamemaster-worldclaw"
+ln -sfn "$ROOT/bin/worlds.py" "$BIN_DIR/gamemaster-worlds"
 ln -sfn "$ROOT/bin/github.py" "$BIN_DIR/gamemaster-github"
 ok "CLI: gamemaster · gm"
 
@@ -186,7 +186,7 @@ ${GREEN}════════════════════════
   Chat:      gamemaster "Village slice: walk, NPC dialogue, ragdoll"
   Studio:    gamemaster studio build -p ./my-game "open-world village"
   Scaffold:  gamemaster scaffold world-game --name Wilds
-  World:     gamemaster worldclaw generate -p ./Wilds "coast + pines"
+  World:     gamemaster worlds generate -p ./Wilds "coast + pines"
   GitHub:    gamemaster github login && gamemaster ship -p ./Wilds
   Tests:     python3 tests/run.py
   Playtest:  gamemaster playtest -p ./my-game --critic

@@ -44,7 +44,7 @@ TIERS = {
 PACKS = {
     "core": ["brain.md", "game-systems.md", "threejs-cheatsheet.md"],
     "three": ["threejs-advanced.md", "threejs-ecosystem.md"],
-    "shader": ["shaders-glsl-tsl.md", "fragcoord-parity.md"],
+    "shader": ["shaders-glsl-tsl.md", "multipass.md"],
     "game": ["feel-tables.md", "game-patterns.md", "game-genres.md"],
     "world": ["world-building.md", "readable-spaces.md"],
     "physics": ["physics-ragdoll.md"],

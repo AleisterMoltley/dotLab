@@ -1,5 +1,5 @@
 {
-  "hunyuan3d": {
+  "mesh": {
     "enabled": false,
     "endpoint": ""
   }

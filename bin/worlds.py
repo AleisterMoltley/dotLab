@@ -1,22 +1,16 @@
 #!/usr/bin/env python3
 """
-Gamemaster WorldClaw — local Three.js port of Tencent Hunyuan WorldClaw.
+Gamemaster Worlds — generate an explorable Three.js open world from a prompt.
 
-Paper (arXiv:2608.05248, project: tencent-hunyuan.github.io/Hunyuan3D-WorldClaw):
+    plan     → regions, terrain, objects
+    terrain  → layout map + height field + scatter
+    populate → place buildings/props, seat to ground
+    compose  → public/world/*.json for the world-game template
 
-    P = F_plan(q)                 # intent analysis + scene planning
-    T = F_terrain(P)              # layout map + height field + scatter
-    O = F_region(P, T)            # regional plan + place + contact refine
-    S = Compose(T, O)
+Intent extracts only what the prompt said. Plan fills the rest.
+Offline heuristic when no LLM is available.
 
-Local adaptation (no Blender / SAM3 / GPT-Image / H20):
-  - Intent + plan: Ollama when available, heuristic otherwise.
-  - Terrain: semantic layout partition + Eq. 6 height field (stdlib).
-  - Scatter: code-native prototypes (paper: scatter via 3D coding).
-  - Regional objects: procedural placeholders; optional HTTP mesh endpoint.
-  - Refinement: geometric contact + object–terrain co-seat (no render MCP).
-
-Do not store API keys. Copy config/worldclaw.example.json → worldclaw.json.
+Copy config/worlds.example.json → worlds.json for an optional mesh HTTP endpoint.
 """
 from __future__ import annotations
 
@@ -38,11 +32,11 @@ from typing import Any
 from cloud import active_provider, chat as llm_chat
 from gmcommon import DEFAULT_MODEL, OLLAMA, ROOT, ollama_up as gm_ollama_up
 
-CONFIG_PATH = ROOT / "config" / "worldclaw.json"
-EXAMPLE_CONFIG = ROOT / "config" / "worldclaw.example.json"
+CONFIG_PATH = ROOT / "config" / "worlds.json"
+EXAMPLE_CONFIG = ROOT / "config" / "worlds.example.json"
 GRID = 128
 
-# Paper §2.2.3 geomorphic operators G_r,j
+# Landform operators (peak, dune, terrace, erosion)
 GEOMORPH = {
     "peak": lambda nx, nz, t: math.exp(-((nx**2 + nz**2) / 0.08)) * 25,
     "dune": lambda nx, nz, t: math.sin(nx * 8 + t) * math.cos(nz * 6 + t * 0.7) * 6,
@@ -93,13 +87,13 @@ PROCEDURAL_SHAPES = {
     "default": {"geometry": "box", "size": [2, 2, 2], "color": "#64748b"},
 }
 
-INTENT_SYSTEM = """You are the WorldClaw INTENT ANALYSIS agent (paper §2.1).
+INTENT_SYSTEM = """You are the Gamemaster world intent agent.
 Extract ONLY constraints the user stated. Do not invent biomes, objects, or style.
 Reply with one JSON object:
 {"theme":"","style":"","atmosphere":"","season":"","mentioned_terrain":[],"mentioned_objects":[],"spatial":"","explicit":[]}
 Empty strings / empty lists when not stated. No prose."""
 
-PLAN_SYSTEM = """You are the WorldClaw SCENE PLANNING agent (paper §2.1).
+PLAN_SYSTEM = """You are the Gamemaster world planning agent.
 Complete a full scene specification P = {regions, terrain, objects} from the prompt + intent.
 Intent listed what the user said; you may complete missing attributes downstream needs.
 Rules:
@@ -110,7 +104,7 @@ Rules:
 - Do not drop explicit user constraints.
 Reply with one ```json block. English keys only."""
 
-REFINE_SYSTEM = """You are the WorldClaw object-refinement agent (paper §2.3.3).
+REFINE_SYSTEM = """You are the Gamemaster world refinement agent.
 Return JSON adjustments only:
 {"instances":[{"id":"...","position":{"x":0,"y":0,"z":0},"rotation_y":0,"scale":1}],"notes":""}
 Fix floating (lower y), penetration (raise y), wrong scale, bad facing.
@@ -394,7 +388,7 @@ def fbm(x: float, z: float, seed: int, octaves: int = 4) -> float:
 
 
 def build_layout_map(spec: dict, n: int = GRID) -> dict:
-    """I_layout — color-coded partition (paper §2.2.2). Voronoi weighted by radius."""
+    """Color-coded region partition. Voronoi weighted by radius."""
     regions = spec.get("regions") or []
     if not regions:
         regions = [{"id": "plain", "center": {"x": 0.5, "z": 0.5}, "radius": 0.5, "layout_color": "#3d6a32"}]
@@ -416,7 +410,7 @@ def build_layout_map(spec: dict, n: int = GRID) -> dict:
 
 
 def _soft_masks(layout: dict, spec: dict, passes: int = 4) -> dict[str, list[float]]:
-    """Boundary-smoothed normalized weights m̃_r (paper Eq. 6)."""
+    """Boundary-smoothed normalized region weights."""
     n = layout["size"]
     ids = [r["id"] for r in spec.get("regions") or []]
     if not ids:
@@ -450,7 +444,7 @@ def _region_by_id(spec: dict) -> dict[str, dict]:
 
 
 def build_heightfield(spec: dict, layout: dict, seed: int = 42) -> dict:
-    """H(x) = Σ_r m̃_r(x) [h_r + Σ w N + Σ α G]  (paper Eq. 6)."""
+    """Composite height: base elevation + noise + landform, blended by region."""
     scale = float(spec.get("world_scale", 256))
     n = layout["size"]
     passes = int((spec.get("terrain") or {}).get("blend_passes") or 4)
@@ -518,7 +512,7 @@ def height_at(wx: float, wz: float, spec: dict, heightfield: dict) -> tuple[floa
 
 
 def scatter_terrain_assets(spec: dict, heightfield: dict, seed: int) -> list[dict]:
-    """Global terrain assets only — rocks / vegetation / attachments (paper §2.2.3)."""
+    """Global terrain assets only — rocks, vegetation, attachments."""
     scatter_cfg = (spec.get("terrain") or {}).get("assets") or spec.get("terrain_scatter") or []
     density_map = {"low": 0.0007, "medium": 0.0018, "high": 0.004}
     instances: list[dict] = []
@@ -582,7 +576,7 @@ def _pick_shape(category: str) -> dict:
 
 
 def select_detail_regions(spec: dict, heightfield: dict) -> list[dict]:
-    """R+ — regions whose terrain can support requested functions (paper §2.3.1)."""
+    """Regions whose terrain can support requested functions."""
     chosen = []
     for region in spec.get("regions") or []:
         level = str(region.get("detail_level", "medium")).lower()
@@ -724,7 +718,7 @@ def detect_contact_issues(instances: list[dict], spec: dict, heightfield: dict) 
 
 
 def seat_instance(inst: dict, spec: dict, heightfield: dict) -> None:
-    """Object–terrain co-seat (paper §2.3.3 terrain refine, local only)."""
+    """Seat an object on the height field (no float / no bury)."""
     p = inst["position"]
     ground, _ = height_at(p["x"], p["z"], spec, heightfield)
     sy = inst.get("size", [2, 2, 2])[1] * inst.get("scale", 1)
@@ -779,14 +773,14 @@ def stage_region(spec: dict, heightfield: dict, model: str | None, seed: int, re
 
 # --- Optional mesh endpoint (no secrets) ---
 
-def hunyuan_generate(prompt: str, config: dict) -> bytes | None:
+def fetch_mesh(prompt: str, config: dict) -> bytes | None:
     """Optional user HTTP endpoint. POST {prompt} → GLB bytes. Never reads API keys."""
-    api = config.get("hunyuan3d") or {}
+    api = config.get("mesh") or config.get("hunyuan3d") or {}
     if not api.get("enabled"):
         return None
     endpoint = str(api.get("endpoint") or "").strip()
     if not endpoint:
-        print("  ℹ hunyuan3d.enabled but no endpoint — procedural placeholders")
+        print("  ℹ mesh.enabled but no endpoint — procedural placeholders")
         return None
     req = urllib.request.Request(
         endpoint,
@@ -844,8 +838,7 @@ def emit_world(
     meta = {
         "prompt": prompt,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "engine": "gamemaster-worldclaw",
-        "paper": "arXiv:2608.05248",
+        "engine": "gamemaster-worlds",
         "stages": ["F_plan", "F_terrain", "F_region", "Compose"],
         "theme": spec.get("theme"),
         "style": spec.get("style"),
@@ -855,7 +848,7 @@ def emit_world(
         "instance_count": len(instances),
         "has_water": any(r.get("terrain_type") == "water" for r in spec.get("regions") or []),
     }
-    wc = project / ".gamemaster" / "worldclaw"
+    wc = project / ".gamemaster" / "worlds"
     write_json(wc / "spec.json", spec)
     write_json(wc / "layout.json", layout)
     write_json(wc / "heightfield.json", hf)
@@ -895,7 +888,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         os.environ["GAMEMASTER_CLOUD"] = args.cloud
     model = None if args.offline or not llm_ready() else args.model
     spec = stage_plan(args.prompt, model)
-    out = Path(args.out) if args.out else Path.cwd() / "worldclaw-spec.json"
+    out = Path(args.out) if args.out else Path.cwd() / "worlds-spec.json"
     write_json(out, spec)
     return 0
 
@@ -926,7 +919,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
             livelib.start_live(project, open_browser=True)
             livelib.emit(
-                f"WorldClaw: {prompt[:120]}",
+                f"Worlds: {prompt[:120]}",
                 role="system",
                 phase="world",
                 headline="World generated",
@@ -941,7 +934,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Gamemaster WorldClaw — paper pipeline, local Three.js")
+    ap = argparse.ArgumentParser(description="Gamemaster Worlds — prompt to explorable Three.js world")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p_gen = sub.add_parser("generate", help="P → T → O → Compose into a Three.js world")

@@ -5,7 +5,7 @@ Gamemaster STUDIO — Multi-agent production (local, $0).
 Roles + pipelines live here. Coder is bin/agent.py. Play window is bin/live.py.
 Do not add a second orchestrator.
 
-Roles (consult + execute), inspired by Cursor/Codex multi-agent + Grok design taste:
+Roles (consult + execute):
 
   🎬 Director   — fun-first design, pillars, vertical slice
   🏗️ Architect  — modules, files, data flow, tech choices

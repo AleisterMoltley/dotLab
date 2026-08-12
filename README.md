@@ -1,49 +1,37 @@
 # Gamemaster
 
-**Local, free, Three.js game-world studio.**  
-Whole worlds · physics / ragdoll · dialogue · shaders · Solana Seeker games · $0 forever.
+Local Three.js game studio. One prompt → a playable slice. Worlds, physics, dialogue, shaders, Solana Seeker. **$0** on [Ollama](https://ollama.com). Paid cloud models are optional and off until you turn them on.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 
-Gamemaster is an open-source local AI toolchain for **shipping playable Three.js games**, not generic chat. The local model is trained-in-prompt as a game-world engineer: places, bodies, physics, ragdoll, dialogue trees, and shaders. Solana Seeker games are the **same Three.js game** plus Mobile Wallet Adapter. Runs on [Ollama](https://ollama.com) (no cloud credits).
+Gamemaster is not a generic chatbot. It is a toolchain that **ships games**: a game-tuned local model, a four-role studio, file agents, a world generator, scaffolds, playtest, and `ship` to GitHub.
 
-> Inspired by workflows from cloud agents (plan → implement → review) and game-first design — fully offline on your machine.
+## What you get
 
-## Features
-
-| Area | What you get |
-|------|----------------|
-| **Models** | `gamemaster` (Qwen3-Coder 30B MoE) + `gamemaster-dense` (32B) + 7B flash — **Three.js game-tuned system prompt** |
-| **Studio** | Director · Architect · Coder · Critic · Council (best-of-N) |
-| **Agent** | File tools: list / read / write / search / run |
-| **Worlds** | WorldClaw: prompt → regions → heightfield → editable instances |
-| **Systems** | Physics (arcade / Rapier), ragdoll, dialogue trees, animation, shaders |
-| **Scaffolds** | Web game, open world, pixel grove (Canvas2D bake → Three.js quads), Solana Seeker app/game, Shader Lab |
-| **Playtest** | Playwright headless run + screenshots + metrics |
-| **Prefs** | Learns your feel (tight jumps, mobile-first, …) |
-| **Turbo** | Routes knowledge packs (world / physics / dialogue / shader / Seeker) |
-| **Update** | Self-update models + live package versions |
-| **GitHub** | Browser login · commit · create repo · push (`gamemaster ship`) |
-| **Wiki + map** | `WIKI.md` / `MAP.md` auto-loaded into Studio, Agent, and CLI |
-| **Kit** | Grok build tools: todos, feel audit, art-test, wiki_add (agent + CLI) |
-| **Verify** | Deterministic slice grade (no LLM). P0 fail blocks `done` and forces repair |
-| **Cloud (opt-in)** | Grok / Claude / OpenAI / Gemini — **off until you turn it on** |
-
-## For humans and AIs working in this repo
-
-Read **[AGENTS.md](AGENTS.md)** first (where to edit, invariants, cheap tests).
-
-```bash
-python3 tests/run.py        # ~1s, no Ollama — run after every patch
-```
+| Piece | What it does |
+|-------|----------------|
+| **Models** | `gamemaster` (Qwen3-Coder 30B MoE) and `gamemaster-dense` (32B), plus a 7B flash tier |
+| **Studio** | Director → Architect → Coder → Critic. Council votes on pitches |
+| **Agent** | Reads and writes files in your game (`list` / `read` / `write` / `search` / `run`) |
+| **Worlds** | Prompt → regions → height field → editable instances you can walk |
+| **Pixel** | Bake sprites on Canvas2D, stamp them as nearest-filter quads in Three.js |
+| **Shaders** | Multipass GLSL lab, Shadertoy import |
+| **Seeker** | Same Three.js game + Mobile Wallet Adapter |
+| **Playtest** | Playwright headless run, screenshots, metrics |
+| **Kit** | Todos, feel audit, art-test, wiki, verify |
+| **Verify** | Deterministic slice grade. P0 fail blocks `done` |
+| **GitHub** | Login, commit, private repo, push (`gamemaster ship`) |
+| **Cloud** | Grok / Claude / OpenAI / Gemini — **opt-in only** |
 
 ## Requirements
 
-- macOS or Linux (Apple Silicon recommended, 32GB+ RAM ideal)
-- [Ollama](https://ollama.com)
-- Node.js 18+ (scaffolds + playtest)
-- Python 3.10+
-- ~40GB disk for dual models (optional smaller profiles)
+- macOS or Linux (Apple Silicon recommended)
+- **32 GB RAM** for the 30B + 32B pair. 16 GB can run `--14b` or `--7b`
+- [Ollama](https://ollama.com) (install the app, leave it running)
+- [Node.js](https://nodejs.org) 18+ (scaffolds and playtest)
+- Python 3.10+ (stdlib only — no `pip install`)
+- Disk: ~40 GB for `--dual`, ~20 GB for `--max`, much less for `--14b` / `--7b`
+- Optional: [GitHub CLI](https://cli.github.com) (`brew install gh`) to ship games
 
 ## Install
 
@@ -51,37 +39,86 @@ python3 tests/run.py        # ~1s, no Ollama — run after every patch
 git clone https://github.com/AleisterMoltley/gamemaster.git
 cd gamemaster
 chmod +x install.sh start bin/*
-./install.sh --dual    # MoE 30B + dense 32B (best on 48GB)
-# ./install.sh --max   # MoE only
-# ./install.sh --14b   # lighter
+./install.sh --dual
 ```
 
-Add CLI to PATH (install does this if possible):
+`install.sh` pulls the Ollama models, builds the `gamemaster` / `gamemaster-dense` tags from `Modelfile`, and puts `gamemaster` on `~/.local/bin`.
+
+### Profiles
+
+| Flag | Models | When |
+|------|--------|------|
+| `--dual` | 30B MoE + 32B dense + 7B flash | Best quality. 48 GB unified memory is comfortable |
+| `--max` | 30B MoE + 7B | Default coding, no dense critic |
+| `--14b` | qwen2.5-coder:14b | 16–24 GB machines |
+| `--7b` | qwen2.5-coder:7b | Laptops, flash-only |
+
+If `~/.local/bin` is not on your PATH:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
-# or always:
+# or:
 alias gamemaster="$PWD/bin/gamemaster"
 ```
 
-## Quick start
+Check:
 
 ```bash
-# One-shot chat
-gamemaster "Third-person village slice: walk, talk to an NPC, ragdoll on death"
+gamemaster -h
+python3 tests/run.py      # ~2s, no Ollama
+./start                   # browser chat (needs Ollama running)
+```
 
-# Multi-agent studio
-gamemaster studio plan -p ./my-game "one-thumb juiciness runner"
-gamemaster studio build -p ./my-game "open-world village vertical slice" --live
-gamemaster studio council -p ./my-game "tight arena shooter" --build --live
+Open **Ollama.app** before the first chat. On Apple Silicon, `install.sh` already writes Metal-friendly env into `config/ollama-env.sh`. You can `source` it in a long session:
 
-# Generated open world
+```bash
+source ./config/ollama-env.sh
+gamemaster turbo warmup
+```
+
+## First game (five minutes)
+
+```bash
+# 1. Empty Three.js world you can walk
 gamemaster scaffold world-game --name Wilds
-gamemaster worldclaw generate -p ./Wilds "coastal village, pine ridge, desert canyon"
-gamemaster worldclaw generate --offline -p ./Wilds "snow village"
+cd Wilds
 
-# Live window only (play + watch file changes)
-gamemaster live -p ./my-game
+# 2. Fill it from a sentence (no LLM: add --offline)
+gamemaster worlds generate -p . "coastal village, pine ridge, desert canyon"
+
+# 3. Play
+npm install
+npm run dev
+```
+
+WASD to walk, click to look, Space to jump. `1` / `2` toggle appearance vs instance colors.
+
+Then iterate:
+
+```bash
+gamemaster -p . --agent "Add an NPC with a three-node dialogue tree"
+gamemaster studio build -p . "one quest: talk, flip a flag, the dock lights up" --live
+```
+
+`--live` opens the Play window. The game stays up while files change.
+
+## Commands
+
+```bash
+# Chat (one shot)
+gamemaster "Third-person village: walk, talk, ragdoll on death"
+
+# Studio
+gamemaster studio plan    -p DIR "brief"
+gamemaster studio build   -p DIR "brief" --live
+gamemaster studio council -p DIR "brief" --build --live
+gamemaster studio review  -p DIR "what is weak"
+gamemaster studio parallel -p DIR "brief"
+
+# Worlds
+gamemaster worlds generate -p DIR "biomes…"
+gamemaster worlds generate --offline -p DIR "snow village"
+gamemaster worlds plan "canyon settlement" -o spec.json
 
 # Scaffolds
 gamemaster scaffold web-game --genre platformer --name Skyjump
@@ -90,186 +127,161 @@ gamemaster scaffold pixel-game --name Grove
 gamemaster scaffold seeker-game --genre idle --name ClaimQuest
 gamemaster scaffold shader-lab --name NeonFrag
 
-# Agent edits your project
-gamemaster -p ./Skyjump --agent "Add collectibles and score HUD"
+# Agent (needs -p)
+gamemaster -p ./Skyjump --agent "Add collectibles and a score HUD"
 
-# Playtest + prefs
-gamemaster playtest -p ./Skyjump --critic
+# Play / measure
+gamemaster live -p DIR
+gamemaster playtest -p DIR --critic
+gamemaster verify -p DIR
+
+# Memory
 gamemaster prefs set like "tight jumps"
-gamemaster prefs set feel.jump tight
-gamemaster prefs show
+gamemaster wiki add -p DIR "Gravity 28" --why "user said floaty"
+gamemaster kit todo -p DIR --add "first fair death"
+gamemaster kit feel -p DIR
+gamemaster kit pixel -p DIR      # copy lib/pixel into src/pixel
 
-# Speed
+# GitHub
+gamemaster github login
+gamemaster ship -p ./Wilds -m "vertical slice"
+
+# Speed / updates
 gamemaster turbo warmup
 gamemaster turbo bench
-source ./config/ollama-env.sh
+gamemaster update --modelfile
 
-# GitHub — sign in once, then ship any game
+# Optional paid model (does nothing until you opt in)
+gamemaster cloud status
+gamemaster cloud on grok
+gamemaster --cloud claude "Tighten coyote time"
+gamemaster cloud off
+```
+
+`./start` is the same CLI plus a browser chat UI. `./start studio build -p DIR "brief"` works.
+
+## Studio
+
+| Mode | Use when |
+|------|----------|
+| **plan** | Design + architecture only |
+| **build** | Full Director → Architect → Coder → Critic → fix |
+| **council** | Three pitches, vote, optional build |
+| **parallel** | Player / world / UI streams, then merge |
+| **review** | Roast an existing project |
+
+Build and parallel open the Play window by default (`--no-live` to skip). `--playtest` adds a headless Playwright pass after the build.
+
+## Worlds
+
+`gamemaster worlds generate` turns a sentence into a walkable Three.js scene.
+
+1. **Intent** — only what you said (no invented biomes)
+2. **Plan** — 3–6 regions, landforms, materials, object lists
+3. **Terrain** — layout map, composite height field, rock/tree scatter
+4. **Populate** — houses, docks, animals; seat them on the ground
+5. **Compose** — writes `public/world/{spec,layout,heightfield,instances,meta}.json`
+
+`--offline` skips the LLM and uses the built-in planner. Output is always the same file layout, so `npm run dev` just works.
+
+## Pixel games
+
+Three.js stays the engine. Sprites are baked on Canvas2D, then uploaded as nearest-filter quads.
+
+```bash
+gamemaster scaffold pixel-game --name Grove
+cd Grove && npm i && npm run dev
+```
+
+Vocab lives in `lib/pixel/` (`bake.js`, `draw.js`, `fx.js`, `three-bridge.js`). `gamemaster kit pixel -p DIR` copies that kit into an existing game.
+
+## Shader lab
+
+```bash
+gamemaster scaffold shader-lab --name NeonFrag
+cd NeonFrag && npm i && npm run dev
+```
+
+Multipass fragment buffers, Shadertoy import, no cloud.
+
+## Solana Seeker
+
+A Seeker game is the **same Three.js loop** plus Mobile Wallet Adapter. Scaffold `seeker-app` (wallet shell) or `seeker-game` (wallet + game slot). The loop must work with the wallet disconnected.
+
+## GitHub
+
+```bash
+brew install gh
 gamemaster github login
-gamemaster ship -p ./Wilds -m "open-world village slice"
-
-# Browser UI
-./start
+gamemaster ship -p ./Wilds -m "vertical slice"
 ```
 
-## Studio modes
-
-| Mode | Command | Use when |
-|------|---------|----------|
-| **plan** | `studio plan -p DIR "…"` | Design + architecture only |
-| **build** | `studio build -p DIR "…"` | Full Director→Architect→Coder→Critic→Fix |
-| **council** | `studio council -p DIR "…" --build` | 3 pitches → vote → optional build |
-| **parallel** | `studio parallel -p DIR "…"` | player / world / ui streams |
-| **review** | `studio review -p DIR "…"` | Roast existing project |
-
-### Play while it builds (built-in)
-
-**You do not start the game separately.** Studio **build/parallel** open a **Play window** by default:
-
-- Full game canvas inside Gamemaster (click to capture keyboard/mouse — shooters, WASD, etc.)
-- AI activity log in a side drawer
-- File updates apply live (or queue while you play if you turn Auto-update off)
-- Stays open after the build so you can keep testing
-
-```bash
-gamemaster studio build -p ./my-shooter "arena shooter vertical slice"
-# Play window opens automatically
-
-gamemaster live -p ./my-shooter          # play surface only
-gamemaster studio build -p ./x "…" --no-live   # disable if needed
-```
-
-Add `--playtest` for headless Playwright metrics after build (separate from human play).
-
-## GitHub (login · commit · push)
-
-Sign in once with the [GitHub CLI](https://cli.github.com) (`brew install gh`). Gamemaster opens the browser, then can create a repo and push the game.
-
-```bash
-gamemaster github login          # browser / device code
-gamemaster github status
-gamemaster github commit -p ./Wilds -m "first walk"
-gamemaster github push -p ./Wilds
-gamemaster ship -p ./Wilds -m "vertical slice"   # commit + create private repo + push
-gamemaster github logout
-
-# Wiki + map (auto-injected into studio/agent)
-gamemaster wiki add -p ./Wilds "Gravity 28" --why "user said floaty"
-gamemaster wiki map -p ./Wilds
-gamemaster kit todo -p ./Wilds --add "first fair death"
-gamemaster kit feel -p ./Wilds
-gamemaster kit art-test -p ./Wilds
-gamemaster kit pixel -p ./Wilds      # vendor lib/pixel into src/pixel
-```
-
-- Default new repos are **private**. Pass `--public` to publish.
-- New games get a `.gitignore` (no `node_modules`, `.env`, `.gamemaster`).
-- Chat UI and the Play window have a **GitHub / Ship** button that uses the same flow.
-- Tokens stay in the `gh` keyring — Gamemaster never writes a PAT to disk.
+New repos are **private** unless you pass `--public`. Tokens stay in the `gh` keyring. `config/github.json` is gitignored.
 
 ## Optional paid models
 
-Default is local Ollama ($0). A key in your environment does **not** switch you over.
+Default is local Ollama. A key in your environment does **not** switch you over.
 
 ```bash
 export XAI_API_KEY=…          # or ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
-gamemaster cloud status
-gamemaster cloud on grok      # persist: use Grok until you turn it off
-gamemaster cloud off          # back to local
-
-# one shot, no persist
-gamemaster --cloud grok "Tighten the jump feel"
-gamemaster studio build -p ./Wilds "village slice" --cloud claude
+gamemaster cloud on grok      # persist until cloud off
+gamemaster --cloud grok "…"   # one shot, no persist
+gamemaster cloud off
 ```
 
-Keys prefer the env var. `gamemaster cloud set grok --key …` stores a copy in `config/cloud.json` (gitignored, mode 0600). Custom OpenAI-compatible endpoints: `cloud set openrouter --base https://openrouter.ai/api/v1 --model anthropic/claude-sonnet-4.5 --key-env OPENROUTER_API_KEY`.
+Keys prefer the env var. `cloud set grok --key …` writes `config/cloud.json` (gitignored, mode 0600). Custom OpenAI-compatible endpoints are supported (`--base`).
 
-## Architecture
+## Layout
 
 ```
 gamemaster/
-  AGENTS.md              Map for humans + AIs (read first)
-  Modelfile              Three.js game-world system prompt
-  install.sh             Pull models + create gamemaster / gamemaster-dense
-  bin/gmcommon.py        Shared ROOT / Ollama / gitignore / slugify
-  bin/gamemaster         Main CLI
+  AGENTS.md              How to patch this repo (humans + AIs)
+  install.sh             Models + PATH
+  Modelfile              Game-tuned system prompt
+  start                  Browser chat / command dispatcher
+  bin/gamemaster         CLI
+  bin/gmcommon.py        Shared paths, Ollama helpers
   bin/studio.py          Multi-agent production
-  bin/agent.py           Tool-using implementer
-  bin/scaffold.py        Project generators
-  bin/worldclaw.py       Open-world generator (spec → terrain → instances)
-  bin/github.py          Login / commit / push / ship
-  bin/playtest.py        Dev server + Playwright
-  bin/prefs.py           Preference memory
-  bin/turbo.py           Routing + warmup + bench
-  bin/self-update.py     Keep models/docs fresh
-  tests/                 Cheap suite (no Ollama)
-  bin/server.py + chat/  Local browser chat UI
-  knowledge/             Three.js game packs (worlds, physics, ragdoll, dialogue, shaders, Seeker)
-  lib/pixel/             Canvas2D bake + Three.js nearest-quad bridge
-  templates/shader-lab/  FragCoord-class multipass editor
-  templates/world-game/  Explorable WorldClaw world
-  templates/pixel-game/  Bake sprites, stamp as Three.js quads
-  playtest/              Playwright runner
-  config/                Ollama env, Continue snippet
+  bin/agent.py           File agent
+  bin/worlds.py          Open-world generator
+  bin/scaffold.py        Starters
+  bin/cloud.py           Optional paid providers
+  bin/github.py          Login / commit / ship
+  bin/kit.py             Todos, feel, art-test, pixel
+  bin/verify.py          Deterministic slice grade
+  knowledge/             Domain packs the model sees
+  lib/pixel/             Canvas2D → Three.js textures
+  templates/             world-game, pixel-game, shader-lab
+  tests/                 Cheap suite (no Ollama, no network)
+  chat/  live/           Browser UIs
 ```
 
-## Model tiers (Turbo)
+Working on the repo itself: read **[AGENTS.md](AGENTS.md)**, then `python3 tests/run.py`.
 
-| Tier | Default model | Role |
-|------|---------------|------|
-| **flash** | `qwen2.5-coder:7b` | Short Q&A, low latency |
-| **max** | `gamemaster` | Default coding (MoE) |
+## Model tiers
+
+| Tier | Default | Role |
+|------|---------|------|
+| **flash** | `qwen2.5-coder:7b` | Short Q&A |
+| **max** | `gamemaster` | Coding |
 | **dense** | `gamemaster-dense` | Hard refactors / critique |
 
-Override:
-
 ```bash
-gamemaster --tier dense "refactor entity system"
-gamemaster -m gamemaster-dense "security review"
+gamemaster --tier dense "refactor the entity system"
 ```
 
-## Editor integration
+Editor (Continue, etc.): `http://127.0.0.1:11434/v1` · key `ollama` · model `gamemaster`. See `config/README-editor.md`.
 
-Ollama OpenAI-compatible API:
+## Feel and completeness
 
-```
-Base URL:  http://127.0.0.1:11434/v1
-API Key:   ollama
-Model:     gamemaster
-```
-
-See `config/README-editor.md` and `config/continue-config.snippet.json`.
-
-## Philosophy
-
-1. **Playable first** — vertical slices, not feature laundry lists  
-2. **Three.js only** — worlds, physics, ragdoll, dialogue, shaders in one engine  
-3. **Fun-first design** — core verb, feel numbers, non-goals  
-4. **Seeker is the same game** — MWA on top, loop works offline  
-5. **Measure** — Playwright metrics + critic, not vibes alone  
-6. **Remember** — preference memory across sessions  
-7. **Fast without dumbing down** — route models + slim knowledge, keep max quality on code  
-
-## Benchmarks (honest)
-
-Cloud frontier models (Grok / Kimi K3) win raw scale. Gamemaster optimizes for:
-
-- Local latency (prefill + routing)
-- Game ship rate (studio + playtest)
-- Zero cost / privacy
-
-```bash
-gamemaster turbo bench   # writes config/bench-latest.json
-```
+A cube on a plane is a fail. A slice needs a place (light, fog = background), a body (accel/friction + spring camera), a verb at t=8s, and a fair first death. Feel lives in `CONFIG` numbers, not in comments. `gamemaster verify -p DIR` grades the slice without an LLM.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — [LICENSE](LICENSE). Copyright 2026 AleisterMoltley.
 
-## Credits
-
-Built for local game makers. Uses open weights via Ollama (Qwen coder family). Not affiliated with xAI, Moonshot, or Alibaba.
+Runtime: [Ollama](https://ollama.com) + Qwen coder weights, [Three.js](https://threejs.org). Optional cloud APIs are yours to enable.
 
 ---
 
-**Ship games. Pay $0. Stay offline when you want.**
+**Ship the game. Pay $0 unless you choose not to.**

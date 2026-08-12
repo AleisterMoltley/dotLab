@@ -1,6 +1,6 @@
 # Wiki
 
-- Engine is Three.js (Vite). World from WorldClaw `Compose(T, O)`. **Why:** paper Eq. 2.
-- Terrain vertex colors come from `I_layout` + region materials. **Why:** semantic layout is the shared partition.
-- Press 1 RGB / 2 instance masks. **Why:** paper diagnostic channels, local.
-- Generate: `gamemaster worldclaw generate -p . "prompt"` (`--offline` if no Ollama).
+- Engine is Three.js (Vite). World from `gamemaster worlds generate`. **Why:** one generator, one template.
+- Terrain vertex colors come from the region layout + materials. **Why:** biomes must read at a glance.
+- Press 1 appearance / 2 instance colors.
+- Offline: `gamemaster worlds generate --offline -p . "prompt"`.

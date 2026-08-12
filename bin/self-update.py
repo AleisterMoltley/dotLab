@@ -152,7 +152,7 @@ def update_knowledge_live() -> dict:
             f"# Live: FragCoord.xyz pulse\n\nfetched: {meta['fetched_at']}\n\n"
             "FragCoord remains the reference for multipass GLSL editors "
             "(uniforms, buffers, audio/keyboard, Shadertoy import, language convert).\n"
-            "Gamemaster implements parity via `scaffold shader-lab` + knowledge/fragcoord-parity.md.\n",
+            "Gamemaster implements multipass via `scaffold shader-lab` + knowledge/multipass.md.\n",
             encoding="utf-8",
         )
         meta["files"].append(out.name)
@@ -170,8 +170,8 @@ def update_knowledge_live() -> dict:
     if "mwa_version" in meta:
         lines.append(f"- @solana-mobile/mobile-wallet-adapter-protocol-web3js@{meta['mwa_version']}")
     lines.append("")
-    lines.append("Domains: three.js games, FragCoord-class shaders, Solana Seeker, all genres.")
-    lines.append("Full offline patterns: solana-seeker.md, shaders-glsl-tsl.md, fragcoord-parity.md, threejs-*.md.")
+    lines.append("Domains: three.js games, multipass shaders, Solana Seeker, all genres.")
+    lines.append("Full offline patterns: solana-seeker.md, shaders-glsl-tsl.md, multipass.md, threejs-*.md.")
     cheat.write_text("\n".join(lines) + "\n", encoding="utf-8")
     meta["files"].append("LATEST.md")
 

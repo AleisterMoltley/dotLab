@@ -9,7 +9,7 @@ npm run dev
 
 - Draw in `src/main.js` with `bakeCanvas` + `layeredRect` / `disc`
 - Upload with `spriteMesh` from `src/pixel/three-bridge.js`
-- Static silhouette once; eyes / juice / FX live (`pixelart-fx.js`)
+- Static silhouette once; eyes / juice / FX live (`fx.js`)
 
 ```bash
 gamemaster kit feel -p .

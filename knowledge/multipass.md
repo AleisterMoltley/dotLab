@@ -1,11 +1,8 @@
-# FragCoord.xyz Feature Parity Map (Gamemaster)
+# Multipass shader lab
 
-**Source studied:** https://fragcoord.xyz/explore  
-**What it is:** Browser GLSL shader editor — write, debug, multi-pass preview, convert languages, share gallery.
+Browser GLSL editor: write, debug, multi-pass preview, import Shadertoy, share.
 
-Gamemaster must **generate, explain, debug, and scaffold** all of the below at top-notch quality.
-
-## Core product surface (FragCoord)
+## Core product surface
 | Feature | Gamemaster capability |
 |---------|----------------------|
 | Live fragment preview | `scaffold shader-lab` + ShaderMaterial full-screen quad |

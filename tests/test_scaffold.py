@@ -19,7 +19,7 @@ class TestPixelScaffold(unittest.TestCase):
             self.assertTrue((dest / "src" / "main.js").is_file())
             self.assertTrue((dest / "src" / "pixel" / "three-bridge.js").is_file())
             self.assertTrue((dest / "src" / "pixel" / "bake.js").is_file())
-            self.assertTrue((dest / "src" / "pixel" / "pixelart.js").is_file())
+            self.assertTrue((dest / "src" / "pixel" / "draw.js").is_file())
             self.assertTrue((dest / "WIKI.md").is_file())
             self.assertTrue((dest / "DESIGN.md").is_file())
             html = (dest / "index.html").read_text(encoding="utf-8")

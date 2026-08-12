@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import worldclaw as wc
+import worlds as wc
 
 
 PROMPT = "medieval village with snow-capped mountains, a desert, and animals"
@@ -156,9 +156,9 @@ class TestPipelineOffline(unittest.TestCase):
             kinds = {i["kind"] for i in out["instances"]}
             self.assertIn("regional_object", kinds)
 
-    def test_hunyuan_disabled_is_none(self) -> None:
-        self.assertIsNone(wc.hunyuan_generate("rock", {}))
-        self.assertIsNone(wc.hunyuan_generate("rock", {"hunyuan3d": {"enabled": True, "endpoint": ""}}))
+    def test_mesh_disabled_is_none(self) -> None:
+        self.assertIsNone(wc.fetch_mesh("rock", {}))
+        self.assertIsNone(wc.fetch_mesh("rock", {"mesh": {"enabled": True, "endpoint": ""}}))
 
 
 if __name__ == "__main__":

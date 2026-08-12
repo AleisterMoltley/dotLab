@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { composeWorld } from './world/loader.js';
 import { setInstanceDebug } from './world/instances.js';
 
-/** Explorable WorldClaw world — free-viewpoint walk (WASD + mouse). */
+/** Explorable open world — free-viewpoint walk (WASD + mouse). */
 export function createWorldGame() {
   const scene = new THREE.Scene();
   const bg = 0x87a8c4;
@@ -135,10 +135,10 @@ export function createWorldGame() {
       terrainApi = world.terrain;
       instanceGroup = world.instanceGroup;
       player.y = terrainApi.sampleHeight(0, 0) + 2;
-      hud.innerHTML = `<strong>${meta.theme || 'WorldClaw World'}</strong><br><small>${meta.instance_count ?? '?'} instances · WASD · click look · Space jump · 1 RGB / 2 instance</small>`;
+      hud.innerHTML = `<strong>${meta.theme || 'Open world'}</strong><br><small>${meta.instance_count ?? '?'} instances · WASD · click look · Space jump · 1 RGB / 2 instance</small>`;
       requestAnimationFrame(frame);
     } catch (err) {
-      hud.textContent = `WorldClaw: ${err.message}`;
+      hud.textContent = `World: ${err.message}`;
       console.error(err);
     }
   }

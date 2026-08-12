@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "FragCoord-class multipass GLSL lab — Gamemaster",
+  "description": "Multipass GLSL lab — Gamemaster",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
