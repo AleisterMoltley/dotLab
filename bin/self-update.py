@@ -199,28 +199,24 @@ def pull_models(profile: str = "dual") -> None:
 
 
 def rebuild_modelfile_only() -> None:
-    """Re-apply Modelfile onto existing weights (no pull)."""
-    mf = ROOT / "Modelfile"
-    tmp = ROOT / "config" / ".Modelfile.apply"
-    text = mf.read_text(encoding="utf-8")
-    # keep FROM as-is; install.sh is what rebases the FROM line
-    tmp.write_text(text, encoding="utf-8")
-    print("  → ollama create gamemaster (Modelfile only)")
-    code, out = run(["ollama", "create", "gamemaster", "-f", str(tmp)], timeout=600)
-    print(out[-800:] if len(out) > 800 else out)
+    """Re-apply Modelfile onto existing weights (no pull) via intervene."""
+    print("  → gamemaster intervene --modelfile-only")
+    code, out = run(
+        [sys.executable, str(ROOT / "bin" / "intervene.py"), "--modelfile-only", "--no-warmup", "--no-smoke"],
+        timeout=900,
+    )
+    print(out[-1200:] if out and len(out) > 1200 else (out or ""))
     if code != 0:
-        print("  ⚠ ollama create gamemaster failed")
-    # dense if present
-    code2, tags = run(["ollama", "list"], timeout=20)
-    if "gamemaster-dense" in tags or "qwen2.5-coder:32b" in tags:
-        print("  → ollama create gamemaster-dense (Modelfile only)")
-        dense = text.replace("FROM qwen3-coder:30b", "FROM qwen2.5-coder:32b")
-        tmp.write_text(dense, encoding="utf-8")
-        run(["ollama", "create", "gamemaster-dense", "-f", str(tmp)], timeout=600)
-    try:
-        tmp.unlink()
-    except OSError:
-        pass
+        print("  ⚠ intervene modelfile failed — falling back to raw create")
+        mf = ROOT / "Modelfile"
+        tmp = ROOT / "config" / ".Modelfile.apply"
+        text = mf.read_text(encoding="utf-8")
+        tmp.write_text(text, encoding="utf-8")
+        run(["ollama", "create", "gamemaster", "-f", str(tmp)], timeout=600)
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
 
 
 def rebuild_custom(profile: str = "dual") -> None:

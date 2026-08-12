@@ -37,7 +37,10 @@ Modelfile       baked Ollama system prompt
 | New project starter | `bin/scaffold.py` + optional `templates/<name>/` |
 | Prompt → playable slice | `bin/slice.py` + `templates/web-slice/game.js` |
 | Instant continue (feel/counts/palette) | `bin/patch.py` — no LLM |
+| Install Grok into Ollama | `bin/intervene.py` · `gamemaster intervene` |
 | Grok decision tree | `knowledge/grok-craft.md` (core pack) |
+| Grok toolkit map | `knowledge/grok-toolkit.md` |
+| Three.js recipes | `knowledge/threejs-recipes.md` |
 | Pixel bake / sprite vocab | `lib/pixel/` + `knowledge/pixel-kit.md` + `templates/pixel-game/` |
 | World generation | `bin/worlds.py` + `templates/world-game/` |
 | Play-while-build | `bin/live.py` + `live/dashboard.html` |

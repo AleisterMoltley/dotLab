@@ -28,8 +28,9 @@ MAX_TOOL_OUT = 24_000
 MODEL = DEFAULT_MODEL
 
 SYSTEM_EXTRA = """
-You are in AGENT MODE with filesystem tools in the project root.
+You are in AGENT MODE — local Grok file tools against the project root.
 You implement **Three.js games** (Vite + vanilla). Seeker = same game + MWA.
+Host already handles feel/enemies/palette via patch — do not waste turns on numbers.
 
 IMPORTANT: Exactly ONE tool block per reply. Then wait for TOOL RESULT.
 

@@ -35,6 +35,7 @@ gamemaster — local Three.js game studio (Ollama, $0)
   gamemaster playtest -p DIR [--critic] [--duration SEC]
   gamemaster prefs show|set|forget|from-critic|prompt [-p DIR]
   gamemaster turbo status|warmup|bench
+  gamemaster intervene [--status|--warmup|--modelfile-only]
   gamemaster update [--quick|--knowledge|--modelfile]
   gamemaster github login|status|logout|commit|push|ship -p DIR
   gamemaster ship -p DIR -m "vertical slice"
@@ -66,6 +67,7 @@ Examples:
   gamemaster playtest -p ./game --critic
   gamemaster prefs set like "tight jumps"
   gamemaster turbo warmup
+  gamemaster intervene              # bake Grok craft into Ollama + env
   gamemaster github login
   gamemaster ship -p ./Wilds -m "open-world village slice"
   gamemaster cloud on grok
@@ -293,6 +295,14 @@ if [[ $# -gt 0 ]]; then
     turbo)
       shift
       exec python3 "$ROOT/bin/turbo.py" "$@"
+      ;;
+    intervene|install-local|grok-local)
+      shift
+      exec python3 "$ROOT/bin/intervene.py" "$@"
+      ;;
+    patch|craft)
+      shift
+      exec python3 "$ROOT/bin/patch.py" "$@"
       ;;
     update|self-update)
       shift

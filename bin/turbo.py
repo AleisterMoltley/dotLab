@@ -35,17 +35,18 @@ from gmcommon import DEFAULT_MODEL, DENSE_MODEL, KNOWLEDGE, OLLAMA, ROOT, ollama
 
 # Stable tier names → ollama tags
 TIERS = {
-    "flash": os.environ.get("GAMEMASTER_FLASH", "qwen2.5-coder:7b"),
+    # Prefer baked flash model (game system prompt); fall back to raw 7b
+    "flash": os.environ.get("GAMEMASTER_FLASH", "gamemaster-flash"),
     "max": DEFAULT_MODEL,
     "dense": DENSE_MODEL,
 }
 
 # Knowledge packs by domain (order = priority, sizes capped in select)
 PACKS = {
-    "core": ["grok-craft.md", "brain.md", "game-systems.md", "threejs-cheatsheet.md"],
-    "three": ["threejs-advanced.md", "threejs-ecosystem.md"],
+    "core": ["grok-craft.md", "grok-toolkit.md", "brain.md", "game-systems.md", "threejs-cheatsheet.md"],
+    "three": ["threejs-advanced.md", "threejs-recipes.md", "threejs-ecosystem.md"],
     "shader": ["shaders-glsl-tsl.md", "multipass.md"],
-    "game": ["feel-tables.md", "game-patterns.md", "game-genres.md"],
+    "game": ["feel-tables.md", "game-patterns.md", "game-genres.md", "threejs-recipes.md"],
     "world": ["world-building.md", "readable-spaces.md"],
     "physics": ["physics-ragdoll.md"],
     "combat": ["combat-juice.md", "feel-tables.md"],
@@ -107,7 +108,7 @@ def resolve_tier(tier: str) -> str:
     if any(n == want or n.startswith(want + ":") for n in avail):
         return want
     fallbacks = {
-        "flash": ["qwen2.5-coder:7b", "gamemaster", "qwen2.5-coder:14b"],
+        "flash": ["gamemaster-flash", "qwen2.5-coder:7b", "gamemaster", "qwen2.5-coder:14b"],
         "max": ["gamemaster", "qwen3-coder:30b", "qwen2.5-coder:14b", "qwen2.5-coder:7b"],
         "dense": [
             "gamemaster-dense",
@@ -199,7 +200,7 @@ def select_knowledge(prompt: str, max_chars: int = 14000) -> str:
     p = prompt.lower()
     # Only slim knowledge for true chit-chat (flash tier)
     if route_task(prompt).get("tier") == "flash":
-        max_chars = min(max_chars, 4000)
+        max_chars = min(max_chars, 5500)
     # continue / feel tweaks: tiny pack
     if re.search(r"\b(floaty|faster|slower|feel|enemy|enemies|gegner|jump|juice|hp)\b", p) and len(prompt) < 120:
         max_chars = min(max_chars, 3500)
@@ -241,16 +242,15 @@ def select_knowledge(prompt: str, max_chars: int = 14000) -> str:
 
 
 def ollama_env_exports() -> str:
-    """Shell exports for max Apple Silicon throughput."""
+    """Shell exports for max Apple Silicon throughput (game coding)."""
     return """
-# Gamemaster TURBO — source this before sessions
+# Gamemaster TURBO — game-coding defaults (Apple Silicon friendly)
 export OLLAMA_FLASH_ATTENTION=1
 export OLLAMA_KEEP_ALIVE=24h
-export OLLAMA_NUM_PARALLEL=2
-export OLLAMA_MAX_LOADED_MODELS=3
+export OLLAMA_NUM_PARALLEL=1
+export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KV_CACHE_TYPE=q8_0
 export OLLAMA_NUM_BATCH=512
-# Prefer Metal; avoid CPU thrash
 export OLLAMA_SCHED_SPREAD=false
 """.strip()
 

@@ -635,12 +635,12 @@ npm run dev
 
 def ask_system(project: Path | None, user_text: str) -> str:
     """Slim system prompt — prefill is the main local latency cost."""
-    craft = ""
-    for name in ("grok-craft.md", "brain.md"):
+    craft_parts: list[str] = []
+    for name, cap in (("grok-craft.md", 1600), ("threejs-recipes.md", 900), ("brain.md", 800)):
         bp = KNOWLEDGE / name
         if bp.is_file():
-            craft = bp.read_text(encoding="utf-8")[:2200]
-            break
+            craft_parts.append(bp.read_text(encoding="utf-8")[:cap])
+    craft = "\n\n".join(craft_parts)
     wiki = ""
     spec_txt = ""
     if project:

@@ -297,16 +297,54 @@ def try_patch(project: Path, text: str) -> dict[str, Any] | None:
     }
 
 
+def diagnose(project: Path) -> str:
+    """Grok completeness read of a project (no LLM)."""
+    import verify
+
+    project = project.expanduser().resolve()
+    lines = [f"# Craft diagnose · {project.name}", ""]
+    spec = load_spec(project)
+    if spec:
+        lines.append(f"- verb: {spec.get('verb')}")
+        lines.append(f"- genre/loop/camera: {spec.get('genre')} / {spec.get('loop')} / {spec.get('camera')}")
+        lines.append(f"- setting: {spec.get('setting')} ({spec.get('props')})")
+        feel = spec.get("feel") or {}
+        lines.append(
+            f"- feel: move {feel.get('moveSpeed')} grav {feel.get('gravity')} "
+            f"jump {feel.get('jumpForce')} hp {feel.get('hp')}"
+        )
+        lines.append(f"- counts: enemies {spec.get('enemyCount')} coins {spec.get('coinCount')}")
+    else:
+        lines.append("- no .gamemaster/slice.json (scaffold/patch not used yet)")
+    vr = verify.evaluate(project)
+    lines.append("")
+    lines.append(vr["report"])
+    if vr.get("ok"):
+        lines.append("")
+        lines.append("P0 OK. Next: play 30s, then tweak feel with patch (floaty / more enemies / neon).")
+    else:
+        lines.append("")
+        lines.append("Fix P0 only. Do not add features.")
+    return "\n".join(lines)
+
+
 def main() -> int:
     import argparse
 
-    ap = argparse.ArgumentParser(description="Instant craft patch")
+    ap = argparse.ArgumentParser(description="Instant craft patch / diagnose")
     ap.add_argument("-p", "--project", required=True)
-    ap.add_argument("text", nargs="+")
+    ap.add_argument("text", nargs="*", help="Craft instruction, or 'diagnose'")
     args = ap.parse_args()
-    result = try_patch(Path(args.project), " ".join(args.text))
+    project = Path(args.project)
+    text = " ".join(args.text).strip()
+    if not text or text.lower() in ("diagnose", "audit", "status"):
+        print(diagnose(project))
+        return 0
+    result = try_patch(project, text)
     if not result:
         print("NO_PATCH — needs LLM or unclear")
+        print("Try: floaty | faster | more enemies | neon | make it a platformer")
+        print("Or: gamemaster -p DIR --agent \"…\" for systems the host cannot patch")
         return 2
     print(result["summary"])
     print("written:", ", ".join(result.get("written") or []))

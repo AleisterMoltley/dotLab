@@ -31,19 +31,20 @@ for arg in "$@"; do
   esac
 done
 
+# Prefill dominates wall time — keep default ctx lean (raise per-call if needed)
 case "$PROFILE" in
-  max)      BASE_MODEL="qwen3-coder:30b"; CTX=65536 ;;
-  dense)    BASE_MODEL="qwen2.5-coder:32b"; CTX=65536 ;;
-  dual)     BASE_MODEL="qwen3-coder:30b"; CTX=65536 ;;
-  balanced) BASE_MODEL="qwen2.5-coder:14b"; CTX=32768 ;;
-  fast)     BASE_MODEL="qwen2.5-coder:7b"; CTX=32768 ;;
+  max)      BASE_MODEL="qwen3-coder:30b"; CTX=16384 ;;
+  dense)    BASE_MODEL="qwen2.5-coder:32b"; CTX=16384 ;;
+  dual)     BASE_MODEL="qwen3-coder:30b"; CTX=16384 ;;
+  balanced) BASE_MODEL="qwen2.5-coder:14b"; CTX=12288 ;;
+  fast)     BASE_MODEL="qwen2.5-coder:7b"; CTX=8192 ;;
 esac
 
 if [[ "${MEM_GB:-0}" -lt 24 && "$PROFILE" == "max" ]]; then
   warn "Under 24GB RAM — switching to 14B."
   PROFILE="balanced"
   BASE_MODEL="qwen2.5-coder:14b"
-  CTX=32768
+  CTX=12288
 fi
 
 if ! command -v ollama >/dev/null 2>&1; then
@@ -74,11 +75,11 @@ ok "API online"
 
 mkdir -p "$ROOT/config"
 cat > "$ROOT/config/ollama-env.sh" <<'ENV'
-# Gamemaster TURBO — source before heavy sessions
+# Gamemaster TURBO — game-coding defaults (Apple Silicon friendly)
 export OLLAMA_FLASH_ATTENTION=1
 export OLLAMA_KEEP_ALIVE=24h
-export OLLAMA_NUM_PARALLEL=2
-export OLLAMA_MAX_LOADED_MODELS=3
+export OLLAMA_NUM_PARALLEL=1
+export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KV_CACHE_TYPE=q8_0
 export OLLAMA_NUM_BATCH=512
 export OLLAMA_SCHED_SPREAD=false
@@ -115,11 +116,22 @@ ollama create "$CUSTOM" -f "$TMP_MF"
 rm -f "$TMP_MF"
 ok "Model: $CUSTOM"
 
+# Flash tier — short QA / routing (never final game alone)
+if [[ -f "$ROOT/Modelfile.flash" ]] && ollama list 2>/dev/null | awk '{print $1}' | grep -qE '^qwen2.5-coder:7b'; then
+  TMPF=$(mktemp)
+  sed -e "s|^FROM .*|FROM qwen2.5-coder:7b|" \
+      -e "s|^PARAMETER num_ctx .*|PARAMETER num_ctx 4096|" \
+      "$ROOT/Modelfile.flash" > "$TMPF"
+  ollama create gamemaster-flash -f "$TMPF"
+  rm -f "$TMPF"
+  ok "Flash: gamemaster-flash (7B)"
+fi
+
 if [[ "$PROFILE" == "dual" ]] || [[ "$PROFILE" == "dense" ]]; then
   if ollama list 2>/dev/null | awk '{print $1}' | grep -qE '^qwen2.5-coder:32b'; then
     TMP2=$(mktemp)
     sed -e "s|^FROM .*|FROM qwen2.5-coder:32b|" \
-        -e "s|^PARAMETER num_ctx .*|PARAMETER num_ctx 65536|" \
+        -e "s|^PARAMETER num_ctx .*|PARAMETER num_ctx ${CTX}|" \
         "$ROOT/Modelfile" > "$TMP2"
     ollama create gamemaster-dense -f "$TMP2"
     rm -f "$TMP2"
@@ -191,6 +203,7 @@ ${GREEN}════════════════════════
   Tests:     python3 tests/run.py
   Playtest:  gamemaster playtest -p ./my-game --critic
   Turbo:     gamemaster turbo warmup
+  Intervene: gamemaster intervene   # re-bake Grok craft into Ollama
 
   Profiles: ./install.sh --dual | --max | --dense | --14b | --7b
 ${GREEN}══════════════════════════════════════════════════════${NC}
