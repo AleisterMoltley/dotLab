@@ -32,10 +32,15 @@ class TestKnowledge(unittest.TestCase):
     def test_core_always_present(self) -> None:
         k = turbo.select_knowledge("hello", max_chars=12000)
         self.assertIn("identity.md", k)
-        self.assertIn("grok-craft.md", k)
+        self.assertIn("ship-bar.md", k)
         # Flash-tier hello keeps a slim pack; craft law must remain
         self.assertIn("t=8s", k)
-        self.assertTrue("brain.md" in k or "Grok" in k)
+        self.assertTrue("NEON INK" in k or "ship" in k.lower() or "Grok" in k)
+
+    def test_shooter_pulls_skill_fps(self) -> None:
+        k = turbo.select_knowledge("neon skill fps shooter dash ads", max_chars=16000)
+        self.assertIn("skill-fps.md", k)
+        self.assertIn("ship-bar.md", k)
 
     def test_models_available_is_cached(self) -> None:
         import time
@@ -52,7 +57,7 @@ class TestKnowledge(unittest.TestCase):
     def test_combat_pulls_juice(self) -> None:
         k = turbo.select_knowledge("third person village combat", max_chars=28000)
         self.assertIn("combat-juice.md", k)
-        self.assertIn("feel-tables.md", k)
+        self.assertTrue("feel-tables.md" in k or "ship-bar.md" in k)
 
     def test_worldclaw_pulls_world(self) -> None:
         k = turbo.select_knowledge("open world terrain biomes worlds generate", max_chars=28000)

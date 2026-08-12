@@ -14,6 +14,8 @@ from pathlib import Path
 import verify
 from gmcommon import GAME_GITIGNORE, KNOWLEDGE, ROOT, TEMPLATES, slugify_project
 
+CRAFT_LIB = ROOT / "lib" / "craft"
+
 _FENCE = re.compile(
     r"```(?:javascript|js|html|css|ts|mjs)?[ \t]*([a-zA-Z0-9_./-]+\.(?:js|mjs|html|css|ts))?[ \t]*\n(.*?)```",
     re.S,
@@ -76,19 +78,20 @@ _SETTING_RX: list[tuple[str, str, str]] = [
 ]
 
 _PALETTES: dict[str, dict] = {
+    # NEON INK locked tokens — ship bar palette (no drift)
     "neon": {
-        "bg": 0x050816,
-        "ground": 0x0a1024,
-        "grid": 0x1de0ff,
-        "player": 0x7af0ff,
-        "accent": 0xff2bd6,
-        "enemy": 0xff4d6d,
-        "building": 0x141a33,
-        "hemiSky": 0x4de4ff,
-        "hemiGround": 0x1a0830,
-        "sun": 0xff66cc,
-        "fogNear": 10,
-        "fogFar": 62,
+        "bg": 0x0A0612,
+        "ground": 0x12101C,
+        "grid": 0x00F0FF,
+        "player": 0xFF2BD6,
+        "accent": 0xFF2BD6,
+        "enemy": 0xB8FF00,
+        "building": 0x1C1235,
+        "hemiSky": 0xA8B8FF,
+        "hemiGround": 0x1A0A3E,
+        "sun": 0xFFE066,
+        "fogNear": 8,
+        "fogFar": 70,
     },
     "forest": {
         "bg": 0x0d1a12,
@@ -219,8 +222,22 @@ _CAMERA = {
 }
 
 _FEEL = {
-    "fps": dict(moveSpeed=6.5, accel=50, friction=30, gravity=26, jumpForce=7.8, coyoteMs=90, jumpBufferMs=80, jumpCut=0.45, camLag=10, camDist=0.1, camHeight=1.7, eyeHeight=1.7, fov=72, hp=3),
-    "arena": dict(moveSpeed=7.8, accel=46, friction=24, gravity=22, jumpForce=8.0, coyoteMs=90, jumpBufferMs=80, jumpCut=0.45, camLag=14, camDist=16, camHeight=16, eyeHeight=1.2, fov=50, hp=3),
+    # Skill-FPS bar (NEON INK feel extract)
+    "fps": dict(
+        moveSpeed=7.2, accel=52, friction=28, gravity=28, jumpForce=8.4,
+        coyoteMs=100, jumpBufferMs=90, jumpCut=0.42,
+        dashSpeed=22, dashMs=140, dashCdMs=700,
+        camLag=10, camDist=0.1, camHeight=1.62, eyeHeight=1.62,
+        fov=78, adsFov=62, mouseSens=0.002, fireRpm=480, damage=18,
+        spread=0.014, adsSpread=0.004, hitstopMs=40, shakeHit=0.14, hp=100,
+    ),
+    "arena": dict(
+        moveSpeed=7.8, accel=48, friction=26, gravity=24, jumpForce=8.0,
+        coyoteMs=90, jumpBufferMs=80, jumpCut=0.45,
+        dashSpeed=20, dashMs=120, dashCdMs=650,
+        camLag=14, camDist=16, camHeight=16, eyeHeight=1.2, fov=55, hp=100,
+        fireRpm=420, damage=16, spread=0.02, adsSpread=0.01,
+    ),
     "platformer": dict(moveSpeed=7.0, accel=48, friction=28, gravity=28, jumpForce=9.0, coyoteMs=110, jumpBufferMs=100, jumpCut=0.42, camLag=10, camDist=11, camHeight=3.2, eyeHeight=1.2, fov=58, hp=3),
     "runner": dict(moveSpeed=6.0, runSpeed=12, accel=40, friction=22, gravity=26, jumpForce=8.5, coyoteMs=100, jumpBufferMs=90, jumpCut=0.45, camLag=12, camDist=8, camHeight=3.4, eyeHeight=1.4, fov=60, hp=1),
     "racing": dict(moveSpeed=14, accel=28, friction=12, gravity=22, jumpForce=6.0, coyoteMs=80, jumpBufferMs=70, jumpCut=0.5, camLag=6, camDist=8.5, camHeight=3.2, eyeHeight=1.2, fov=62, hp=1),
@@ -336,11 +353,12 @@ def compile_prompt(prompt: str, genre: str | None = None) -> dict:
         "feel": feel,
         "seed": seed,
         "kind": infer_kind(text),
-        "enemyCount": 7 if loop == "shoot" else (1 if loop == "sneak" else 0),
+        "enemyCount": 8 if loop == "shoot" else (1 if loop == "sneak" else 0),
         "coinCount": 6 if loop in ("jump", "talk", "collect") else 0,
         "hazardCount": 8 if loop == "run" else 0,
         "density": 1.0,
         "juice": 1.0,
+        "shipBar": "neon-ink" if loop == "shoot" or g in ("fps", "arena") else "vertical-slice",
     }
     return spec
 
@@ -566,6 +584,18 @@ const game = createGame({{
 game.start();
 """,
     )
+    # Vendor Grok craft kit (NEON INK juice/audio/palette) into the project
+    if CRAFT_LIB.is_dir():
+        import shutil
+
+        dest_craft = dest / "src" / "craft"
+        if dest_craft.exists():
+            shutil.rmtree(dest_craft)
+        shutil.copytree(CRAFT_LIB, dest_craft)
+        for p in dest_craft.rglob("*"):
+            if p.is_file():
+                written.append(str(p.relative_to(dest)))
+
     put("src/game.js", render_game_js(spec))
     hexes = " ".join(
         f"{k}=#{v:06x}" for k, v in pal.items() if k not in ("fogNear", "fogFar")
@@ -583,6 +613,8 @@ Living facts for this game. One bullet + **Why:**. Loaded into every Studio/Agen
 - Loop: {spec["loop"]} · camera: {spec["camera"]}. **Why:** genre table.
 - Palette: {hexes}. **Why:** locked hexes, do not reroll.
 - Prompt: {spec["prompt"]}. **Why:** source of truth.
+- Ship bar: {spec.get("shipBar", "vertical-slice")} (NEON INK quality target for skill FPS). **Why:** local Grok must match pair-built games.
+- Craft modules: src/craft (palette, juice TimeJuice, audio sfx). **Why:** zero-asset juice stack.
 """,
     )
     put(

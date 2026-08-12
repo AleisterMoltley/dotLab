@@ -39,6 +39,8 @@ Modelfile       baked Ollama system prompt
 | Instant continue (feel/counts/palette) | `bin/patch.py` — no LLM |
 | Install Grok into Ollama | `bin/intervene.py` · `gamemaster intervene` |
 | **Grok identity (single source)** | `bin/identity.py` + `knowledge/identity.md` |
+| Ship bar (NEON INK) | `knowledge/ship-bar.md` + `lib/craft/` |
+| Skill FPS recipe | `knowledge/skill-fps.md` |
 | Grok decision tree | `knowledge/grok-craft.md` (core pack) |
 | Grok toolkit map | `knowledge/grok-toolkit.md` |
 | Three.js recipes | `knowledge/threejs-recipes.md` |

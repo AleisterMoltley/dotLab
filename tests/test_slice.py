@@ -64,11 +64,28 @@ class TestWriteSlice(unittest.TestCase):
             self.assertIn("IcosahedronGeometry", game)
             self.assertIn("requestPointerLock", game)
             self.assertIn("shoot drones", game)
+            # NEON INK ship bar systems
+            self.assertIn("TimeJuice", game)
+            self.assertIn("tryDash", game)
+            self.assertIn("hitmark", game)
+            self.assertIn("./craft/juice.js", game)
+            self.assertTrue((dest / "src" / "craft" / "juice.js").is_file())
+            self.assertTrue((dest / "src" / "craft" / "audio.js").is_file())
+            self.assertTrue((dest / "src" / "craft" / "palette.js").is_file())
             wiki = (dest / "WIKI.md").read_text(encoding="utf-8")
             self.assertIn("shooter futuristic", wiki)
+            self.assertIn("neon-ink", wiki)
             result = verify.evaluate(dest)
             self.assertEqual(result["p0_fail"], [], result["report"])
             self.assertTrue(result["ok"], result["report"])
+
+    def test_neon_palette_matches_ink(self) -> None:
+        spec = slicelib.compile_prompt("futuristic neon shooter")
+        self.assertEqual(spec["props"], "neon")
+        self.assertEqual(spec["palette"]["accent"], 0xFF2BD6)
+        self.assertEqual(spec["palette"]["enemy"], 0xB8FF00)
+        self.assertEqual(spec["feel"]["fov"], 78)
+        self.assertEqual(spec["feel"]["eyeHeight"], 1.62)
 
     def test_bad_model_does_not_clobber_slice(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

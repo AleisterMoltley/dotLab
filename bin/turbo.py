@@ -43,20 +43,21 @@ TIERS = {
 
 # Knowledge packs by domain (order = priority, sizes capped in select)
 PACKS = {
+    # Keep core short so domain packs (skill-fps, combat…) still fit prefill budget
     "core": [
         "identity.md",
+        "ship-bar.md",
         "grok-craft.md",
-        "grok-toolkit.md",
         "brain.md",
-        "game-systems.md",
-        "threejs-cheatsheet.md",
     ],
+    "systems": ["game-systems.md", "threejs-cheatsheet.md", "grok-toolkit.md"],
     "three": ["threejs-advanced.md", "threejs-recipes.md", "threejs-ecosystem.md"],
     "shader": ["shaders-glsl-tsl.md", "multipass.md"],
-    "game": ["feel-tables.md", "game-patterns.md", "game-genres.md", "threejs-recipes.md"],
+    "game": ["feel-tables.md", "game-patterns.md", "game-genres.md", "threejs-recipes.md", "ship-bar.md"],
+    "fps": ["feel-tables.md", "skill-fps.md", "ship-bar.md", "combat-juice.md"],
     "world": ["world-building.md", "readable-spaces.md"],
     "physics": ["physics-ragdoll.md"],
-    "combat": ["combat-juice.md", "feel-tables.md"],
+    "combat": ["feel-tables.md", "combat-juice.md"],
     "dialogue": ["dialogue-narrative.md"],
     "anim": ["threejs-animation.md"],
     "art": ["asset-core.md", "tiles-ui.md", "pixel-kit.md"],
@@ -72,7 +73,7 @@ _TAGS_CACHE: dict = {"ts": 0.0, "names": set()}
 # Keyword → pack ids (first match wins extra packs; all matches accumulate)
 ROUTES = [
     (r"shader|glsl|wgsl|tsl|fragcoord|shadertoy|raymarch|sdf|fbm|multipass|fragment|toon|water shader", ["shader", "core", "three"]),
-    (r"combat|enemy|melee|dash|knockback|hitstop|arena|boss|projectile|gun|sword", ["combat", "physics", "game", "core"]),
+    (r"combat|enemy|melee|dash|knockback|hitstop|arena|boss|projectile|gun|sword|shooter|fps|neon.?ink|hitscan|ads", ["fps", "combat", "physics", "game", "core"]),
     (r"ragdoll|rapier|cannon|collider|rigid.?body|softbody|cloth|vehicle|suspension|physics|physic", ["physics", "anim", "three", "core"]),
     (r"dialogue|dialog|npc|quest|narrative|bark|conversation|ink |typewriter|story beat", ["dialogue", "world", "game", "core"]),
     (r"worldclaw|open.?world|terrain|biome|heightfield|village|region|landmark|explorable", ["world", "physics", "three", "core"]),
@@ -216,13 +217,13 @@ def select_knowledge(prompt: str, max_chars: int = 14000) -> str:
         if re.search(rx, p, re.I):
             pack_ids.extend(ids)
     if not pack_ids:
-        pack_ids = ["core", "three", "game", "physics"]
+        pack_ids = ["core", "systems", "three", "game", "physics"]
     # whole-game briefs get the full systems stack
     if re.search(r"complete game|whole world|from scratch|vertical slice|studio build", p, re.I):
-        pack_ids.extend(["world", "physics", "dialogue", "anim", "shader"])
-    # always core first, unique preserve order
+        pack_ids.extend(["world", "physics", "dialogue", "anim", "shader", "systems"])
+    # always core first, then routed domain, then systems/live
     ordered: list[str] = []
-    for pid in ["core"] + pack_ids + ["live"]:
+    for pid in ["core"] + pack_ids + ["systems", "live"]:
         if pid not in ordered:
             ordered.append(pid)
 
