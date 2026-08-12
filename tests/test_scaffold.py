@@ -48,6 +48,25 @@ class TestPixelScaffold(unittest.TestCase):
             r = verify.evaluate(dest)
             self.assertEqual(r["p0_fail"], [], r["report"])
 
+    def test_vintage_game_gba_ceiling(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            dest = Path(raw) / "hand"
+            dest.mkdir()
+            scaffold.scaffold_vintage_game(dest, "Hand Quest", profile="gb")
+            self.assertTrue((dest / "src" / "game.js").is_file())
+            self.assertTrue((dest / "src" / "vintage" / "palettes.js").is_file())
+            pkg = (dest / "package.json").read_text(encoding="utf-8")
+            self.assertNotIn("three", pkg)
+            game = (dest / "src" / "game.js").read_text(encoding="utf-8")
+            self.assertIn("VINTAGE", game)
+            self.assertNotIn("from 'three'", game)
+            self.assertIn("240", game)  # ceiling constant in template
+            r = verify.evaluate(dest)
+            self.assertEqual(r["p0_fail"], [], r["report"])
+            self.assertTrue(r["ok"], r["report"])
+            self.assertIn("vintage_cap", r["checks"])
+            self.assertTrue(r["checks"]["vintage_cap"]["ok"])
+
     def test_lib_pixel_is_esm(self) -> None:
         lib = ROOT / "lib" / "pixel"
         self.assertTrue((lib / "index.js").is_file())

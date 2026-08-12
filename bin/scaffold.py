@@ -425,6 +425,27 @@ def scaffold_pixel_game(dest: Path, name: str, prompt: str | None = None, genre:
         print(f"  + {dest / rel}")
 
 
+def scaffold_vintage_game(
+    dest: Path,
+    name: str,
+    prompt: str | None = None,
+    genre: str | None = None,
+    profile: str | None = None,
+) -> None:
+    """Game Boy ship bar / GBA ceiling — pure Canvas2D vintage slice."""
+    import slice as slicelib
+
+    spec = slicelib.compile_prompt(
+        prompt or f"game boy {genre or 'adventure'} {name}",
+        genre=genre,
+        engine="vintage",
+        vintage_profile=profile,
+    )
+    spec["title"] = name
+    for rel in slicelib.write_vintage_slice(dest, spec):
+        print(f"  + {dest / rel}")
+
+
 def scaffold_shader_lab(dest: Path, name: str) -> None:
     """Copy multipass shader lab template."""
     src = TEMPLATES / "shader-lab"
@@ -461,6 +482,7 @@ def main() -> int:
             "web-game",
             "world-game",
             "pixel-game",
+            "vintage-game",
             "seeker-app",
             "seeker-game",
             "shader-lab",
@@ -474,8 +496,14 @@ def main() -> int:
     ap.add_argument(
         "--engine",
         default=None,
-        choices=["three", "pixel"],
-        help="Game engine: three (WebGL) or pixel (Canvas2D pixelart.js)",
+        choices=["three", "pixel", "vintage"],
+        help="three (WebGL) | pixel (Canvas2D) | vintage (GB…GBA ceiling)",
+    )
+    ap.add_argument(
+        "--vintage-profile",
+        default=None,
+        choices=["gb", "gbc", "gba"],
+        help="Vintage profile (default gb; never above gba)",
     )
     ap.add_argument(
         "--out",
@@ -494,6 +522,7 @@ def main() -> int:
         "web-game": f"Web {args.genre.title()}",
         "world-game": "World",
         "pixel-game": "Pixel Grove",
+        "vintage-game": "Handheld Quest",
         "seeker-app": "Seeker App",
         "seeker-game": f"Seeker {args.genre.title()}",
         "shader-lab": "Shader Lab",
@@ -508,11 +537,21 @@ def main() -> int:
 
     print(f"🎮 Scaffold {kind} → {dest}")
     if kind == "web-game":
-        scaffold_web_game(dest, name, args.genre, engine=args.engine or "three")
+        eng = args.engine or "three"
+        if eng == "vintage":
+            scaffold_vintage_game(
+                dest, name, genre=args.genre, profile=args.vintage_profile
+            )
+        else:
+            scaffold_web_game(dest, name, args.genre, engine=eng)
     elif kind == "world-game":
         scaffold_world_game(dest, name)
     elif kind == "pixel-game":
         scaffold_pixel_game(dest, name, genre=args.genre)
+    elif kind == "vintage-game":
+        scaffold_vintage_game(
+            dest, name, genre=args.genre, profile=args.vintage_profile
+        )
     elif kind == "seeker-app":
         scaffold_seeker_app(dest, name, genre=None)
     elif kind == "seeker-game":
@@ -522,12 +561,14 @@ def main() -> int:
 
     print("\n✅ Done.")
     print(f"   cd {dest}")
-    if kind in ("web-game", "world-game", "pixel-game", "shader-lab"):
+    if kind in ("web-game", "world-game", "pixel-game", "vintage-game", "shader-lab"):
         print("   npm i && npm run dev")
         if kind == "world-game":
             print(f'   gamemaster worlds generate -p "{dest}" "coastal village, pine ridge"')
         if kind == "pixel-game":
             print("   # pure Canvas2D · src/pixelart/pixelart.js + pixelart-fx.js")
+        if kind == "vintage-game":
+            print("   # Vintage: GB ship bar · GBA ceiling (no 3D, ≤240×160, ≤15 colors)")
     else:
         print("   npm i && npx expo start")
     print(f'   gamemaster -p "{dest}" --agent "Expand vertical slice"')

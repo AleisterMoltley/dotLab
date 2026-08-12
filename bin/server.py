@@ -539,20 +539,36 @@ class Handler(SimpleHTTPRequestHandler):
 
             engine_raw = str(body.get("engine") or "").strip().lower()
             kind = str(body.get("kind") or "auto")
+            vprof = str(body.get("vintageProfile") or body.get("vintage_profile") or "").strip().lower() or None
+            if vprof and vprof not in ("gb", "gbc", "gba"):
+                vprof = None
             # Map UI kind → engine
-            if kind == "pixel-game" or engine_raw == "pixel":
+            if kind == "vintage-game" or engine_raw == "vintage":
+                engine = "vintage"
+            elif kind == "pixel-game" or engine_raw == "pixel":
                 engine = "pixel"
             elif kind == "web-game" or engine_raw == "three":
                 engine = "three"
-            elif engine_raw in ("three", "pixel"):
+            elif engine_raw in ("three", "pixel", "vintage"):
                 engine = engine_raw
             else:
                 engine = None  # auto from prompt
             genre_opt = str(body.get("genre") or "").strip() or None
-            spec = slicelib.compile_prompt(prompt, genre=genre_opt, engine=engine)
+            spec = slicelib.compile_prompt(
+                prompt, genre=genre_opt, engine=engine, vintage_profile=vprof
+            )
             if kind in ("", "auto"):
                 kind = spec["kind"]
-            if kind == "pixel-game" or spec.get("engine") == "pixel":
+            if kind == "vintage-game" or spec.get("engine") == "vintage":
+                scaffoldlib.scaffold_vintage_game(
+                    dest,
+                    spec["title"],
+                    prompt=prompt,
+                    genre=spec.get("genre"),
+                    profile=(spec.get("vintage") or {}).get("profile") or vprof,
+                )
+                kind = "vintage-game"
+            elif kind == "pixel-game" or spec.get("engine") == "pixel":
                 scaffoldlib.scaffold_pixel_game(
                     dest, spec["title"], prompt=prompt, genre=spec.get("genre")
                 )
@@ -579,6 +595,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "path": str(dest),
                     "genre": spec.get("genre"),
                     "engine": spec.get("engine") or "three",
+                    "vintage": spec.get("vintage"),
                     "setting": spec.get("setting"),
                     "verb": spec.get("verb"),
                     "kind": kind,

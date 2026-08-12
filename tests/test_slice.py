@@ -22,6 +22,23 @@ class TestCompilePrompt(unittest.TestCase):
         s = slicelib.compile_prompt("adventure village", engine="pixel")
         self.assertEqual(s["engine"], "pixel")
 
+    def test_engine_vintage_from_prompt(self) -> None:
+        s = slicelib.compile_prompt("game boy platformer tight jumps")
+        self.assertEqual(s["engine"], "vintage")
+        self.assertEqual(s["kind"], "vintage-game")
+        self.assertIn("vintage", s)
+        self.assertEqual(s["vintage"]["profile"], "gb")
+        self.assertLessEqual(s["vintage"]["width"], 240)
+        self.assertLessEqual(s["vintage"]["height"], 160)
+        self.assertLessEqual(s["vintage"]["maxColors"], 15)
+
+    def test_vintage_gba_profile(self) -> None:
+        s = slicelib.compile_prompt("adventure", engine="vintage", vintage_profile="gba")
+        self.assertEqual(s["vintage"]["profile"], "gba")
+        self.assertEqual(s["vintage"]["width"], 240)
+        self.assertEqual(s["vintage"]["height"], 160)
+        self.assertLessEqual(len(s["vintage"]["colors"]), 15)
+
     def test_futuristic_shooter(self) -> None:
         spec = slicelib.compile_prompt("shooter futuristic")
         self.assertEqual(spec["genre"], "fps")

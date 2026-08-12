@@ -44,6 +44,7 @@ CHECKS_META = {
     "palette_lock": 8,  # anti-slop: neon drift / purple fog
     "feel_ranges": 3,  # anti-slop: 1/1/1 config
     "no_green_capsule": 8,
+    "vintage_cap": 8,  # GB/GBA ceiling when engine=vintage
     "feel_keys": 1,
     "playtest": 1,
     "wiki": 1,
@@ -139,13 +140,13 @@ def iter_js(project: Path) -> list[Path]:
         dirnames[:] = [
             d
             for d in dirnames
-            if d not in SKIP_DIRS and d not in ("pixelart", "pixel")
+            if d not in SKIP_DIRS and d not in ("pixelart", "pixel", "vintage")
         ]
         root = Path(dirpath)
         if _is_pixel_kit(root):
             continue
         # skip vendored engines (huge vocab files trip hole/TODO scanners)
-        if root.name in ("pixelart", "pixel") or "pixelart" in root.parts:
+        if root.name in ("pixelart", "pixel", "vintage") or "pixelart" in root.parts:
             continue
         for name in filenames:
             if name.endswith((".js", ".mjs", ".ts")):
@@ -187,10 +188,15 @@ def _detect_engine(project: Path, js: str) -> str:
             try:
                 data = json.loads(sp.read_text(encoding="utf-8"))
                 eng = str((data or {}).get("engine") or "")
-                if eng in ("three", "pixel"):
+                if eng in ("three", "pixel", "vintage"):
                     return eng
             except Exception:
                 pass
+    if (project / "src" / "vintage").is_dir() or re.search(
+        r"VINTAGE|vintage-slice|profile.*\bgb\b", js
+    ):
+        if "from 'three'" not in js and 'from "three"' not in js:
+            return "vintage"
     if (project / "src" / "pixelart" / "pixelart.js").is_file():
         return "pixel"
     if re.search(r"from\s+['\"]three['\"]", js):
@@ -198,6 +204,60 @@ def _detect_engine(project: Path, js: str) -> str:
     if re.search(r"getContext\(\s*['\"]2d['\"]", js) and "pixelart" in js:
         return "pixel"
     return "three"
+
+
+def vintage_cap_check(project: Path, js: str) -> tuple[bool, str]:
+    """Hard GBA ceiling: res, colors, no three, nearest-only."""
+    meta = {}
+    for meta_name in (".dotlab", ".gamemaster"):
+        sp = project / meta_name / "slice.json"
+        if sp.is_file():
+            try:
+                meta = json.loads(sp.read_text(encoding="utf-8")) or {}
+            except Exception:
+                meta = {}
+            break
+    v = meta.get("vintage") if isinstance(meta.get("vintage"), dict) else {}
+    w = int(v.get("width") or 0)
+    h = int(v.get("height") or 0)
+    # Also scrape template constants
+    mw = re.search(r"\bVW\s*=\s*(\d+)", js)
+    mh = re.search(r"\bVH\s*=\s*(\d+)", js)
+    if mw:
+        w = max(w, int(mw.group(1)))
+    if mh:
+        h = max(h, int(mh.group(1)))
+    fails = []
+    if w and w > 240:
+        fails.append(f"width {w}>240 (GBA max)")
+    if h and h > 160:
+        fails.append(f"height {h}>160 (GBA max)")
+    max_c = int(v.get("maxColors") or 0)
+    colors = v.get("colors") if isinstance(v.get("colors"), list) else []
+    if max_c > 15:
+        fails.append(f"maxColors {max_c}>15")
+    if colors and len(colors) > 15:
+        fails.append(f"{len(colors)} palette entries >15")
+    # Grade only game code — not palette docs
+    game_js = ""
+    gp = project / "src" / "game.js"
+    if gp.is_file():
+        game_js = gp.read_text(encoding="utf-8", errors="ignore")
+    body = game_js or js
+    if re.search(r"from\s+['\"]three['\"]|WebGLRenderer|THREE\.", body):
+        fails.append("Three.js forbidden in vintage")
+    if re.search(
+        r"blur\s*\(|filter:\s*blur|createBloom|EffectComposer|postprocess",
+        body,
+        re.I,
+    ):
+        fails.append("modern post-FX forbidden")
+    if re.search(r"imageSmoothingEnabled\s*=\s*true", body):
+        fails.append("smooth scaling forbidden (nearest only)")
+    if fails:
+        return False, "; ".join(fails)
+    prof = v.get("profile") or "gb"
+    return True, f"vintage {prof} within GBA ceiling ({w or '?'}×{h or '?'}, ≤{max_c or len(colors) or '?'} col)"
 
 
 def evaluate(project: Path) -> dict:
@@ -222,17 +282,24 @@ def evaluate(project: Path) -> dict:
     entry_ok = (project / "index.html").is_file() or (project / "src" / "main.js").is_file()
     add("entry", entry_ok, "index.html or src/main.js" if entry_ok else "no entry")
 
-    if engine == "pixel":
-        px_ok = bool(
-            re.search(r"pixelart|makeBakedSprite|layeredRect|getContext\(\s*['\"]2d['\"]", js)
-        ) or (project / "src" / "pixelart" / "pixelart.js").is_file()
-        add("three_import", px_ok, "pixelart engine" if px_ok else "no pixelart engine")
-        add("no_jsm", True, "pixel (no three jsm)")
+    if engine in ("pixel", "vintage"):
+        if engine == "vintage":
+            px_ok = bool(
+                re.search(r"getContext\(\s*['\"]2d['\"]|createElement\(\s*['\"]canvas['\"]", js)
+            )
+            add("three_import", px_ok, "vintage canvas" if px_ok else "no canvas")
+            add("no_jsm", True, "vintage (no three)")
+        else:
+            px_ok = bool(
+                re.search(r"pixelart|makeBakedSprite|layeredRect|getContext\(\s*['\"]2d['\"]", js)
+            ) or (project / "src" / "pixelart" / "pixelart.js").is_file()
+            add("three_import", px_ok, "pixelart engine" if px_ok else "no pixelart engine")
+            add("no_jsm", True, "pixel (no three jsm)")
         holes = bool(re.search(r"//\s*\.\.\.|/\*\s*\.\.\.|TODO implement|rest of (the )?code", js, re.I))
         add("no_holes", not holes, "complete" if not holes else "pseudocode / TODO hole")
         canvas_ok = bool(re.search(r"getContext\(\s*['\"]2d['\"]|createElement\(\s*['\"]canvas['\"]", js))
         add("renderer", canvas_ok, "canvas 2d" if canvas_ok else "missing canvas")
-        add("scene", True, "pixel 2d space")
+        add("scene", True, f"{engine} 2d space")
     else:
         three_ok = bool(re.search(r"from\s+['\"]three['\"]|require\(\s*['\"]three['\"]", js))
         add("three_import", three_ok, "import three" if three_ok else "no three import")
@@ -281,9 +348,16 @@ def evaluate(project: Path) -> dict:
     alert = bool(re.search(r"\balert\s*\(", js + html))
     add("no_alert", not alert, "no alert()" if not alert else "alert() is not dialogue")
 
-    # Pixel games: lights not required (2D fill)
-    if engine == "pixel":
-        checks["lights"] = {"ok": True, "detail": "pixel (no 3d lights)", "weight": 3}
+    # Pixel / vintage: lights not required (2D fill)
+    if engine in ("pixel", "vintage"):
+        checks["lights"] = {"ok": True, "detail": f"{engine} (no 3d lights)", "weight": 3}
+
+    # Vintage GBA ceiling (P0 when engine=vintage)
+    if engine == "vintage":
+        vok, vdet = vintage_cap_check(project, js)
+        add("vintage_cap", vok, vdet)
+    else:
+        checks["vintage_cap"] = {"ok": True, "detail": "n/a", "weight": 1}
 
     g_ok, g_detail, g_enforced = genre_contract(project, js)
     if g_enforced:

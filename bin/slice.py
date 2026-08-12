@@ -16,8 +16,11 @@ from gmcommon import GAME_GITIGNORE, KNOWLEDGE, ROOT, TEMPLATES, slugify_project
 
 CRAFT_LIB = ROOT / "lib" / "craft"
 PIXELART_LIB = ROOT / "lib" / "pixelart"
+VINTAGE_LIB = ROOT / "lib" / "vintage"
 
-ENGINES = ("three", "pixel")
+ENGINES = ("three", "pixel", "vintage")
+# Vintage profiles: gb (default ship bar) ≤ gbc ≤ gba (hard ceiling)
+VINTAGE_PROFILES = ("gb", "gbc", "gba")
 
 _FENCE = re.compile(
     r"```(?:javascript|js|html|css|ts|mjs)?[ \t]*([a-zA-Z0-9_./-]+\.(?:js|mjs|html|css|ts))?[ \t]*\n(.*?)```",
@@ -272,10 +275,16 @@ _FEEL_DEFAULT = dict(
 
 
 def infer_engine(prompt: str, explicit: str | None = None) -> str:
-    """three (WebGL Three.js) or pixel (Canvas2D pixelart.js)."""
+    """three | pixel | vintage (GB ship bar, GBA ceiling)."""
     if explicit in ENGINES:
         return explicit
     p = (prompt or "").lower()
+    if re.search(
+        r"\bvintage\b|game\s*boy|\bgba\b|\bgbc\b|\bdmg\b|handheld retro|"
+        r"gameboy|gb style|8.?bit handheld|link.?s awakening",
+        p,
+    ):
+        return "vintage"
     if re.search(
         r"\bpixel\b|pixel.?art|pixelart|sprite.?kit|2d canvas|canvas2d|bakeCanvas|tileset",
         p,
@@ -286,11 +295,27 @@ def infer_engine(prompt: str, explicit: str | None = None) -> str:
     return "three"
 
 
+def infer_vintage_profile(prompt: str, explicit: str | None = None) -> str:
+    """gb (default) | gbc | gba — never above gba."""
+    if explicit in VINTAGE_PROFILES:
+        return explicit
+    p = (prompt or "").lower()
+    if re.search(r"\bgba\b|game\s*boy\s*advance|advance", p):
+        return "gba"
+    if re.search(r"\bgbc\b|game\s*boy\s*color|color", p):
+        return "gbc"
+    return "gb"
+
+
 def infer_kind(prompt: str, engine: str | None = None) -> str:
     eng = engine or infer_engine(prompt)
+    if eng == "vintage":
+        return "vintage-game"
     if eng == "pixel":
         return "pixel-game"
     p = (prompt or "").lower()
+    if re.search(r"vintage|game\s*boy|\bgba\b|\bgbc\b", p):
+        return "vintage-game"
     if re.search(r"pixel|sprite|tileset|bakeCanvas|pixelart", p):
         return "pixel-game"
     if re.search(r"open.?world|whole world|heightfield|biome|worldclaw", p):
@@ -298,6 +323,85 @@ def infer_kind(prompt: str, engine: str | None = None) -> str:
     if re.search(r"shader|shadertoy|raymarch", p):
         return "shader-lab"
     return "web-game"
+
+
+def _vintage_mood(props: str, genre: str) -> str:
+    p = (props or "").lower()
+    if p in ("forest",):
+        return "forest"
+    if p in ("ice", "desert"):
+        return "ocean" if p == "ice" else "fire"
+    if p in ("dungeon", "horror") or genre == "horror":
+        return "dungeon"
+    if p == "neon":
+        return "night"
+    return "forest"
+
+
+def vintage_config(profile: str, props: str = "forest", genre: str = "adventure") -> dict:
+    """Host vintage runtime + palette. Hard-capped at GBA."""
+    profile = profile if profile in VINTAGE_PROFILES else "gb"
+    mood = _vintage_mood(props, genre)
+    # Pure-Python mirror of lib/vintage/palettes.js (no JS import)
+    dmg = [0x0F380F, 0x306230, 0x8BAC0F, 0x9BBC0F]
+    gbc_packs = {
+        "forest": [0x1B1F1A, 0x3E5C38, 0x8FBF6A, 0xDCE8C0],
+        "ocean": [0x0B1A2A, 0x1E4A6E, 0x5AA9D6, 0xC8E8F8],
+        "fire": [0x1A0A08, 0x6B2010, 0xD06020, 0xF0D090],
+        "mono": [0x101018, 0x404050, 0xA0A0B0, 0xF0F0F8],
+        "candy": [0x201028, 0x703868, 0xE080B0, 0xF8E0F0],
+        "dungeon": [0x101018, 0x282838, 0x606878, 0xC8C0A8],
+        "night": [0x080818, 0x203050, 0x608060, 0xE8E0C8],
+    }
+    gba_overworld = [
+        0x1A2030, 0x2D4A3E, 0x4A7A50, 0x8CBC70,
+        0x3A5068, 0x6080A0, 0xA0C0D8,
+        0x4A3020, 0x8A6040, 0xC8A070,
+        0x202028, 0xF0E8D0,
+        0xC04040, 0xE0C040, 0x60A0E0,
+    ]
+    if profile == "gb":
+        colors = dmg
+        w, h, max_c = 160, 144, 4
+    elif profile == "gbc":
+        colors = gbc_packs.get(mood) or gbc_packs["forest"]
+        w, h, max_c = 160, 144, 8
+    else:
+        colors = gba_overworld[:15]
+        w, h, max_c = 240, 160, 15
+    # Ceiling enforcement
+    w = min(w, 240)
+    h = min(h, 160)
+    max_c = min(max_c, 15)
+    colors = colors[:max_c]
+    # Slice palette dict for WIKI/spec
+    palette = {
+        "bg": colors[0],
+        "ground": colors[1] if len(colors) > 1 else colors[0],
+        "grid": colors[2] if len(colors) > 2 else colors[-1],
+        "player": colors[3] if len(colors) > 3 else colors[-1],
+        "accent": colors[2] if len(colors) > 2 else colors[-1],
+        "enemy": colors[1] if len(colors) > 1 else colors[0],
+        "building": colors[1] if len(colors) > 1 else colors[0],
+        "hemiSky": colors[2] if len(colors) > 2 else colors[-1],
+        "hemiGround": colors[0],
+        "sun": colors[-1],
+        "fogNear": 0,
+        "fogFar": 0,
+    }
+    return {
+        "profile": profile,
+        "width": w,
+        "height": h,
+        "maxColors": max_c,
+        "colors": colors,
+        "mood": mood,
+        "ceiling": "gba",
+        "integerScale": True,
+        "noThree": True,
+        "noPostFx": True,
+        "palette": palette,
+    }
 
 
 def infer_genre(prompt: str) -> str:
@@ -351,13 +455,17 @@ def compile_prompt(
     prompt: str,
     genre: str | None = None,
     engine: str | None = None,
+    vintage_profile: str | None = None,
 ) -> dict:
     text = (prompt or "").strip() or "small adventure"
     eng = infer_engine(text, engine)
     g = genre if genre in GENRES else infer_genre(text)
-    # Pixel engine: FPS becomes top-down arena (no true 3D look)
-    if eng == "pixel" and g == "fps":
+    # Pixel / Vintage: no free-look 3D FPS
+    if eng in ("pixel", "vintage") and g == "fps":
         g = "arena"
+    # Vintage: open-world → short adventure (handheld)
+    if eng == "vintage" and g in ("open-world", "sandbox", "tycoon"):
+        g = "adventure"
     setting, props = _setting(text)
     seed = int(hashlib.md5(text.encode("utf-8")).hexdigest()[:8], 16)
     feel = dict(_FEEL_DEFAULT)
@@ -367,11 +475,27 @@ def compile_prompt(
     feel.setdefault("mouseSens", 0.0022)
     feel.setdefault("pitchMin", -1.15)
     feel.setdefault("pitchMax", 1.25)
+    # Vintage feel: snappier, lower HP budget
+    if eng == "vintage":
+        feel["hp"] = min(int(feel.get("hp") or 3), 5)
+        feel["accel"] = min(70, float(feel.get("accel") or 42) * 1.15)
+        feel["camLag"] = min(10, float(feel.get("camLag") or 8))
     loop = _LOOP.get(g, "talk")
     cam = _CAMERA.get(g, "tps")
-    if eng == "pixel" and cam == "fps":
-        cam = "top"
+    if eng in ("pixel", "vintage") and cam == "fps":
+        cam = "top" if loop == "shoot" else ("side" if loop in ("jump", "run") else "top")
     kind = infer_kind(text, eng)
+    palette = dict(_PALETTES.get(props, _PALETTES["dusk"]))
+    vcfg = None
+    if eng == "vintage":
+        vprof = infer_vintage_profile(text, vintage_profile)
+        vcfg = vintage_config(vprof, props, g)
+        palette = dict(vcfg["palette"])
+    ship = "vertical-slice"
+    if eng == "vintage":
+        ship = f"vintage-{(vcfg or {}).get('profile') or 'gb'}"
+    elif loop == "shoot" or g in ("fps", "arena"):
+        ship = "neon-ink"
     spec = {
         "prompt": text,
         "title": _title(text),
@@ -383,27 +507,38 @@ def compile_prompt(
         "loop": loop,
         "camera": cam,
         "verb": _verb(g, setting),
-        "palette": dict(_PALETTES.get(props, _PALETTES["dusk"])),
+        "palette": palette,
         "feel": feel,
         "seed": seed,
         "kind": kind,
-        "enemyCount": 8 if loop == "shoot" else (1 if loop == "sneak" else 0),
-        "coinCount": 6 if loop in ("jump", "talk", "collect") else 0,
+        "enemyCount": (
+            min(4, 8 if loop == "shoot" else 0)
+            if eng == "vintage"
+            else (8 if loop == "shoot" else (1 if loop == "sneak" else 0))
+        ),
+        "coinCount": min(8, 6 if loop in ("jump", "talk", "collect") else 0) if eng == "vintage" else (6 if loop in ("jump", "talk", "collect") else 0),
         "hazardCount": 8 if loop == "run" else 0,
         "density": 1.0,
-        "juice": 1.0,
-        "shipBar": "neon-ink" if loop == "shoot" or g in ("fps", "arena") else "vertical-slice",
+        "juice": 0.85 if eng == "vintage" else 1.0,
+        "shipBar": ship,
     }
+    if vcfg:
+        spec["vintage"] = vcfg
     return spec
 
 
 def summarize(spec: dict) -> str:
     eng = spec.get("engine") or "three"
-    eng_line = (
-        "Engine: **Pixel** (Canvas2D · pixelart.js + FX)."
-        if eng == "pixel"
-        else "Engine: **Three.js** (WebGL)."
-    )
+    if eng == "vintage":
+        vp = (spec.get("vintage") or {}).get("profile") or "gb"
+        eng_line = (
+            f"Engine: **Vintage** · profile **{vp.upper()}** "
+            f"(ship bar Game Boy, ceiling GBA 240×160 / ≤15 colors)."
+        )
+    elif eng == "pixel":
+        eng_line = "Engine: **Pixel** (Canvas2D · pixelart.js + FX)."
+    else:
+        eng_line = "Engine: **Three.js** (WebGL)."
     cam = {
         "fps": "Click the game to look. WASD move, mouse look, click fire, Space jump, R restart.",
         "side": "A/D move, Space jump, R restart.",
@@ -616,12 +751,181 @@ def render_pixel_game_js(spec: dict) -> str:
 
 
 def write_slice(dest: Path, spec: dict) -> list[str]:
-    """Dispatch by engine: three → WebGL, pixel → Canvas2D pixelart."""
-    if (spec.get("engine") or "three") == "pixel" or spec.get("kind") == "pixel-game":
+    """Dispatch by engine: three | pixel | vintage."""
+    eng = spec.get("engine") or "three"
+    if eng == "vintage" or spec.get("kind") == "vintage-game":
+        spec = dict(spec)
+        spec["engine"] = "vintage"
+        if not spec.get("vintage"):
+            spec["vintage"] = vintage_config(
+                "gb", str(spec.get("props") or "forest"), str(spec.get("genre") or "adventure")
+            )
+            spec["palette"] = dict(spec["vintage"]["palette"])
+        return write_vintage_slice(dest, spec)
+    if eng == "pixel" or spec.get("kind") == "pixel-game":
         spec = dict(spec)
         spec["engine"] = "pixel"
         return write_pixel_slice(dest, spec)
     return write_web_slice(dest, spec)
+
+
+def write_vintage_slice(dest: Path, spec: dict) -> list[str]:
+    """
+    Handheld-era slice: GB ship bar, hard GBA ceiling.
+    Pure Canvas2D — no Three.js, no modern post-FX.
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    name = spec.get("title") or dest.name
+    genre = spec["genre"]
+    vcfg = dict(spec.get("vintage") or vintage_config("gb"))
+    # Enforce ceiling again at write time
+    vcfg["width"] = min(int(vcfg.get("width") or 160), 240)
+    vcfg["height"] = min(int(vcfg.get("height") or 144), 160)
+    vcfg["maxColors"] = min(int(vcfg.get("maxColors") or 4), 15)
+    colors = list(vcfg.get("colors") or [])[: vcfg["maxColors"]]
+    vcfg["colors"] = colors
+    written: list[str] = []
+
+    def put(rel: str, content: str) -> None:
+        path = dest / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        written.append(rel)
+
+    put(
+        "package.json",
+        json.dumps(
+            {
+                "name": slugify_project(name),
+                "private": True,
+                "version": "0.1.0",
+                "type": "module",
+                "scripts": {
+                    "dev": "vite",
+                    "build": "vite build",
+                    "preview": "vite preview",
+                },
+                "devDependencies": {"vite": "^6.0.0"},
+            },
+            indent=2,
+        )
+        + "\n",
+    )
+    bg = f"#{int(colors[0] if colors else 0x0F380F):06x}"
+    put(
+        "index.html",
+        f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{name}</title>
+  <style>
+    html, body {{ margin: 0; height: 100%; overflow: hidden; background: {bg}; }}
+    canvas {{ display: block; image-rendering: pixelated; image-rendering: crisp-edges; }}
+    #hud {{
+      position: fixed; left: 8px; top: 8px; color: {bg};
+      mix-blend-mode: difference;
+      font: 12px/1.2 ui-monospace, Menlo, monospace;
+      pointer-events: none; letter-spacing: 0.02em;
+    }}
+  </style>
+</head>
+<body>
+  <div id="hud">{name} · vintage</div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
+""",
+    )
+    put(
+        "src/main.js",
+        f"""import {{ createGame }} from './game.js';
+
+const game = createGame({{
+  genre: {genre!r},
+  title: {name!r},
+}});
+game.start();
+""",
+    )
+    slim = _slim_spec(spec)
+    slim["engine"] = "vintage"
+    feel = dict(spec.get("feel") or {})
+    feel["hp"] = min(int(feel.get("hp") or 3), 5)
+    path = TEMPLATES / "vintage-slice" / "game.js"
+    src = path.read_text(encoding="utf-8")
+    src = src.replace("__SPEC__", json.dumps(slim, ensure_ascii=False))
+    src = src.replace("__CONFIG__", json.dumps(feel, ensure_ascii=False))
+    src = src.replace("__VINTAGE__", json.dumps(vcfg, ensure_ascii=False))
+    put("src/game.js", src)
+
+    # Optional tiny palettes module for LLM expansion (immutable ceiling docs)
+    if VINTAGE_LIB.is_dir():
+        import shutil
+
+        dest_v = dest / "src" / "vintage"
+        if dest_v.exists():
+            shutil.rmtree(dest_v)
+        shutil.copytree(VINTAGE_LIB, dest_v)
+        for p in dest_v.rglob("*"):
+            if p.is_file():
+                written.append(str(p.relative_to(dest)))
+
+    from gmcommon import meta_dir
+
+    meta = meta_dir(dest)
+    meta.mkdir(parents=True, exist_ok=True)
+    spec_out = dict(spec)
+    spec_out["engine"] = "vintage"
+    spec_out["vintage"] = vcfg
+    spec_out["palette"] = dict(vcfg.get("palette") or spec.get("palette") or {})
+    (meta / "slice.json").write_text(json.dumps(spec_out, indent=2) + "\n", encoding="utf-8")
+    written.append(str((meta / "slice.json").relative_to(dest)))
+
+    prof = vcfg.get("profile") or "gb"
+    put(
+        "WIKI.md",
+        f"""# {name}
+
+* Engine: **vintage** · profile **{prof}** (ceiling: GBA)
+* Resolution: {vcfg['width']}×{vcfg['height']} · max colors: {vcfg['maxColors']}
+* Genre: {spec.get("genre")}
+* Verb at t=8s: {spec.get("verb")}
+* Setting: {spec.get("setting")}
+
+## Controls
+D-pad / WASD · A=Z/Space jump · B=X/J attack · Start=R restart
+
+## Law
+Never exceed Game Boy Advance (240×160, ≤15 colors, no 3D, integer scale).
+""",
+    )
+    put(
+        "DESIGN.md",
+        f"""# {name}
+
+## Engine
+Vintage handheld — profile `{prof}` · **GBA is the hard ceiling**
+
+## Core loop
+{spec.get("verb")}
+
+## Constraints
+- Internal res ≤ 240×160 (this slice: {vcfg['width']}×{vcfg['height']})
+- Colors ≤ 15 (this slice: {vcfg['maxColors']})
+- No Three.js, no bloom, no smooth scale
+
+## Backlog
+- [ ] One more screen / room
+- [ ] Tune jump / HP
+- [ ] Extra enemy pattern (still ≤4 on screen)
+""",
+    )
+    gi = dest / ".gitignore"
+    if not gi.is_file():
+        put(".gitignore", GAME_GITIGNORE)
+    return written
 
 
 def write_pixel_slice(dest: Path, spec: dict) -> list[str]:

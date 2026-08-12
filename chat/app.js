@@ -620,16 +620,31 @@
     document.body.classList.remove("has-chat");
   }
 
-  // Keep Engine and Type selects loosely in sync
+  // Keep Engine / Type / Vintage profile selects in sync
   var engEl = $("optEngine");
   var kindEl = $("optKind");
-  if (engEl) {
-    engEl.addEventListener("change", function () {
-      if (!kindEl) return;
-      if (engEl.value === "pixel") kindEl.value = "pixel-game";
-      else if (engEl.value === "three" && kindEl.value === "pixel-game") kindEl.value = "web-game";
+  var vProfEl = $("optVintage");
+  var vField = $("fieldVintageProfile");
+  function syncEngineUi() {
+    if (!engEl) return;
+    if (vField) vField.hidden = engEl.value !== "vintage";
+    if (!kindEl) return;
+    if (engEl.value === "pixel") kindEl.value = "pixel-game";
+    else if (engEl.value === "vintage") kindEl.value = "vintage-game";
+    else if (engEl.value === "three" && (kindEl.value === "pixel-game" || kindEl.value === "vintage-game")) {
+      kindEl.value = "web-game";
+    }
+  }
+  if (engEl) engEl.addEventListener("change", syncEngineUi);
+  if (kindEl) {
+    kindEl.addEventListener("change", function () {
+      if (!engEl) return;
+      if (kindEl.value === "vintage-game") engEl.value = "vintage";
+      else if (kindEl.value === "pixel-game") engEl.value = "pixel";
+      syncEngineUi();
     });
   }
+  syncEngineUi();
 
   window.DL.send = function (forcedText) {
     var text = (forcedText != null ? forcedText : (input && input.value || "")).replace(/^\s+|\s+$/g, "");
@@ -643,8 +658,10 @@
     var kind = ($("optKind") && $("optKind").value) || "auto";
     var genre = ($("optGenre") && $("optGenre").value) || "";
     var engine = ($("optEngine") && $("optEngine").value) || "auto";
+    var vProfile = ($("optVintage") && $("optVintage").value) || "gb";
     // Engine dropdown wins over type when set
     if (engine === "pixel" && kind === "auto") kind = "pixel-game";
+    if (engine === "vintage" && kind === "auto") kind = "vintage-game";
     if (engine === "three" && kind === "auto") kind = "web-game";
 
     var start = making
@@ -654,6 +671,7 @@
           kind: kind,
           genre: genre || undefined,
           engine: engine === "auto" ? undefined : engine,
+          vintageProfile: engine === "vintage" ? vProfile : undefined,
         }).then(function (d) {
           if (d && d.path) setCurrent(d.path, d.name);
           loadProjects();

@@ -34,8 +34,9 @@ ENGINE: Three.js Vite vanilla. three + three/addons — NEVER examples/jsm. fog=
 Zero external assets default. No new Vector3 in loop. SRGB+ACES. Seeker=same game+MWA.
 
 HOST (instant — do not re-do): slice · patch · verify · src/craft · src/kits (immutable).
-You own: multi-weapon, AI, city LOD, dialogue, ragdoll, shaders — via src/systems/* patches only.
-NEVER rewrite src/craft/* or full large game.js. Prefer slot JSON + apply_patch.
+Engines: three | pixel | vintage. Vintage = Game Boy ship bar, hard ceiling Game Boy Advance
+(≤240×160, ≤15 colors, no 3D, integer scale). Never exceed GBA in vintage.
+You own novelty via src/systems/* patches only. NEVER rewrite src/craft/* or full large game.js.
 FAIL slop: green capsule, purple fog, silence on hit, CONFIG 1/1/1, alert().
 Product name: dotLab (local offline studio). Host tools: slice, patch, verify, craft, antislope.
 """
