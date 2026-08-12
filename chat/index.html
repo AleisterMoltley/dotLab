@@ -215,7 +215,7 @@
       <button type="button" class="gh" id="btnGh">GitHub</button>
       <div class="status" id="status">
         <span class="dot" id="dot"></span>
-        <span id="statusText">checking…</span>
+        <span id="statusText">starting…</span>
       </div>
     </div>
   </header>
@@ -532,9 +532,8 @@ Tip: open Ollama.app, then reload this page.';
       addMsg('system', 'Shipped to GitHub' + (d.html_url ? ': ' + d.html_url : ''));
     };
 
-    checkHealth();
-    refreshGh();
-    setInterval(checkHealth, 8000);
+    checkHealth().then(() => refreshGh());
+    setInterval(checkHealth, 15000);
     input.focus();
   </script>
 </body>

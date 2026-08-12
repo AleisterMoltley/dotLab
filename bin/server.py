@@ -25,21 +25,20 @@ NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "65536"))
 _TAGS: dict = {"ts": 0.0, "names": [], "ok": False, "error": ""}
 
 
-def peek_ollama_tags(timeout: float = 2.0) -> dict:
-    """Fast Ollama probe — never block the UI for minutes."""
+def remember_tags(names: list[str], ok: bool = True, error: str = "") -> None:
     global _TAGS
+    _TAGS = {"ts": time.time(), "names": list(names), "ok": ok, "error": error}
+
+
+def peek_ollama_tags(timeout: float = 2.0) -> dict:
+    """Optional background refresh. The UI health path must not call this."""
     try:
         with urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=timeout) as r:
             data = json.loads(r.read().decode())
         names = [m.get("name") or "" for m in data.get("models") or []]
-        _TAGS = {"ts": time.time(), "names": names, "ok": True, "error": ""}
+        remember_tags(names, ok=True)
     except Exception as e:
-        _TAGS = {
-            "ts": time.time(),
-            "names": list(_TAGS.get("names") or []),
-            "ok": False,
-            "error": str(e)[:160],
-        }
+        remember_tags(list(_TAGS.get("names") or []), ok=False, error=str(e)[:160])
     return _TAGS
 
 
@@ -48,6 +47,7 @@ def has_model(names: list[str], model: str) -> bool:
 
 
 def health_payload() -> dict:
+    """Instant. Never talks to Ollama — tags are cached at process start."""
     cloud = cloudlib.status_dict()
     if cloud.get("enabled"):
         return {
@@ -60,30 +60,32 @@ def health_payload() -> dict:
             "local": False,
             "error": "",
         }
-    tags = peek_ollama_tags(2.0)
-    names = tags.get("names") or []
+    names = list(_TAGS.get("names") or [])
     found = has_model(names, MODEL)
+    ollama_ok = bool(_TAGS.get("ok")) or bool(names)
     return {
-        "ok": bool(tags.get("ok") and found),
+        "ok": bool(found),
         "backend": "ollama",
         "provider": "",
         "model": MODEL,
-        "ollama": bool(tags.get("ok")),
+        "ollama": ollama_ok,
         "has_model": found,
         "local": True,
-        "error": "" if found else (tags.get("error") or "model missing"),
+        "error": "" if found else (_TAGS.get("error") or "model missing"),
     }
 
 
 class Handler(SimpleHTTPRequestHandler):
+    protocol_version = "HTTP/1.0"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(CHAT_DIR), **kwargs)
 
     def log_message(self, fmt: str, *args) -> None:
-        # quiet
-        if args and str(args[0]).startswith('"GET /api'):
+        line = fmt % args if args else str(fmt)
+        if '"GET /api/github' in line or '"GET /favicon' in line:
             return
-        sys.stderr.write("[chat] " + (fmt % args) + "\n")
+        sys.stderr.write("[chat] " + line + "\n")
 
     def _proxy(self, path: str, method: str = "GET", body: bytes | None = None) -> None:
         url = f"{OLLAMA}{path}"
@@ -172,6 +174,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(raw)
 
@@ -218,9 +221,8 @@ class Handler(SimpleHTTPRequestHandler):
                 st = cloudlib.status_dict()
                 name = st.get("model") or st.get("provider") or "cloud"
                 return self._json(200, {"models": [{"name": name, "cloud": True}]})
-            tags = peek_ollama_tags(2.0)
-            models = [{"name": n} for n in (tags.get("names") or [])]
-            return self._json(200 if tags.get("ok") else 503, {"models": models, "error": tags.get("error") or ""})
+            models = [{"name": n} for n in (_TAGS.get("names") or [])]
+            return self._json(200, {"models": models, "error": _TAGS.get("error") or ""})
         if path in ("/", "/index.html"):
             self.path = "/index.html"
         return super().do_GET()
@@ -276,12 +278,14 @@ def main() -> int:
         try:
             with urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=5) as r:
                 names = [m.get("name", "") for m in json.loads(r.read()).get("models", [])]
-            if not any(n == MODEL or n.startswith(MODEL + ":") for n in names):
+            remember_tags(names, ok=True)
+            if not has_model(names, MODEL):
                 print(f"❌ Model '{MODEL}' missing.")
                 print(f"   Einmalig:  cd {ROOT} && ./install.sh")
                 return 1
         except Exception as e:
             print("⚠ Could not list models:", e)
+            remember_tags([], ok=False, error=str(e)[:160])
 
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = f"http://127.0.0.1:{PORT}/"

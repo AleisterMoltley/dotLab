@@ -25,13 +25,19 @@ class TestHealth(unittest.TestCase):
         self.assertEqual(h["provider"], "grok")
 
     def test_health_local_when_tags_ok(self) -> None:
-        tags = {"ts": 1, "names": ["gamemaster:latest"], "ok": True, "error": ""}
+        server.remember_tags(["gamemaster:latest"], ok=True)
         with mock.patch.object(server.cloudlib, "status_dict", return_value={"enabled": False}):
-            with mock.patch.object(server, "peek_ollama_tags", return_value=tags):
-                h = server.health_payload()
+            h = server.health_payload()
         self.assertTrue(h["ok"])
         self.assertEqual(h["backend"], "ollama")
         self.assertTrue(h["has_model"])
+
+    def test_health_does_not_call_ollama(self) -> None:
+        server.remember_tags(["gamemaster:latest"], ok=True)
+        with mock.patch.object(server.cloudlib, "status_dict", return_value={"enabled": False}):
+            with mock.patch.object(server, "peek_ollama_tags", side_effect=AssertionError("must not probe")):
+                h = server.health_payload()
+        self.assertTrue(h["ok"])
 
 
 if __name__ == "__main__":
