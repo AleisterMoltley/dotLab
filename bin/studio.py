@@ -144,7 +144,9 @@ def banner(title: str) -> None:
 
 
 def write_session(project: Path, name: str, content: str) -> Path:
-    d = project / ".gamemaster" / "studio"
+    from gmcommon import meta_dir
+
+    d = meta_dir(project) / "studio"
     d.mkdir(parents=True, exist_ok=True)
     path = d / name
     path.write_text(content, encoding="utf-8")
@@ -168,7 +170,9 @@ def update_design_md(project: Path, section: str, body: str) -> None:
 def role_director(
     brief: str, model: str, genre_hint: str = "", prefs: str = "", project: Path | None = None
 ) -> str:
+    """Director: structured JSON first (host slots), markdown fallback."""
     import identity as identitylib
+    import quality as qualitylib
 
     knowledge = load_pack(
         "identity.md",
@@ -183,24 +187,82 @@ def role_director(
     sys_p = (
         identitylib.system_for("director", extra_packs=False)
         + "\nHonor USER PREFERENCE MEMORY when present.\n"
-        "Output MUST include:\n"
-        "1) Pitch (2 sentences) — sharper than the brief\n"
-        "2) Core Verb + what the player does at t=8s\n"
-        "3) 3 Design Pillars\n"
-        "4) Vertical Slice (playable in one session)\n"
-        "5) Feel targets — REAL numbers from the feel tables (grav, coyote, camLag…)\n"
-        "6) World beat (place + 1 NPC/dialogue or bark + 1 physical toy + 1 shader accent)\n"
-        "7) First room / first death (how it teaches, why it's fair)\n"
-        "8) Explicit NON-goals (what we will NOT build)\n"
-        "9) Success metric: 'one more run?' test\n"
-        "If target is Solana Seeker: same Three.js game + MWA; loop must work offline.\n"
+        + qualitylib.DIRECTOR_JSON_INSTRUCTION
+        + "\nIf Solana Seeker: same Three.js game + MWA; loop offline.\n"
     )
     user = (
         f"Brief:\n{brief}\n\nGenre-Note: {genre_hint or 'auto'}\n\n"
         f"{prefs}\n\n{knowledge}"
     )
+    messages = [{"role": "system", "content": sys_p}, {"role": "user", "content": user}]
+    # Host speculative: flash drafts JSON, max refines when needed
+    try:
+        raw = qualitylib.draft_then_max(
+            messages,
+            max_model=model,
+            temperature=0.45,
+            num_predict=2200,
+            num_ctx=12288,
+            mode="json",
+        )
+    except Exception:
+        raw = chat(messages, model=model, temperature=0.45, num_predict=2200)
+
+    data = qualitylib.extract_json_object(raw)
+    ok, errs, norm = qualitylib.validate_director_json(data)
+    if ok:
+        md = qualitylib.director_json_to_markdown(norm)
+        # persist machine-readable next to markdown
+        if project is not None:
+            try:
+                write_session(project, "01-director.json", json.dumps(norm, indent=2) + "\n")
+            except Exception:
+                pass
+            try:
+                import slots as slotslib
+
+                slotslib.apply_director_to_project(project, norm)
+            except Exception as e:
+                print(f"  ⚠ slots: {e}")
+        return md + "\n\n<!-- director_json_ok -->\n"
+
+    # One repair pass: ask model to fix JSON only
+    repair = chat(
+        [
+            {"role": "system", "content": "Return ONLY valid Director JSON. No markdown."},
+            {
+                "role": "user",
+                "content": f"Fix this into valid schema. Errors: {errs}\n\n{raw[:4000]}",
+            },
+        ],
+        model=model,
+        temperature=0.15,
+        num_predict=1800,
+    )
+    data2 = qualitylib.extract_json_object(repair)
+    ok2, errs2, norm2 = qualitylib.validate_director_json(data2)
+    if ok2:
+        if project is not None:
+            try:
+                write_session(project, "01-director.json", json.dumps(norm2, indent=2) + "\n")
+                import slots as slotslib
+
+                slotslib.apply_director_to_project(project, norm2)
+            except Exception:
+                pass
+        return qualitylib.director_json_to_markdown(norm2) + "\n\n<!-- director_json_ok -->\n"
+
+    # Fallback: freeform director (legacy) so pipeline never blocks
+    sys_legacy = (
+        identitylib.system_for("director", extra_packs=False)
+        + "\nOutput MUST include: Pitch, Verb+t=8s, 3 pillars, slice, feel numbers, "
+        "first death, NON-goals, metric.\n"
+    )
     return chat(
-        [{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
+        [
+            {"role": "system", "content": sys_legacy},
+            {"role": "user", "content": user},
+        ],
         model=model,
         temperature=0.55,
         num_predict=3500,
@@ -532,6 +594,17 @@ def pipeline_build(
     do_playtest: bool = False,
     do_live: bool = False,
 ) -> None:
+    import quality as qualitylib
+    from gmcommon import meta_dir
+
+    # P0: dual keep-alive before long studio run
+    try:
+        w = qualitylib.ensure_dual_warmup(force=False)
+        if w.get("ok") and not w.get("cached"):
+            print("  🔥 models warmed (flash+max)")
+    except Exception as e:
+        print(f"  ⚠ warmup: {e}")
+
     live_session = None
     if do_live:
         try:
@@ -548,13 +621,19 @@ def pipeline_build(
         except Exception as e:
             print(f"  ⚠ live preview failed to start: {e}")
 
+    studio_dir = meta_dir(project) / "studio"
+    legacy_dir = project / ".gamemaster" / "studio"
+
+    def _read_art(name: str) -> str:
+        for d in (studio_dir, legacy_dir):
+            p = d / name
+            if p.is_file():
+                return p.read_text(encoding="utf-8")
+        return ""
+
     if skip_plan:
-        design = (project / ".gamemaster" / "studio" / "01-director.md").read_text() if (
-            project / ".gamemaster" / "studio" / "01-director.md"
-        ).exists() else brief
-        arch = (project / ".gamemaster" / "studio" / "02-architect.md").read_text() if (
-            project / ".gamemaster" / "studio" / "02-architect.md"
-        ).exists() else ""
+        design = _read_art("01-director.md") or brief
+        arch = _read_art("02-architect.md")
         if not arch:
             data = pipeline_plan(project, brief, model)
             design, arch = data["design"], data["architecture"]
@@ -563,19 +642,80 @@ def pipeline_build(
         design, arch = data["design"], data["architecture"]
 
     banner("💻 CODER")
+    # RAG context
+    rag_block = ""
+    try:
+        import rag as raglib
+
+        rag_block = raglib.prompt_block(brief + "\n" + design[:500], k=3, max_chars=2500)
+    except Exception:
+        pass
+
     task = (
         f"Implement the vertical slice ONLY.\n\nUSER BRIEF:\n{brief}\n\n"
         f"DESIGN:\n{design[:4000]}\n\nARCHITECTURE:\n{arch[:4000]}\n\n"
-        "Write complete runnable files. ENGINE: Vite + three.js always. "
-        "If Seeker: same Three.js game + MWA module — do not replace the engine. "
-        "Ship a place (lights/fog/ground), a body (controller+camera), collision, "
-        "and at least one of: dialogue tree, ragdoll/physics toy, shader accent. "
-        "No Vector3 allocs in the loop. CONFIG from feel tables (real numbers, not 1/1/1). "
-        "src/fx/juice.js with hitstop+punch+blip; call it from damage. "
-        "Include optional window.__GF_PLAYTEST__ hooks: recordDeath/recordRestart/recordJump if easy. "
-        "Update DESIGN.md backlog checkboxes if present. End with done."
+        f"{rag_block}\n\n"
+        f"{qualitylib.CODER_PATCH_INSTRUCTION}\n\n"
+        "ENGINE: Vite + three.js always. Host already shipped craft/slots/feel — extend, don't destroy. "
+        "Ship place · body · challenge · juice. "
+        "No Vector3 allocs in the loop. End with done."
     )
-    code_out = run_coder_agent(project, task, model, steps=18)
+
+    # P1: Best-of-2 only when env asks and project still thin (first ship)
+    best_n = int(os.environ.get("DOTLAB_BEST_OF", os.environ.get("GAMEMASTER_BEST_OF", "1")))
+    game_js = project / "src" / "game.js"
+    thin = (not game_js.is_file()) or game_js.stat().st_size < 4000
+    code_out = ""
+    if best_n >= 2 and thin:
+        banner("⚖️ BEST-OF-N coder (verify-scored)")
+
+        def gen_a() -> str:
+            return run_coder_agent(project, task + "\nVariant A: prioritize juice + fair death.", model, steps=10)
+
+        def gen_b() -> str:
+            return run_coder_agent(
+                project, task + "\nVariant B: prioritize readability + restart <3s.", model, steps=10
+            )
+
+        # best_of_n expects text generators that produce patches; agent already writes files.
+        # So we score after each agent run with snapshot isolation:
+        base = qualitylib._snapshot_tree(project)
+        cands = []
+        winner_snap = None
+        for i, gen in enumerate((gen_a, gen_b)[:best_n]):
+            qualitylib._restore_tree(project, base)
+            out = gen()
+            sc = qualitylib.score_project(project)
+            snap = qualitylib._snapshot_tree(project)
+            cands.append({"i": i, "out": out, "score": sc, "snap": snap})
+            write_session(project, f"03-coder-cand-{i}.txt", out[-12000:])
+        cands.sort(
+            key=lambda c: (
+                1 if c["score"].get("p0_ok") else 0,
+                int(c["score"].get("score") or 0),
+            ),
+            reverse=True,
+        )
+        winner = cands[0]
+        winner_snap = winner.get("snap") or base
+        qualitylib._restore_tree(project, winner_snap)
+        code_out = winner.get("out") or ""
+        # drop heavy snaps from memory
+        for c in cands:
+            c.pop("snap", None)
+        print(f"  ✓ best-of-n winner=cand-{winner['i']} score={winner['score'].get('score')}")
+        write_session(
+            project,
+            "03-best-of-n.json",
+            json.dumps(
+                [{"i": c["i"], "score": c["score"]} for c in cands],
+                indent=2,
+            )
+            + "\n",
+        )
+    else:
+        code_out = run_coder_agent(project, task, model, steps=18)
+
     write_session(project, "03-coder-log.txt", code_out)
     print(code_out[-2000:])
 
@@ -588,40 +728,54 @@ def pipeline_build(
         if vr.get("p0_fail"):
             banner("🔧 VERIFY REPAIR (P0)")
             repair_out = run_coder_agent(
-                project, verifylib.repair_prompt(vr), model, steps=10
+                project,
+                verifylib.repair_prompt(vr) + "\n" + qualitylib.CODER_PATCH_INSTRUCTION,
+                model,
+                steps=10,
             )
             write_session(project, "03c-verify-repair.txt", repair_out)
     except Exception as e:
         print(f"  ⚠ verify: {e}")
 
-    banner("🧪 CRITIC")
-    critic_model = model
+    banner("🧪 CRITIC + single repair (auto)")
     try:
-        tags = json.loads(
-            urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=5).read().decode()
+        auto = qualitylib.auto_critic_and_repair(
+            project,
+            brief,
+            design,
+            arch,
+            code_out[-6000:],
+            model,
+            run_coder=run_coder_agent,
         )
-        names = [m.get("name", "") for m in tags.get("models", [])]
-        if any(n == DENSE_MODEL or n.startswith(DENSE_MODEL + ":") for n in names):
-            critic_model = DENSE_MODEL
+        critique = auto.get("critique") or ""
+        print(critique[:2500])
+        write_session(project, "04-critic.md", critique)
+        update_design_md(project, "Critic", critique)
+        if auto.get("repaired"):
+            write_session(project, "05-fix-log.txt", "auto repair ran — see 05-repair-auto.txt")
+            print("  ✓ single auto-repair pass")
+        sc = auto.get("score_after") or {}
+        print(f"  score after critic gate: {sc.get('score')} p0_ok={sc.get('p0_ok')}")
+    except Exception as e:
+        print(f"  ⚠ auto critic: {e}")
+        # legacy fallback
+        critique = role_critic(brief, design, arch, code_out[-6000:], model, project=project)
+        write_session(project, "04-critic.md", critique)
+        update_design_md(project, "Critic", critique)
+        learn_from_critic(project, critique)
+
+    # Index successful slices for RAG
+    try:
+        import rag as raglib
+        import quality as q2
+
+        if q2.score_project(project).get("score", 0) >= 60:
+            raglib.index_project(project)
+            # merge into global index opportunistically
+            raglib.rebuild_index(limit_projects=25)
     except Exception:
         pass
-
-    critique = role_critic(
-        brief, design, arch, code_out[-6000:], critic_model, project=project
-    )
-    print(critique[:2500])
-    write_session(project, "04-critic.md", critique)
-    update_design_md(project, "Critic", critique)
-    learn_from_critic(project, critique)
-
-    banner("🔧 FIX PASS (from Critic top items)")
-    fix_task = (
-        f"Apply ONLY the Critic's top must-fix items. Do not add features.\n\n"
-        f"CRITIC REPORT:\n{critique}\n\nKeep the game runnable."
-    )
-    fix_out = run_coder_agent(project, fix_task, model, steps=12)
-    write_session(project, "05-fix-log.txt", fix_out)
-    print(fix_out[-1500:])
 
     if do_playtest:
         run_playtest(project, model, with_critic=True)
@@ -641,9 +795,9 @@ def pipeline_build(
     except Exception:
         pass
     print(f"Project: {project}")
-    print("Artifacts: .gamemaster/studio/ + DESIGN.md + prefs")
+    print("Artifacts: .dotlab/studio/ (or .gamemaster/studio/) + DESIGN.md + prefs")
     if do_playtest:
-        print("Playtest: .gamemaster/playtest/")
+        print("Playtest: meta playtest/")
     if do_live:
         print("Live: dashboard still open — play anytime. Ctrl+C in terminal if you started with watch.")
     print("Next: npm i && npm run dev  — or: gamemaster playtest -p . --critic")

@@ -511,6 +511,16 @@ class Handler(SimpleHTTPRequestHandler):
             if not prompt:
                 return self._json(400, {"ok": False, "error": "prompt required"})
             return self._json(200, ops.start_agent(target, prompt, model=str(body.get("model") or "")))
+        if path.endswith("/repair") or path.endswith("/auto-repair"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            return self._json(
+                200, ops.auto_repair_play(target, model=str(body.get("model") or ""))
+            )
+        if path.endswith("/quality-score"):
+            if not target.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            return self._json(200, ops.quality_score(target))
         if path.endswith("/new"):
             prompt = str(body.get("prompt") or body.get("name") or "new game").strip()
             name = slugify_project(str(body.get("name") or prompt[:48] or "new-game"))
@@ -698,6 +708,21 @@ class Handler(SimpleHTTPRequestHandler):
                     written = list(applied.get("written") or [])
                     if applied.get("rejected") and applied.get("reason") != "no files":
                         rejected = str(applied.get("reason") or "")
+                    # Log accept pairs for future LoRA when write succeeded
+                    if written:
+                        try:
+                            import quality as qualitylib
+
+                            qualitylib.log_accept_pair(
+                                pdir,
+                                instruction=user_txt[:500],
+                                before="",
+                                after=text[:40_000],
+                                kind="ask_apply",
+                                meta={"written": written},
+                            )
+                        except Exception:
+                            pass
                 note = ""
                 if written:
                     note = "\n\nSaved " + ", ".join(written) + " in " + proj
@@ -809,9 +834,16 @@ def main() -> int:
         webbrowser.open(url)
 
     def bg_warmup() -> None:
-        """Keep max model hot so first LLM continue is not a cold load."""
+        """Keep flash+max hot (dual keep-alive) so first continue is not cold."""
         if cloudlib.active_provider():
             return
+        try:
+            import quality as qualitylib
+
+            qualitylib.ensure_dual_warmup(force=False)
+            return
+        except Exception:
+            pass
         try:
             import turbo as turbolib
 

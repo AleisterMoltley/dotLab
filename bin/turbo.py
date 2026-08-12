@@ -51,6 +51,7 @@ PACKS = {
         "ship-bar.md",
         "grok-craft.md",
         "brain.md",
+        "quality-pipeline.md",
     ],
     "systems": ["game-systems.md", "threejs-cheatsheet.md", "grok-toolkit.md"],
     "three": ["threejs-advanced.md", "threejs-recipes.md", "threejs-ecosystem.md"],
@@ -272,11 +273,16 @@ def ollama_env_exports() -> str:
 # dotLab TURBO — game-coding defaults (Apple Silicon friendly)
 export OLLAMA_FLASH_ATTENTION=1
 export OLLAMA_KEEP_ALIVE=24h
-export OLLAMA_NUM_PARALLEL=1
+# Dual resident models: flash draft + max coder (prefix reuse + host speculative)
+export OLLAMA_NUM_PARALLEL=2
 export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KV_CACHE_TYPE=q8_0
 export OLLAMA_NUM_BATCH=512
 export OLLAMA_SCHED_SPREAD=false
+# Quality pipeline defaults
+export DOTLAB_SPECULATIVE=1
+# Set DOTLAB_BEST_OF=2 for verify-scored dual coder (slower, higher ship-rate)
+export DOTLAB_BEST_OF=1
 """.strip()
 
 
@@ -288,7 +294,12 @@ def write_env_file() -> Path:
 
 def warmup(tiers: list[str] | None = None) -> None:
     tiers = tiers or ["flash", "max"]
-    print("🔥 dotLab TURBO warmup…")
+    # Always ensure product env file exists with dual-slot defaults
+    try:
+        write_env_file()
+    except Exception:
+        pass
+    print("🔥 dotLab TURBO warmup (dual keep-alive)…")
     for t in tiers:
         model = resolve_tier(t)
         print(f"  → load {model} ({t})")
@@ -310,6 +321,13 @@ def warmup(tiers: list[str] | None = None) -> None:
             print(f"  ✓ {model}: {dt:.2f}s wall · ~{tps:.1f} tok/s gen · «{text.strip()[:40]}»")
         except Exception as e:
             print(f"  ⚠ {model}: {e}")
+    # Mark warmup for quality.ensure_dual_warmup cache
+    try:
+        flag = ROOT / "config" / ".warmup-ok"
+        flag.parent.mkdir(parents=True, exist_ok=True)
+        flag.write_text(str(int(time.time())), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def bench() -> None:

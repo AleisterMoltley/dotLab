@@ -541,3 +541,47 @@ def agent_status(project: Path) -> dict[str, Any]:
     st["path"] = key
     st["ok"] = True
     return st
+
+
+def auto_repair_play(project: Path, model: str = "") -> dict[str, Any]:
+    """Run quality.play_error_auto_repair from play.log (dashboard button / API)."""
+    project = project.expanduser().resolve()
+    if not under_projects(project):
+        return {"ok": False, "error": "not under projects root"}
+    log_path = meta_dir(project) / "play.log"
+    text = ""
+    if log_path.is_file():
+        try:
+            text = log_path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            text = ""
+    if not text.strip():
+        return {"ok": False, "error": "empty play.log — start Play first"}
+    try:
+        import quality as qualitylib
+
+        result = qualitylib.play_error_auto_repair(
+            project, text, model=model or None
+        )
+        try:
+            cached_verify(project, force=True)
+        except Exception:
+            pass
+        session_note(
+            project,
+            "auto_repair",
+            result.get("message") or result.get("actions") and str(result["actions"]) or "repair",
+            {"ok": result.get("ok")},
+        )
+        return {"ok": bool(result.get("ok")), **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def quality_score(project: Path) -> dict[str, Any]:
+    try:
+        import quality as qualitylib
+
+        return {"ok": True, **qualitylib.score_project(project)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

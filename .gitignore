@@ -33,3 +33,8 @@ knowledge/live/*
 .idea/
 .vscode/
 *.swp
+
+# quality pipeline local data
+config/lora-pairs/
+config/slice-rag/
+config/.warmup-ok

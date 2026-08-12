@@ -38,6 +38,7 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 | `prefs-and-playtest.md` | preference memory |
 | `fun-first-design.md` | slim pointer at craft |
 | `studio-playbook.md` | which studio mode |
+| `quality-pipeline.md` | patch-only, director JSON, draft→max, best-of-N, RAG, LoRA pairs |
 | `live/LATEST.md` | auto npm versions |
 | `speed-without-quality-loss.md` | turbo philosophy (human + env docs; not auto-routed) |
 | `gap-analysis.md` | studio vs cloud gaps (human; not auto-routed) |

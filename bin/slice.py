@@ -446,12 +446,39 @@ def write_reply_files(project: Path, text: str) -> list[str]:
 
 
 def apply_model_files(project: Path, text: str) -> dict:
-    """Write fenced files only if the project still passes P0 verify."""
+    """Prefer surgical @@ patches; else fenced files. Roll back on P0 fail."""
+    # 1) Patch grammar first (does not full-replace protected large files)
+    try:
+        import quality as qualitylib
+
+        if qualitylib.parse_patches(text or ""):
+            res = qualitylib.apply_patches(project, text or "")
+            if res.get("written"):
+                result = verify.evaluate(project)
+                if result.get("p0_fail"):
+                    # best-effort: no full backup tree; leave files but report
+                    return {
+                        "written": res.get("written") or [],
+                        "rejected": True,
+                        "reason": "verify P0 after patch: " + ", ".join(result["p0_fail"]),
+                        "mode": "patch",
+                    }
+                return {
+                    "written": res.get("written") or [],
+                    "rejected": False,
+                    "reason": "",
+                    "mode": "patch",
+                    "patch_rejected": res.get("rejected") or [],
+                }
+    except Exception:
+        pass
+
     files = extract_code_files(text)
     if not files:
         return {"written": [], "rejected": True, "reason": "no files"}
     backups: dict[str, str | None] = {}
     written: list[str] = []
+    blocked: list[str] = []
     for rel, body in files:
         dest = project / rel
         try:
@@ -459,9 +486,29 @@ def apply_model_files(project: Path, text: str) -> dict:
         except ValueError:
             continue
         backups[rel] = dest.read_text(encoding="utf-8") if dest.is_file() else None
+        # Enforce quality full-write gate for large protected files
+        try:
+            import quality as qualitylib
+
+            gate = qualitylib.apply_full_write(project, rel, body, force=False)
+            if not gate.get("ok"):
+                blocked.append(f"{rel}: {gate.get('error')}")
+                backups.pop(rel, None)
+                continue
+            written.append(rel)
+            continue
+        except Exception:
+            pass
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(body, encoding="utf-8")
         written.append(rel)
+    if not written and blocked:
+        return {
+            "written": [],
+            "rejected": True,
+            "reason": "; ".join(blocked[:4]),
+            "mode": "blocked",
+        }
     result = verify.evaluate(project)
     if result.get("p0_fail"):
         for rel, old in backups.items():
@@ -476,7 +523,7 @@ def apply_model_files(project: Path, text: str) -> dict:
             "rejected": True,
             "reason": "verify P0: " + ", ".join(result["p0_fail"]),
         }
-    return {"written": written, "rejected": False, "reason": ""}
+    return {"written": written, "rejected": False, "reason": "", "mode": "files"}
 
 
 def _template() -> str:
@@ -596,7 +643,22 @@ game.start();
             if p.is_file():
                 written.append(str(p.relative_to(dest)))
 
+    # Host genre slots (novelty / weapon / enemy) — LLM fills later; host owns machine
+    try:
+        import slots as slotslib
+
+        slotslib.fill_slots(spec)
+    except Exception:
+        pass
     put("src/game.js", render_game_js(spec))
+    try:
+        import slots as slotslib
+
+        for rel in slotslib.write_slot_module(dest, spec):
+            if rel not in written:
+                written.append(rel)
+    except Exception:
+        pass
     hexes = " ".join(
         f"{k}=#{v:06x}" for k, v in pal.items() if k not in ("fogNear", "fogFar")
     )

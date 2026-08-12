@@ -283,21 +283,127 @@ def _cloud_chat(name: str, messages: list[dict], model: str, temperature: float,
     return ((choices[0].get("message") or {}).get("content")) or ""
 
 
-def ollama_chat(messages: list[dict], model: str, temperature: float, num_predict: int, num_ctx: int | None) -> str:
+def ollama_chat(
+    messages: list[dict],
+    model: str,
+    temperature: float,
+    num_predict: int,
+    num_ctx: int | None,
+    *,
+    tier: str = "max",
+    speculative: bool | None = None,
+    keep_alive: str | None = None,
+) -> str:
+    """Local Ollama chat with stable keep-alive + optional draft field."""
+    # Strip volatile system lines so prompt-prefix can be reused by the runner
+    try:
+        import quality as qualitylib
+
+        messages = [
+            {
+                **m,
+                "content": qualitylib.strip_volatile_system(m.get("content") or "")
+                if (m.get("role") == "system")
+                else (m.get("content") or ""),
+            }
+            for m in messages
+        ]
+        # client-side prefix bookkeeping
+        sys_txt = "\n".join(
+            m.get("content") or "" for m in messages if m.get("role") == "system"
+        )
+        if sys_txt:
+            ph = qualitylib.stable_prefix_hash(sys_txt)
+            qualitylib.prefix_cache_put(ph, sys_txt, {"model": model or DEFAULT_MODEL})
+        extra = qualitylib.ollama_chat_options(
+            temperature=temperature,
+            num_ctx=num_ctx or int(os.environ.get("GAMEMASTER_NUM_CTX", "32768")),
+            num_predict=num_predict,
+            tier=tier,
+            speculative=speculative,
+        )
+    except Exception:
+        extra = {
+            "keep_alive": keep_alive or "24h",
+            "options": {
+                "temperature": temperature,
+                "num_ctx": num_ctx or int(os.environ.get("GAMEMASTER_NUM_CTX", "32768")),
+                "num_predict": num_predict,
+                "num_batch": 512,
+            },
+        }
+    if keep_alive:
+        extra["keep_alive"] = keep_alive
     payload = {
         "model": model or DEFAULT_MODEL,
         "messages": messages,
         "stream": False,
-        "keep_alive": "24h",
-        "options": {
-            "temperature": temperature,
-            "num_ctx": num_ctx or int(os.environ.get("GAMEMASTER_NUM_CTX", "32768")),
-            "num_predict": num_predict,
-            "num_batch": 512,
-        },
+        **extra,
     }
+    # Nested options may already include draft; top-level draft is best-effort
     res = ollama_json("/api/chat", payload, timeout=600)
     return (res.get("message") or {}).get("content") or ""
+
+
+def ollama_chat_stream(
+    messages: list[dict],
+    model: str,
+    temperature: float = 0.2,
+    num_predict: int = 4096,
+    num_ctx: int | None = None,
+) -> Any:
+    """Yield content deltas from Ollama streaming chat."""
+    import json as _json
+    import urllib.request
+
+    from gmcommon import OLLAMA
+
+    try:
+        import quality as qualitylib
+
+        extra = qualitylib.ollama_chat_options(
+            temperature=temperature,
+            num_ctx=num_ctx or 12288,
+            num_predict=num_predict,
+            tier="max",
+        )
+    except Exception:
+        extra = {
+            "keep_alive": "24h",
+            "options": {
+                "temperature": temperature,
+                "num_ctx": num_ctx or 12288,
+                "num_predict": num_predict,
+            },
+        }
+    payload = {
+        "model": model or DEFAULT_MODEL,
+        "messages": messages,
+        "stream": True,
+        **extra,
+    }
+    data = _json.dumps(payload).encode()
+    req = urllib.request.Request(
+        f"{OLLAMA}/api/chat",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=600) as r:
+        for raw in r:
+            line = raw.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            try:
+                obj = _json.loads(line)
+            except Exception:
+                continue
+            msg = obj.get("message") or {}
+            piece = msg.get("content") or ""
+            if piece:
+                yield piece
+            if obj.get("done"):
+                break
 
 
 def chat(
@@ -307,12 +413,22 @@ def chat(
     num_predict: int = 8192,
     num_ctx: int | None = None,
     provider: str | None = None,
+    tier: str = "max",
+    speculative: bool | None = None,
 ) -> str:
     """Route to opted-in cloud provider, else Ollama."""
     name = (provider or active_provider() or "").strip().lower()
     if name:
         return _cloud_chat(name, messages, model or "", temperature, num_predict)
-    return ollama_chat(messages, model or DEFAULT_MODEL, temperature, num_predict, num_ctx)
+    return ollama_chat(
+        messages,
+        model or DEFAULT_MODEL,
+        temperature,
+        num_predict,
+        num_ctx,
+        tier=tier,
+        speculative=speculative,
+    )
 
 
 def status_dict() -> dict:

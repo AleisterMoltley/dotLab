@@ -50,6 +50,12 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/kit.py" "$@" ;;
     verify|score)
       shift; exec python3 "$ROOT/bin/verify.py" "$@" ;;
+    quality)
+      shift; exec python3 "$ROOT/bin/quality.py" "$@" ;;
+    rag)
+      shift; exec python3 "$ROOT/bin/rag.py" "$@" ;;
+    slots)
+      shift; exec python3 "$ROOT/bin/slots.py" "$@" ;;
     ship)
       shift; exec python3 "$ROOT/bin/github.py" ship "$@" ;;
     cloud)
@@ -134,6 +140,13 @@ if command -v lsof >/dev/null 2>&1; then
     echo "↻ :8765 still busy — using :$PORT"
   fi
 fi
+
+# Background dual-model warmup (flash+max) — does not block dashboard
+(
+  PYTHONPATH="$ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 -c \
+    'from quality import ensure_dual_warmup; ensure_dual_warmup(force=False)' \
+    >/dev/null 2>&1 || true
+) &
 
 echo "→ Chat http://127.0.0.1:${PORT}/  (leave this window open)"
 exec /usr/bin/env python3 "$ROOT/bin/server.py"

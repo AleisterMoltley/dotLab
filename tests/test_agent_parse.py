@@ -35,6 +35,25 @@ export const x = 1
     def test_empty(self) -> None:
         self.assertEqual(agent.parse_tools("just prose"), [])
 
+    def test_apply_patch_multiline(self) -> None:
+        text = """```
+tool call apply_patch
+path: src/game.js
+search:
+const a = 1
+const b = 2
+replace:
+const a = 3
+const b = 4
+```"""
+        tools = agent.parse_tools(text)
+        self.assertEqual(len(tools), 1)
+        name, args = tools[0]
+        self.assertEqual(name, "apply_patch")
+        self.assertEqual(args.get("path"), "src/game.js")
+        self.assertIn("const a = 1", args.get("search") or "")
+        self.assertIn("const a = 3", args.get("replace") or "")
+
 
 if __name__ == "__main__":
     unittest.main()

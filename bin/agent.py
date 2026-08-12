@@ -39,13 +39,15 @@ key: value
 Tools:
 - list_dir → path: .
 - read_file → path: src/main.js  optional start: N end: M
-- write_file → path: src/foo.js  content: full file
+- apply_patch → path: src/game.js  search: exact lines  replace: new lines
+- write_file → path: src/systems/foo.js  content: full file (NEW modules preferred; large game.js full replace is blocked)
 - search → query: regex
 - run → cmd: short safe command
 - kit → action: todo_add|todo_done|todo_list|wiki_add|map|art_test|feel|verify|pixel
 - done → summary: what + how to test
 
-Efficiency: MAP/WIKI first · write complete files · kit feel after controller · no list_dir loops.
+Efficiency: MAP/WIKI first · surgical apply_patch · kit feel after controller · no list_dir loops.
+Host owns feel/juice/slots — do not rewrite CONFIG wholesale.
 """
 
 
@@ -64,24 +66,49 @@ def chat(messages: list[dict], model: str, temperature: float = 0.2, num_ctx: in
 
 
 def parse_tool_body(body: str) -> dict:
-    """Parse key: value lines; content: eats until next tool call / fence."""
+    """Parse key: value lines; content/search/replace eat until next key / tool / fence."""
     lines = body.splitlines()
     data: dict[str, str] = {}
     i = 0
+    multiline_keys = {"content", "search", "replace", "body", "patch"}
+    key_line = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$")
+
+    def is_new_key(s: str) -> bool:
+        m = key_line.match(s)
+        if not m:
+            return False
+        k = m.group(1).strip().lower()
+        # path/query/cmd are single-line; don't treat indented code "foo: bar" inside body as keys
+        # only known tool keys start a new field
+        return k in {
+            "path",
+            "content",
+            "search",
+            "replace",
+            "query",
+            "cmd",
+            "action",
+            "summary",
+            "start",
+            "end",
+            "glob",
+            "body",
+            "patch",
+        }
+
     while i < len(lines):
         line = lines[i]
-        # stop if another tool starts (when unfenced multi)
         if re.match(r"(?i)^\s*tool call\s+\w+", line):
             break
         if line.strip() == "```":
             break
-        if ":" not in line:
+        m = key_line.match(line)
+        if not m:
             i += 1
             continue
-        key, val = line.split(":", 1)
-        key = key.strip().lower()
-        val = val.lstrip()
-        if key == "content":
+        key = m.group(1).strip().lower()
+        val = m.group(2)
+        if key in multiline_keys:
             rest = [val] if val else []
             i += 1
             while i < len(lines):
@@ -89,12 +116,17 @@ def parse_tool_body(body: str) -> dict:
                     break
                 if lines[i].strip() == "```":
                     break
+                if is_new_key(lines[i]) and key_line.match(lines[i]).group(1).strip().lower() != key:
+                    break
                 rest.append(lines[i])
                 i += 1
-            content = "\n".join(rest)
-            content = re.sub(r"\n```\s*$", "", content)
-            data["content"] = content
-            break
+            blob = "\n".join(rest)
+            blob = re.sub(r"\n```\s*$", "", blob)
+            # strip one leading newline if value was empty on key line
+            if blob.startswith("\n"):
+                blob = blob[1:]
+            data[key] = blob
+            continue
         data[key] = val.strip()
         i += 1
     return data
@@ -205,13 +237,25 @@ def tool_read(project: Path, path: str, start: str | None = None, end: str | Non
 
 
 def tool_write(project: Path, path: str, content: str) -> str:
-    f = safe_path(project, path)
-    f.parent.mkdir(parents=True, exist_ok=True)
-    # backup if exists
-    if f.exists() and f.stat().st_size > 0:
-        bak = f.with_suffix(f.suffix + ".bak")
-        bak.write_bytes(f.read_bytes())
-    f.write_text(content, encoding="utf-8")
+    # Patch-only gate: block full replace of large protected files
+    try:
+        import quality as qualitylib
+
+        rel = path.strip().lstrip("./")
+        res = qualitylib.apply_full_write(project, rel, content or "", force=False)
+        if not res.get("ok"):
+            return (
+                f"ERROR: {res.get('error')} — use tool call apply_patch with search/replace, "
+                "or write a new file under src/systems/."
+            )
+        path = res.get("path") or rel
+    except Exception:
+        f = safe_path(project, path)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        if f.exists() and f.stat().st_size > 0:
+            bak = f.with_suffix(f.suffix + ".bak")
+            bak.write_bytes(f.read_bytes())
+        f.write_text(content, encoding="utf-8")
     try:
         import live as livelib  # type: ignore
 
@@ -225,7 +269,57 @@ def tool_write(project: Path, path: str, content: str) -> str:
         )
     except Exception:
         pass
+    # LoRA accept-pair logging (best effort)
+    try:
+        import quality as qualitylib
+
+        qualitylib.log_accept_pair(
+            project,
+            instruction=f"write_file {path}",
+            before="",
+            after=(content or "")[:40_000],
+            kind="write_file",
+        )
+    except Exception:
+        pass
     return f"OK wrote {path} ({len(content)} chars)"
+
+
+def tool_apply_patch(project: Path, path: str, search: str, replace: str) -> str:
+    """Surgical search/replace — preferred over full write_file."""
+    try:
+        import quality as qualitylib
+
+        before = qualitylib.snapshot_file(project, path)
+        res = qualitylib.apply_search_replace(project, path, search or "", replace or "")
+        if not res.get("ok"):
+            return f"ERROR: {res.get('error')}"
+        after = qualitylib.snapshot_file(project, path)
+        try:
+            qualitylib.log_accept_pair(
+                project,
+                instruction=f"apply_patch {path}",
+                before=before[:40_000],
+                after=after[:40_000],
+                kind="apply_patch",
+            )
+        except Exception:
+            pass
+    except Exception as e:
+        return f"ERROR: {e}"
+    try:
+        import live as livelib  # type: ignore
+
+        livelib.emit(
+            f"Patched {path}",
+            role="file",
+            phase="coding",
+            headline=f"Patched {path}",
+            reload=True,
+        )
+    except Exception:
+        pass
+    return f"OK patched {path} ({len(search or '')}→{len(replace or '')} chars)"
 
 
 def tool_search(project: Path, query: str, glob_pat: str = "*.{js,ts,mjs,html,css,json,md}") -> str:
@@ -294,6 +388,13 @@ def run_tool(project: Path, name: str, args: dict) -> str:
             )
         if name == "write_file":
             return tool_write(project, args.get("path", ""), args.get("content", ""))
+        if name in ("apply_patch", "patch"):
+            return tool_apply_patch(
+                project,
+                args.get("path", ""),
+                args.get("search", ""),
+                args.get("replace", ""),
+            )
         if name == "search":
             return tool_search(project, args.get("query", ""), args.get("glob", ""))
         if name == "run":
@@ -419,6 +520,15 @@ def main() -> int:
         pass
 
     knowledge = "" if args.no_knowledge else load_knowledge(project, task)
+    # Slice RAG: few successful snippets (cheap prefill)
+    try:
+        import rag as raglib
+
+        rb = raglib.prompt_block(task, k=3, max_chars=2800)
+        if rb:
+            knowledge = (knowledge + "\n\n" + rb) if knowledge else rb
+    except Exception:
+        pass
     route = {"model": model, "num_ctx": 16384, "num_predict": 6144, "temperature": 0.18}
     try:
         import turbo as turbolib
@@ -428,10 +538,17 @@ def main() -> int:
             model = route.get("model") or model
     except Exception:
         pass
+    # Dual keep-alive (flash+max) — non-blocking if already warm
+    try:
+        import quality as qualitylib
+
+        qualitylib.ensure_dual_warmup(force=False)
+    except Exception:
+        pass
 
     system = (
         identitylib.system_for("agent", extra_packs=False)
-        + "\nHonor USER PREFERENCE MEMORY. Prefer editing src/game.js.\n"
+        + "\nHonor USER PREFERENCE MEMORY. Prefer apply_patch over full rewrites.\n"
         + SYSTEM_EXTRA
         + ("\n\n# Knowledge\n" + knowledge if knowledge else "")
     )
