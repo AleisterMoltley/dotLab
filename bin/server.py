@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 import threading
@@ -18,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 import cloud as cloudlib  # noqa: E402
 import github as githublib  # noqa: E402
+import slice as slicelib  # noqa: E402
 from gmcommon import (
     CHAT_DIR,
     DEFAULT_MODEL,
@@ -38,50 +38,8 @@ NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "65536"))
 _TAGS: dict = {"ts": 0.0, "names": [], "ok": False, "error": ""}
 _PREVIEWS: dict[str, dict] = {}
 
-_FENCE = re.compile(
-    r"```(?:javascript|js|html|css|ts|mjs)?[ \t]*([a-zA-Z0-9_./-]+\.(?:js|mjs|html|css|ts))?[ \t]*\n(.*?)```",
-    re.S,
-)
-_FILE_LINE = re.compile(r"(?m)^(?://|#)\s*file:\s*(\S+)\s*$")
-
-
-def extract_code_files(text: str) -> list[tuple[str, str]]:
-    """Pull path + body out of markdown fences. Prefer an explicit path."""
-    out: list[tuple[str, str]] = []
-    for m in _FENCE.finditer(text or ""):
-        path = (m.group(1) or "").strip()
-        body = m.group(2) or ""
-        head = _FILE_LINE.search(body)
-        if head:
-            path = head.group(1).strip()
-            body = body[head.end() :].lstrip("\n")
-        if not path:
-            continue
-        path = path.lstrip("./")
-        allowed = path.startswith("src/") or path in {
-            "index.html",
-            "package.json",
-            "WIKI.md",
-            "DESIGN.md",
-        }
-        if ".." in path or path.startswith("/") or not allowed:
-            continue
-        out.append((path, body.rstrip() + "\n"))
-    return out
-
-
-def write_reply_files(project: Path, text: str) -> list[str]:
-    written: list[str] = []
-    for rel, body in extract_code_files(text):
-        dest = (project / rel).resolve()
-        try:
-            dest.relative_to(project.resolve())
-        except ValueError:
-            continue
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(body, encoding="utf-8")
-        written.append(rel)
-    return written
+extract_code_files = slicelib.extract_code_files
+write_reply_files = slicelib.write_reply_files
 
 
 def http_up(url: str, timeout: float = 20.0) -> bool:
@@ -413,21 +371,40 @@ class Handler(SimpleHTTPRequestHandler):
                     webbrowser.open(result["url"])
             return self._json(200, result)
         if path.endswith("/new"):
-            name = slugify_project(str(body.get("name") or "new-game"))
+            prompt = str(body.get("prompt") or body.get("name") or "new game").strip()
+            name = slugify_project(str(body.get("name") or prompt[:48] or "new-game"))
             dest = projects_root() / name
-            if dest.exists() and any(dest.iterdir()):
-                return self._json(409, {"ok": False, "error": "folder exists", "path": str(dest)})
             dest.mkdir(parents=True, exist_ok=True)
+            if any(dest.iterdir()) and not looks_like_game(dest):
+                return self._json(409, {"ok": False, "error": "folder exists", "path": str(dest)})
             import scaffold as scaffoldlib
 
-            kind = str(body.get("kind") or "web-game")
+            spec = slicelib.compile_prompt(prompt)
+            kind = str(body.get("kind") or "auto")
+            if kind in ("", "auto"):
+                kind = spec["kind"]
             if kind == "pixel-game":
-                scaffoldlib.scaffold_pixel_game(dest, name)
+                scaffoldlib.scaffold_pixel_game(dest, spec["title"])
             elif kind == "world-game":
-                scaffoldlib.scaffold_world_game(dest, name)
+                scaffoldlib.scaffold_world_game(dest, spec["title"])
+            elif kind == "shader-lab":
+                scaffoldlib.scaffold_shader_lab(dest, spec["title"])
             else:
-                scaffoldlib.scaffold_web_game(dest, name, str(body.get("genre") or "arena"))
-            return self._json(200, {"ok": True, "name": dest.name, "path": str(dest)})
+                genre = str(body.get("genre") or spec["genre"])
+                scaffoldlib.scaffold_web_game(dest, spec["title"], genre, prompt=prompt)
+            return self._json(
+                200,
+                {
+                    "ok": True,
+                    "name": dest.name,
+                    "path": str(dest),
+                    "genre": spec.get("genre"),
+                    "setting": spec.get("setting"),
+                    "verb": spec.get("verb"),
+                    "kind": kind,
+                    "summary": slicelib.summarize(spec),
+                },
+            )
         return self._json(404, {"ok": False, "error": "unknown project action"})
 
     def do_POST(self) -> None:
@@ -447,29 +424,49 @@ class Handler(SimpleHTTPRequestHandler):
             messages = payload.get("messages") or []
             if isinstance(payload.get("q"), str) and payload["q"].strip():
                 messages = messages or [{"role": "user", "content": payload["q"]}]
+            proj = str(payload.get("project") or "").strip()
+            pdir = Path(proj).expanduser() if proj else None
+            user_txt = ""
+            for m in reversed(messages):
+                if m.get("role") == "user":
+                    user_txt = str(m.get("content") or "")
+                    break
+            sys_msg = slicelib.ask_system(pdir if pdir and pdir.is_dir() else None, user_txt)
+            if not messages or messages[0].get("role") != "system":
+                messages = [{"role": "system", "content": sys_msg}] + list(messages)
+            else:
+                messages = [{"role": "system", "content": sys_msg}] + list(messages[1:])
             try:
                 text = cloudlib.chat(
                     messages,
                     model=payload.get("model") or MODEL,
                     temperature=float((payload.get("options") or {}).get("temperature", 0.2)),
-                    num_predict=int((payload.get("options") or {}).get("num_predict", 4096)),
+                    num_predict=int((payload.get("options") or {}).get("num_predict", 8192)),
                 )
                 written: list[str] = []
-                proj = str(payload.get("project") or "").strip()
-                if proj:
-                    pdir = Path(proj).expanduser()
-                    if pdir.is_dir():
-                        written = write_reply_files(pdir, text)
+                rejected = ""
+                if pdir and pdir.is_dir():
+                    applied = slicelib.apply_model_files(pdir, text)
+                    written = list(applied.get("written") or [])
+                    if applied.get("rejected") and applied.get("reason") != "no files":
+                        rejected = str(applied.get("reason") or "")
                 note = ""
                 if written:
                     note = "\n\nSaved " + ", ".join(written) + " in " + proj
+                elif proj and rejected:
+                    note = "\n\nKept the playable slice (" + rejected + "). Ask again, or click Play."
                 elif proj:
-                    note = (
-                        "\n\nProject folder: "
-                        + proj
-                        + " (scaffold). Click Play to run it. Put code in fences like ```js src/game.js"
-                    )
-                return self._json(200, {"ok": True, "text": text + note, "written": written, "project": proj})
+                    note = "\n\nPlayable slice is already in " + proj + ". Click Play."
+                return self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "text": text + note,
+                        "written": written,
+                        "project": proj,
+                        "rejected": rejected,
+                    },
+                )
             except Exception as e:
                 return self._json(502, {"ok": False, "error": str(e)})
         if path.startswith("/api/chat"):

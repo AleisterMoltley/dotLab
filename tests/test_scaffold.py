@@ -35,6 +35,18 @@ class TestPixelScaffold(unittest.TestCase):
             self.assertEqual(r["p0_fail"], [], r["report"])
             self.assertTrue(r["ok"], r["report"])
 
+    def test_web_game_from_prompt_is_themed(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            dest = Path(raw) / "neon"
+            dest.mkdir()
+            scaffold.scaffold_web_game(dest, "Neon Shot", "arena", prompt="futuristic shooter neon drones")
+            game = (dest / "src" / "game.js").read_text(encoding="utf-8")
+            self.assertIn("createGame", game)
+            self.assertNotIn("Genre: arena — vertical slice", game)
+            self.assertIn("IcosahedronGeometry", game)
+            r = verify.evaluate(dest)
+            self.assertEqual(r["p0_fail"], [], r["report"])
+
     def test_lib_pixel_is_esm(self) -> None:
         lib = ROOT / "lib" / "pixel"
         self.assertTrue((lib / "index.js").is_file())

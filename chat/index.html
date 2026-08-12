@@ -172,7 +172,7 @@
     <div id="log">
       <div id="empty">
         <h1>Describe a game</h1>
-        <p>Write what the player does. A folder is created and you can reopen it later.</p>
+        <p>Write what the player does. We build a playable slice from those words. Click Play.</p>
         <p class="where">Saved in <span id="projectsRoot">~/Gamemaster/Projects</span>
           · <button type="button" id="btnRevealRoot">Show folder</button></p>
         <div id="games" hidden>
@@ -188,6 +188,8 @@
           <button type="button" class="more" id="nowPlay">Play</button>
           ·
           <button type="button" class="more" id="nowShow">Show folder</button>
+          ·
+          <button type="button" class="more" id="nowNew">New</button>
         </span>
       </div>
       <form id="composer" action="/api/ask" method="post" onsubmit="return window.GM.bootSend(event)">
@@ -197,11 +199,12 @@
             <button type="button" data-fill="The player walks a small village, talks to one person, then goes home.">Village</button>
             <button type="button" data-fill="The player jumps between platforms. Missing a jump restarts fast.">Jumper</button>
             <button type="button" data-fill="A tiny pixel forest. Walk around trees. Camera follows.">Pixel forest</button>
+            <button type="button" data-fill="Futuristic shooter. Neon city. Shoot hovering drones.">Neon shooter</button>
           </div>
           <button type="submit" id="send">Make this game</button>
         </div>
       </form>
-      <div class="fine">First answer can take half a minute while the model wakes up.</div>
+      <div class="fine">The first build is instant. Play it, then type what to change.</div>
     </div>
   </div>
 

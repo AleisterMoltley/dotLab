@@ -35,6 +35,7 @@ Modelfile       baked Ollama system prompt
 | Studio roles / pipeline | `bin/studio.py` (Director/Architect/Critic/pipelines) |
 | Agent tools | `bin/agent.py` (`parse_tools`, `run_tool`) |
 | New project starter | `bin/scaffold.py` + optional `templates/<name>/` |
+| Prompt → playable slice | `bin/slice.py` + `templates/web-slice/game.js` |
 | Pixel bake / sprite vocab | `lib/pixel/` + `knowledge/pixel-kit.md` + `templates/pixel-game/` |
 | World generation | `bin/worlds.py` + `templates/world-game/` |
 | Play-while-build | `bin/live.py` + `live/dashboard.html` |

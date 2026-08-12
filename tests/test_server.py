@@ -71,6 +71,11 @@ class TestHealth(unittest.TestCase):
             self.assertEqual(written, ["src/game.js"])
             self.assertTrue((dest / "src" / "game.js").is_file())
 
+    def test_untitled_fence_guesses_game_js(self) -> None:
+        text = "```js\nimport * as THREE from 'three';\nexport function createGame() { return 1; }\n```\n"
+        files = server.extract_code_files(text)
+        self.assertEqual(files[0][0], "src/game.js")
+
     def test_health_does_not_call_ollama(self) -> None:
         server.remember_tags(["gamemaster:latest"], ok=True)
         with mock.patch.object(server.cloudlib, "status_dict", return_value={"enabled": False}):

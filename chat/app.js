@@ -62,48 +62,57 @@
     document.body.classList.add("has-chat");
     input.value = "";
     addMsg("user", text);
-    var start = Promise.resolve(current.path);
-    if (!current.path) {
-      start = api("/api/projects/new", { name: text.slice(0, 40), kind: "web-game" }).then(function (d) {
-        if (d.path) setCurrent(d.path, d.name);
-        loadProjects();
-        return d.path || "";
-      });
-    }
-    start.then(function (path) {
-    var extra = path ? "\n\nSave files in this existing project: " + path : "";
-    history.push({ role: "user", content: text + extra });
-    var body = addMsg("bot", "Writing the game…");
     if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "Working…"; }
 
-    fetch("/api/ask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: [{
-          role: "system",
-          content: "You are Gamemaster. Write a playable Three.js game. Put every file in a fence that starts with the path, e.g. ```js src/game.js then the full file. CONFIG feel. fog=background. Complete files, no holes.",
-        }].concat(history.slice(-8)),
-        project: path || current.path || "",
-      }),
-    })
-      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || r.status); return d; }); })
-      .then(function (d) {
-        var t = d.text || d.error || "No reply";
-        body.textContent = t;
-        history.push({ role: "assistant", content: t });
-      })
-      .catch(function (e) {
-        body.textContent = "Could not reach the model. Keep the Gamemaster terminal open and check Ollama.app.\n\n" + e.message;
-      })
-      .then(function () {
-        if (sendBtn) {
-          sendBtn.disabled = false;
-          sendBtn.textContent = current.path ? "Continue" : "Make this game";
+    var making = !current.path;
+    var start = making
+      ? api("/api/projects/new", { name: text.slice(0, 48), prompt: text, kind: "auto" }).then(function (d) {
+          if (d && d.path) setCurrent(d.path, d.name);
+          loadProjects();
+          return d;
+        })
+      : Promise.resolve(null);
+
+    start.then(function (created) {
+      if (making) {
+        if (!created || created.error) {
+          addMsg("bot", (created && created.error) || "Could not create the folder.");
+          return;
         }
-        if (input) input.focus();
-        log.scrollTop = log.scrollHeight;
-      });
+        var summary = created.summary || "Playable slice is ready. Click Play.";
+        addMsg("bot", summary);
+        history.push({ role: "user", content: text });
+        history.push({ role: "assistant", content: summary });
+        return;
+      }
+
+      var path = current.path;
+      history.push({ role: "user", content: text });
+      var body = addMsg("bot", "Changing the game…");
+      return fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: history.slice(-8),
+          project: path || "",
+        }),
+      })
+        .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || r.status); return d; }); })
+        .then(function (d) {
+          var t = d.text || d.error || "No reply";
+          body.textContent = t;
+          history.push({ role: "assistant", content: t });
+        })
+        .catch(function (e) {
+          body.textContent = "Could not reach the model. Keep the Gamemaster terminal open and check Ollama.app.\n\n" + e.message;
+        });
+    }).then(function () {
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = current.path ? "Continue" : "Make this game";
+      }
+      if (input) input.focus();
+      log.scrollTop = log.scrollHeight;
     });
     return false;
   };
@@ -162,6 +171,17 @@
   }
   var nowPlay = document.getElementById("nowPlay");
   var nowShow = document.getElementById("nowShow");
+  var nowNew = document.getElementById("nowNew");
+  if (nowNew) {
+    nowNew.onclick = function () {
+      setCurrent("", "");
+      if (sendBtn) sendBtn.textContent = "Make this game";
+      if (input) {
+        input.placeholder = "The player runs, jumps, and grabs coins…";
+        input.focus();
+      }
+    };
+  }
   if (nowPlay) {
     nowPlay.onclick = function () {
       if (!current.path) return;
