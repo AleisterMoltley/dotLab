@@ -55,7 +55,24 @@ class TestGmcommon(unittest.TestCase):
             found = g.list_game_projects()
             self.assertEqual(len(found), 1)
             self.assertEqual(found[0]["name"], "wilds")
+            self.assertIn("engine", found[0])
             self.assertEqual(g.projects_root(), root)
+
+    def test_detect_project_engine(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            p = Path(raw)
+            (p / "package.json").write_text(
+                '{"dependencies":{"three":"0.170.0"}}', encoding="utf-8"
+            )
+            self.assertEqual(g._detect_project_engine(p), "three")
+            meta = p / ".dotlab"
+            meta.mkdir()
+            (meta / "slice.json").write_text(
+                '{"engine":"vintage","vintage":{"profile":"gb"}}', encoding="utf-8"
+            )
+            sn = g._project_meta_snippet(p)
+            self.assertEqual(sn["engine"], "vintage")
+            self.assertEqual(sn["vintage_profile"], "gb")
 
     def test_looks_like_game(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

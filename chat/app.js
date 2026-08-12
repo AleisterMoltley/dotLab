@@ -5,10 +5,24 @@
   var projectEl = document.getElementById("project");
   var history = [];
   var projectsCache = [];
-  var current = { path: "", name: "" };
+  var current = { path: "", name: "", engine: "", vintage_profile: "", genre: "" };
   var playPoll = null;
   var agentPoll = null;
   var health = {};
+  var engineListFilter = "all";
+
+  var ENGINE_LABEL = {
+    three: "Three.js",
+    pixel: "Pixel",
+    vintage: "Vintage",
+    auto: "Auto",
+  };
+  var ENGINE_HINT = {
+    auto: "Auto picks Three, Pixel, or Vintage from your prompt.",
+    three: "WebGL Three.js · full craft juice · skill FPS ship bar.",
+    pixel: "Canvas2D · pixelart.js + FX · no Three dependency.",
+    vintage: "Game Boy ship bar · hard ceiling GBA (≤240×160, ≤15 colors, no 3D).",
+  };
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -60,9 +74,29 @@
     });
   }
 
-  function setCurrent(path, name) {
+  function engineBadgeHtml(engine, profile) {
+    var e = (engine || "three").toLowerCase();
+    if (e !== "three" && e !== "pixel" && e !== "vintage") e = "three";
+    var label = e === "three" ? "3D" : e === "pixel" ? "Pixel" : "GB";
+    if (e === "vintage" && profile) label = String(profile).toUpperCase();
+    return '<span class="badge eng-' + e + '">' + esc(label) + "</span>";
+  }
+
+  function findProject(path) {
+    if (!path) return null;
+    for (var i = 0; i < projectsCache.length; i++) {
+      if (projectsCache[i].path === path) return projectsCache[i];
+    }
+    return null;
+  }
+
+  function setCurrent(path, name, meta) {
     current.path = path || "";
     current.name = name || (path ? path.split("/").pop() : "");
+    meta = meta || findProject(path) || {};
+    current.engine = meta.engine || "";
+    current.vintage_profile = meta.vintage_profile || "";
+    current.genre = meta.genre || "";
     if (projectEl) projectEl.value = current.path;
     try {
       localStorage.setItem("dl.project", current.path);
@@ -71,9 +105,17 @@
 
     var ctx = $("contextLine");
     if (ctx) {
-      ctx.innerHTML = current.path
-        ? '<b>' + esc(current.name) + '</b> · project'
-        : "no project";
+      if (current.path) {
+        var eng = current.engine || "three";
+        var bits = [
+          "<b>" + esc(current.name) + "</b>",
+          engineBadgeHtml(eng, current.vintage_profile),
+        ];
+        if (current.genre) bits.push(esc(current.genre));
+        ctx.innerHTML = bits.join(" · ");
+      } else {
+        ctx.innerHTML = "no project · pick engine below";
+      }
     }
     document.body.classList.toggle("has-project", !!current.path);
     var craft = $("craftChips");
@@ -81,14 +123,30 @@
     var newOpts = $("newOptions");
     if (craft) craft.hidden = !current.path;
     if (examples) examples.hidden = !!current.path;
-    if (newOpts) newOpts.style.display = current.path ? "none" : "grid";
+    if (newOpts) newOpts.style.display = current.path ? "none" : "";
     setProjectButtons(!!current.path);
     if (sendBtn) sendBtn.textContent = current.path ? "Continue" : "Make game";
+    var ta = $("input");
+    if (ta && !current.path) {
+      var engSel = ($("optEngine") && $("optEngine").value) || "auto";
+      if (engSel === "vintage") ta.placeholder = "GB verb + place… e.g. jump caves, collect shells";
+      else if (engSel === "pixel") ta.placeholder = "Pixel verb + place… e.g. top-down forest walk";
+      else if (engSel === "three") ta.placeholder = "Player verb + place… e.g. neon skill FPS";
+      else ta.placeholder = "Player verb + place… engine Auto from prompt";
+    } else if (ta && current.path) {
+      ta.placeholder = "Continue — feel tweak or feature…";
+    }
     var hint = $("composerHint");
     if (hint) {
       hint.textContent = current.path
         ? "Craft · Keep/Tighter/Juice · Deep · Enter"
-        : "Enter send · ⌘P play · ⌘N new";
+        : "Pick engine · Enter make · ⌘P play";
+    }
+    // Play embed status engine tag
+    var pes = $("playEmbedStatus");
+    if (pes && current.path) {
+      var elab = ENGINE_LABEL[current.engine] || current.engine || "game";
+      pes.textContent = "play · " + elab.toLowerCase();
     }
     if (!current.path) {
       hidePlayBar();
@@ -97,6 +155,7 @@
       hideAgentBox();
       stopPlayPoll();
       stopAgentPoll();
+      if (pes) pes.textContent = "play";
     } else {
       loadSession();
       refreshPlayStatus();
@@ -158,9 +217,13 @@
 
   function filteredProjects() {
     var q = (($("projectSearch") && $("projectSearch").value) || "").toLowerCase().trim();
-    if (!q) return projectsCache;
     return projectsCache.filter(function (p) {
-      var hay = [p.name, p.path, p.genre, p.verb, p.title].join(" ").toLowerCase();
+      var eng = (p.engine || "three").toLowerCase();
+      if (engineListFilter !== "all" && eng !== engineListFilter) return false;
+      if (!q) return true;
+      var hay = [p.name, p.path, p.genre, p.verb, p.title, p.engine, p.vintage_profile]
+        .join(" ")
+        .toLowerCase();
       return hay.indexOf(q) !== -1;
     });
   }
@@ -176,27 +239,70 @@
     var count = $("projectCount");
     if (!list) return;
     var items = filteredProjects();
-    if (count) count.textContent = projectsCache.length ? "(" + projectsCache.length + ")" : "";
+    if (count) {
+      var n = projectsCache.length;
+      var f = items.length;
+      count.textContent = n ? (f === n ? "(" + n + ")" : "(" + f + "/" + n + ")") : "";
+    }
     if (!items.length) {
       list.innerHTML = '<div class="empty-list">' +
-        (projectsCache.length ? "No match." : "No projects yet.") +
+        (projectsCache.length ? "No match for filter." : "No projects yet.") +
         "</div>";
       return;
     }
     list.innerHTML = items.map(function (p) {
       var on = current.path === p.path ? " on" : "";
+      var eng = p.engine || "three";
       var meta = [p.genre, p.verb].filter(Boolean).join(" · ") || p.path;
       return (
-        '<div class="proj' + on + '" data-path="' + esc(p.path) + '" data-name="' + esc(p.name) + '">' +
+        '<div class="proj' + on + '" data-path="' + esc(p.path) + '" data-name="' + esc(p.name) +
+        '" data-engine="' + esc(eng) + '">' +
         '<div class="t"><span class="name">' + esc(p.name) + "</span>" +
         '<span class="when">' + esc(relTime(p.mtime)) + "</span></div>" +
-        '<div class="meta" title="' + esc(meta) + '">' + verifyBadge(p) + " " + esc(meta) + "</div>" +
+        '<div class="meta" title="' + esc(meta) + '">' +
+        engineBadgeHtml(eng, p.vintage_profile) + " " +
+        verifyBadge(p) + " " + esc(meta) + "</div>" +
         '<div class="acts">' +
         '<button type="button" class="btn icon" data-act="play">Play</button>' +
         '<button type="button" class="btn icon" data-act="dup">Dup</button>' +
         "</div></div>"
       );
     }).join("");
+  }
+
+  function setEngineSelection(engine) {
+    var eng = engine || "auto";
+    var sel = $("optEngine");
+    if (sel) sel.value = eng;
+    document.querySelectorAll("#enginePills .eng-pill").forEach(function (btn) {
+      btn.classList.toggle("on", btn.getAttribute("data-engine") === eng);
+    });
+    document.body.classList.remove("eng-auto", "eng-three", "eng-pixel", "eng-vintage");
+    document.body.classList.add("eng-" + eng);
+    var hint = $("engineHint");
+    if (hint) hint.textContent = ENGINE_HINT[eng] || ENGINE_HINT.auto;
+    var vField = $("fieldVintageProfile");
+    if (vField) vField.hidden = eng !== "vintage";
+    var kindEl = $("optKind");
+    if (kindEl) {
+      if (eng === "pixel") kindEl.value = "pixel-game";
+      else if (eng === "vintage") kindEl.value = "vintage-game";
+      else if (eng === "three" && (kindEl.value === "pixel-game" || kindEl.value === "vintage-game")) {
+        kindEl.value = "web-game";
+      } else if (eng === "auto") {
+        kindEl.value = "auto";
+      }
+    }
+    var ta = $("input");
+    if (ta && !current.path) {
+      if (eng === "vintage") ta.placeholder = "GB verb + place… e.g. jump caves, collect shells";
+      else if (eng === "pixel") ta.placeholder = "Pixel verb + place… e.g. top-down forest walk";
+      else if (eng === "three") ta.placeholder = "Player verb + place… e.g. neon skill FPS";
+      else ta.placeholder = "Player verb + place… engine Auto from prompt";
+    }
+    try {
+      localStorage.setItem("dl.engine", eng);
+    } catch (e) {}
   }
 
   function addMsg(role, text) {
@@ -614,37 +720,43 @@
     history = [];
     if (input) {
       input.value = "";
-      input.placeholder = "Player verb + place…";
       input.focus();
     }
     document.body.classList.remove("has-chat");
+    // re-apply placeholder from engine pills
+    var eng = ($("optEngine") && $("optEngine").value) || "auto";
+    setEngineSelection(eng);
   }
 
-  // Keep Engine / Type / Vintage profile selects in sync
-  var engEl = $("optEngine");
+  // Engine pills + selects
+  document.querySelectorAll("#enginePills .eng-pill").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      setEngineSelection(btn.getAttribute("data-engine") || "auto");
+    });
+  });
   var kindEl = $("optKind");
-  var vProfEl = $("optVintage");
-  var vField = $("fieldVintageProfile");
-  function syncEngineUi() {
-    if (!engEl) return;
-    if (vField) vField.hidden = engEl.value !== "vintage";
-    if (!kindEl) return;
-    if (engEl.value === "pixel") kindEl.value = "pixel-game";
-    else if (engEl.value === "vintage") kindEl.value = "vintage-game";
-    else if (engEl.value === "three" && (kindEl.value === "pixel-game" || kindEl.value === "vintage-game")) {
-      kindEl.value = "web-game";
-    }
-  }
-  if (engEl) engEl.addEventListener("change", syncEngineUi);
   if (kindEl) {
     kindEl.addEventListener("change", function () {
-      if (!engEl) return;
-      if (kindEl.value === "vintage-game") engEl.value = "vintage";
-      else if (kindEl.value === "pixel-game") engEl.value = "pixel";
-      syncEngineUi();
+      if (kindEl.value === "vintage-game") setEngineSelection("vintage");
+      else if (kindEl.value === "pixel-game") setEngineSelection("pixel");
+      else if (kindEl.value === "web-game") setEngineSelection("three");
     });
   }
-  syncEngineUi();
+  document.querySelectorAll("#engineFilter button").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      engineListFilter = btn.getAttribute("data-ef") || "all";
+      document.querySelectorAll("#engineFilter button").forEach(function (b) {
+        b.classList.toggle("on", b === btn);
+      });
+      renderProjects();
+    });
+  });
+  try {
+    var savedEng = localStorage.getItem("dl.engine") || "auto";
+    setEngineSelection(savedEng);
+  } catch (e) {
+    setEngineSelection("auto");
+  }
 
   window.DL.send = function (forcedText) {
     var text = (forcedText != null ? forcedText : (input && input.value || "")).replace(/^\s+|\s+$/g, "");
@@ -673,7 +785,13 @@
           engine: engine === "auto" ? undefined : engine,
           vintageProfile: engine === "vintage" ? vProfile : undefined,
         }).then(function (d) {
-          if (d && d.path) setCurrent(d.path, d.name);
+          if (d && d.path) {
+            setCurrent(d.path, d.name, {
+              engine: d.engine || engine || "three",
+              genre: d.genre || "",
+              vintage_profile: (d.vintage && d.vintage.profile) || vProfile || "",
+            });
+          }
           loadProjects();
           return d;
         })
@@ -685,7 +803,9 @@
           addMsg("bot", (created && (created.error || created.message)) || "Could not create folder.");
           return;
         }
+        var engLab = ENGINE_LABEL[created.engine] || created.engine || "";
         var summary = created.summary || "Ready. Play.";
+        if (engLab) summary = "[" + engLab + "] " + summary;
         addMsg("bot", summary);
         history.push({ role: "user", content: text });
         history.push({ role: "assistant", content: summary });
@@ -777,9 +897,12 @@
       if (!row) return;
       var path = row.getAttribute("data-path");
       var name = row.getAttribute("data-name");
+      var pmeta = findProject(path) || {
+        engine: row.getAttribute("data-engine") || "three",
+      };
       var act = btn && btn.getAttribute("data-act");
       if (act === "play") {
-        setCurrent(path, name);
+        setCurrent(path, name, pmeta);
         playPath(path);
         return;
       }
@@ -787,7 +910,7 @@
         duplicatePath(path);
         return;
       }
-      setCurrent(path, name);
+      setCurrent(path, name, pmeta);
       if (input) {
         input.placeholder = "Change " + name + "…";
         input.focus();

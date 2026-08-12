@@ -132,6 +132,55 @@
     .badge.bad { color: var(--bad); border-color: #5a2020; }
     .badge.na { color: var(--faint); }
     .badge.pulse { animation: pulse 0.9s ease 2; }
+    .badge.eng-three { color: #8ec8ff; border-color: #2a4060; }
+    .badge.eng-pixel { color: #c8f060; border-color: #3a4a20; }
+    .badge.eng-vintage { color: #8bac0f; border-color: #306230; background: #0f380f22; }
+    .eng-filter {
+      display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px 8px;
+    }
+    .eng-filter button {
+      border: 1px solid var(--line); background: transparent; color: var(--faint);
+      border-radius: 2px; padding: 3px 7px; font: 9px/1 var(--mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .eng-filter button:hover { color: var(--text); border-color: var(--line2); }
+    .eng-filter button.on { color: var(--text); border-color: var(--line2); background: var(--elev); }
+    .eng-pills {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px;
+    }
+    @media (max-width: 640px) {
+      .eng-pills { grid-template-columns: 1fr 1fr; }
+    }
+    .eng-pill {
+      border: 1px solid var(--line); background: var(--bg); color: var(--muted);
+      border-radius: var(--r); padding: 8px 8px 7px; text-align: left; cursor: pointer;
+      min-height: 52px;
+    }
+    .eng-pill:hover { border-color: var(--line2); color: var(--text); }
+    .eng-pill.on {
+      border-color: var(--text); color: var(--text); background: var(--elev);
+    }
+    .eng-pill .k {
+      display: block; font: 10px/1 var(--mono); letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--faint); margin-bottom: 4px;
+    }
+    .eng-pill.on .k { color: var(--muted); }
+    .eng-pill .t { display: block; font-size: 12px; font-weight: 650; letter-spacing: -0.01em; }
+    .eng-pill .d { display: block; margin-top: 2px; font: 10px/1.3 var(--mono); color: var(--faint); }
+    .eng-pill.on .d { color: var(--muted); }
+    .eng-meta {
+      font: 10px/1.35 var(--mono); color: var(--faint); margin: -2px 0 8px;
+      min-height: 1.35em;
+    }
+    .opts.secondary {
+      grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;
+    }
+    body.eng-three .chip[data-eng]:not([data-eng~="three"]):not([data-eng="all"]) { display: none; }
+    body.eng-pixel .chip[data-eng]:not([data-eng~="pixel"]):not([data-eng="all"]) { display: none; }
+    body.eng-vintage .chip[data-eng]:not([data-eng~="vintage"]):not([data-eng="all"]) { display: none; }
+    body.eng-vintage .chip.modern-only { display: none; }
+    body.eng-three .chip.vintage-only,
+    body.eng-pixel .chip.vintage-only { display: none; }
     @keyframes pulse {
       0%, 100% { box-shadow: none; }
       50% { box-shadow: 0 0 0 3px rgba(200, 240, 96, 0.25); }
@@ -294,7 +343,9 @@
     .opts {
       display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;
     }
-    @media (max-width: 640px) { .opts { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 640px) {
+      .opts, .opts.secondary { grid-template-columns: 1fr 1fr; }
+    }
     .field label {
       display: block; font: 10px/1 var(--mono); letter-spacing: 0.08em;
       text-transform: uppercase; color: var(--faint); margin-bottom: 4px;
@@ -390,6 +441,12 @@
       <button type="button" class="btn primary" id="btnNewGame">New game</button>
       <input class="search" id="projectSearch" type="search" placeholder="Filter projects…" autocomplete="off" />
     </div>
+    <div class="eng-filter" id="engineFilter" title="Filter by engine">
+      <button type="button" class="on" data-ef="all">All</button>
+      <button type="button" data-ef="three">3D</button>
+      <button type="button" data-ef="pixel">Pixel</button>
+      <button type="button" data-ef="vintage">GB</button>
+    </div>
     <div class="sec">Projects <span id="projectCount"></span></div>
     <div class="plist" id="projectList">
       <div class="empty-list">No projects yet.</div>
@@ -436,11 +493,11 @@
       <div id="log">
         <div class="welcome" id="empty">
           <h1>Describe the verb.</h1>
-          <p>dotLab compiles a playable Three.js slice from plain language. No cloud required. Iterate with craft chips or chat.</p>
+          <p>dotLab ships playable slices offline. Pick an engine, then the player action at t=8s.</p>
           <ol>
-            <li><i>01</i><span><b>Write what the player does</b>at t=8s — place optional</span></li>
-            <li><i>02</i><span><b>Play</b>embeds the game here · Open tab optional</span></li>
-            <li><i>03</i><span><b>Craft / Verify / Deep</b>instant tweak · P0 gate · agent expand</span></li>
+            <li><i>01</i><span><b>Choose engine</b>Three.js · Pixel · Vintage (GB→GBA)</span></li>
+            <li><i>02</i><span><b>Write what the player does</b>place optional · Make game</span></li>
+            <li><i>03</i><span><b>Play · Craft · Verify</b>engine-aware P0 gates · Deep for features</span></li>
           </ol>
         </div>
         <div class="session" id="sessionBar"></div>
@@ -480,61 +537,89 @@
 
     <div class="dock">
       <div class="dock-inner">
-        <div class="opts" id="newOptions">
-          <div class="field">
-            <label for="optEngine">Engine</label>
-            <select id="optEngine" title="Rendering engine">
-              <option value="auto">Auto</option>
-              <option value="three">Three.js · WebGL</option>
-              <option value="pixel">Pixel · Canvas2D</option>
-              <option value="vintage">Vintage · Game Boy</option>
-            </select>
+        <div id="newOptions">
+          <div class="field" style="margin-bottom:6px">
+            <label>Engine</label>
           </div>
-          <div class="field" id="fieldVintageProfile" hidden>
-            <label for="optVintage">Profile</label>
-            <select id="optVintage" title="GB ship bar · GBA is hard max">
-              <option value="gb">GB (default)</option>
-              <option value="gbc">GBC</option>
-              <option value="gba">GBA (max)</option>
-            </select>
+          <div class="eng-pills" id="enginePills" role="group" aria-label="Game engine">
+            <button type="button" class="eng-pill on" data-engine="auto" title="Infer from prompt">
+              <span class="k">Auto</span>
+              <span class="t">Detect</span>
+              <span class="d">from prompt</span>
+            </button>
+            <button type="button" class="eng-pill" data-engine="three" title="WebGL Three.js">
+              <span class="k">3D</span>
+              <span class="t">Three.js</span>
+              <span class="d">WebGL · craft juice</span>
+            </button>
+            <button type="button" class="eng-pill" data-engine="pixel" title="Canvas2D pixelart.js">
+              <span class="k">2D</span>
+              <span class="t">Pixel</span>
+              <span class="d">pixelart.js + FX</span>
+            </button>
+            <button type="button" class="eng-pill" data-engine="vintage" title="Game Boy ship bar, GBA max">
+              <span class="k">GB</span>
+              <span class="t">Vintage</span>
+              <span class="d">GB→GBA ceiling</span>
+            </button>
           </div>
-          <div class="field">
-            <label for="optKind">Type</label>
-            <select id="optKind">
-              <option value="auto">Auto</option>
-              <option value="web-game">Web game</option>
-              <option value="pixel-game">Pixel game</option>
-              <option value="vintage-game">Vintage game</option>
-              <option value="world-game">World</option>
-              <option value="shader-lab">Shader</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="optGenre">Genre</label>
-            <select id="optGenre">
-              <option value="">Auto</option>
-              <option value="fps">FPS</option>
-              <option value="platformer">Platformer</option>
-              <option value="adventure">Adventure</option>
-              <option value="runner">Runner</option>
-              <option value="racing">Racing</option>
-              <option value="horror">Horror</option>
-              <option value="arena">Arena</option>
-              <option value="rpg">RPG</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>&nbsp;</label>
-            <button type="button" class="btn sm" id="btnClearProject" style="width:100%">Deselect</button>
+          <div class="eng-meta" id="engineHint">Auto picks Three, Pixel, or Vintage from your prompt.</div>
+          <select id="optEngine" hidden aria-hidden="true">
+            <option value="auto" selected>Auto</option>
+            <option value="three">Three.js</option>
+            <option value="pixel">Pixel</option>
+            <option value="vintage">Vintage</option>
+          </select>
+          <div class="opts secondary">
+            <div class="field" id="fieldVintageProfile" hidden>
+              <label for="optVintage">Handheld</label>
+              <select id="optVintage" title="Ship bar GB · hard max GBA">
+                <option value="gb">GB 160×144 · 4 col</option>
+                <option value="gbc">GBC 160×144</option>
+                <option value="gba">GBA 240×160 · max</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="optGenre">Genre</label>
+              <select id="optGenre">
+                <option value="">Auto</option>
+                <option value="fps">FPS</option>
+                <option value="platformer">Platformer</option>
+                <option value="adventure">Adventure</option>
+                <option value="runner">Runner</option>
+                <option value="racing">Racing</option>
+                <option value="horror">Horror</option>
+                <option value="arena">Arena</option>
+                <option value="rpg">RPG</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="optKind">Template</label>
+              <select id="optKind" title="Optional template override">
+                <option value="auto">Auto</option>
+                <option value="web-game">Web (Three)</option>
+                <option value="pixel-game">Pixel</option>
+                <option value="vintage-game">Vintage</option>
+                <option value="world-game">World</option>
+                <option value="shader-lab">Shader</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button type="button" class="btn sm" id="btnClearProject" style="width:100%">Deselect</button>
+            </div>
           </div>
         </div>
         <div class="chips" id="exampleChips">
-          <button type="button" class="chip" data-fill="Skill FPS. Neon megacity. Dash, ADS, wave drones.">Skill FPS</button>
-          <button type="button" class="chip" data-fill="Platformer. Tight jumps. Pit restarts under 3s.">Platformer</button>
-          <button type="button" class="chip" data-fill="Village walk. Talk to one NPC. Flag changes lights.">Village</button>
-          <button type="button" class="chip" data-fill="Pixel forest. Walk trees. Follow cam.">Pixel</button>
-          <button type="button" class="chip" data-fill="Game Boy platformer. Tight jumps. Four shades.">Vintage</button>
-          <button type="button" class="chip" data-fill="Endless runner. Three lanes. Speed ramp.">Runner</button>
+          <button type="button" class="chip" data-eng="three all" data-fill="Skill FPS. Neon megacity. Dash, ADS, wave drones.">Skill FPS</button>
+          <button type="button" class="chip" data-eng="three pixel all" data-fill="Platformer. Tight jumps. Pit restarts under 3s.">Platformer</button>
+          <button type="button" class="chip" data-eng="three all" data-fill="Village walk. Talk to one NPC. Flag changes lights.">Village</button>
+          <button type="button" class="chip" data-eng="pixel all" data-fill="Pixel forest. Top-down walk. Baked sprites.">Pixel forest</button>
+          <button type="button" class="chip" data-eng="pixel all" data-fill="Pixel arena. Twin stick waves. Hitstop juice.">Pixel arena</button>
+          <button type="button" class="chip vintage-only" data-eng="vintage all" data-fill="Game Boy platformer. Tight jumps. Four shades. One screen.">GB jump</button>
+          <button type="button" class="chip vintage-only" data-eng="vintage all" data-fill="Game Boy Color top-down dungeon. Keys and one key item.">GBC dungeon</button>
+          <button type="button" class="chip vintage-only" data-eng="vintage all" data-fill="GBA side scroller. Short levels. Fifteen colors max.">GBA side</button>
+          <button type="button" class="chip" data-eng="three all" data-fill="Endless runner. Three lanes. Speed ramp.">Runner</button>
         </div>
         <div class="chips" id="craftChips" hidden>
           <button type="button" class="chip craft" data-craft="jump feels floaty">floaty</button>

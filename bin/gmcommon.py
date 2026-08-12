@@ -193,9 +193,48 @@ def project_search_roots() -> list[Path]:
     return roots
 
 
+def _detect_project_engine(project: Path, slice_data: dict | None = None) -> str:
+    """three | pixel | vintage from slice.json or filesystem."""
+    if isinstance(slice_data, dict):
+        eng = str(slice_data.get("engine") or "").lower()
+        if eng in ("three", "pixel", "vintage"):
+            return eng
+    if (project / "src" / "vintage").is_dir():
+        return "vintage"
+    if (project / "src" / "pixelart" / "pixelart.js").is_file():
+        return "pixel"
+    if (project / "src" / "pixel").is_dir() and not (
+        project / "src" / "craft"
+    ).is_dir():
+        # legacy three+pixel kit still three
+        pass
+    pkg = project / "package.json"
+    if pkg.is_file():
+        try:
+            raw = pkg.read_text(encoding="utf-8", errors="ignore")
+            if '"three"' not in raw and "three" not in raw:
+                if (project / "src" / "game.js").is_file():
+                    # canvas-only package → pixel or vintage
+                    if (project / "src" / "vintage").is_dir():
+                        return "vintage"
+                    return "pixel"
+        except OSError:
+            pass
+    return "three"
+
+
 def _project_meta_snippet(project: Path) -> dict[str, str]:
-    """Best-effort genre/verb/title from slice or WIKI (no Ollama)."""
-    out = {"genre": "", "verb": "", "title": "", "ship_bar": ""}
+    """Best-effort genre/verb/title/engine from slice or WIKI (no Ollama)."""
+    out = {
+        "genre": "",
+        "verb": "",
+        "title": "",
+        "ship_bar": "",
+        "engine": "",
+        "vintage_profile": "",
+        "loop": "",
+        "camera": "",
+    }
     for meta_name in (".dotlab", ".gamemaster"):
         sp = project / meta_name / "slice.json"
         if sp.is_file():
@@ -206,9 +245,15 @@ def _project_meta_snippet(project: Path) -> dict[str, str]:
                     out["verb"] = str(data.get("verb") or "")[:80]
                     out["title"] = str(data.get("title") or "")[:60]
                     out["ship_bar"] = str(data.get("shipBar") or "")[:40]
+                    out["loop"] = str(data.get("loop") or "")[:20]
+                    out["camera"] = str(data.get("camera") or "")[:20]
+                    out["engine"] = _detect_project_engine(project, data)
+                    vint = data.get("vintage") if isinstance(data.get("vintage"), dict) else {}
+                    out["vintage_profile"] = str(vint.get("profile") or "")[:12]
                     return out
             except Exception:
                 pass
+    out["engine"] = _detect_project_engine(project, None)
     wiki = project / "WIKI.md"
     if wiki.is_file():
         try:
@@ -219,8 +264,15 @@ def _project_meta_snippet(project: Path) -> dict[str, str]:
             m = re.search(r"Verb at t=8s:\s*([^\n*]+)", text, re.I)
             if m:
                 out["verb"] = m.group(1).strip()[:80]
+            m = re.search(r"Engine:\s*\*?\*?(\w+)", text, re.I)
+            if m and not out["engine"]:
+                e = m.group(1).strip().lower()
+                if e in ("three", "pixel", "vintage"):
+                    out["engine"] = e
         except Exception:
             pass
+    if not out["engine"]:
+        out["engine"] = "three"
     return out
 
 
@@ -251,6 +303,10 @@ def list_game_projects() -> list[dict[str, Any]]:
                         "verb": meta.get("verb") or "",
                         "title": meta.get("title") or child.name,
                         "ship_bar": meta.get("ship_bar") or "",
+                        "engine": meta.get("engine") or "three",
+                        "vintage_profile": meta.get("vintage_profile") or "",
+                        "loop": meta.get("loop") or "",
+                        "camera": meta.get("camera") or "",
                     }
                 )
             except OSError:
