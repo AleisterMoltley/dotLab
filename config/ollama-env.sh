@@ -1,4 +1,4 @@
-# Gamemaster TURBO — game-coding defaults (Apple Silicon friendly)
+# dotLab TURBO — game-coding defaults (Apple Silicon friendly)
 # Source from start / gamemaster CLI. Do not put secrets here.
 export OLLAMA_FLASH_ATTENTION=1
 export OLLAMA_KEEP_ALIVE=24h

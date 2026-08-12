@@ -23,19 +23,21 @@ from gmcommon import (
     CHAT_DIR,
     DEFAULT_MODEL,
     OLLAMA,
+    PRODUCT,
     ROOT,
     ensure_ollama,
     free_tcp_port,
     list_game_projects,
     looks_like_game,
+    meta_dir,
     projects_root,
     slugify_project,
 )
 
-PORT = int(os.environ.get("GAMEMASTER_PORT", "8765"))
-MODEL = os.environ.get("GAMEMASTER_MODEL", DEFAULT_MODEL)
+PORT = int(os.environ.get("DOTLAB_PORT") or os.environ.get("GAMEMASTER_PORT", "8765"))
+MODEL = os.environ.get("DOTLAB_MODEL") or os.environ.get("GAMEMASTER_MODEL", DEFAULT_MODEL)
 # Prefill dominates wall time — 16k default, not 65k
-NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "16384"))
+NUM_CTX = int(os.environ.get("DOTLAB_NUM_CTX") or os.environ.get("GAMEMASTER_NUM_CTX", "16384"))
 
 _TAGS: dict = {"ts": 0.0, "names": [], "ok": False, "error": ""}
 _PREVIEWS: dict[str, dict] = {}
@@ -64,7 +66,7 @@ def start_preview(project: Path) -> dict:
             return {"ok": True, "url": prev["url"], "reused": True, "path": key}
 
     pkg = project / "package.json"
-    log = project / ".gamemaster" / "play.log"
+    log = meta_dir(project) / "play.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     port = free_tcp_port(5173)
     if pkg.is_file():
@@ -129,8 +131,8 @@ def status_label(h: dict | None = None) -> tuple[bool, str]:
     if h.get("ok"):
         return True, f"online · {h.get('model') or MODEL} · $0"
     if not h.get("ollama"):
-        return False, "Ollama not answering — open Ollama.app"
-    return False, "Model missing — ./install.sh"
+        return False, "Ollama offline — open Ollama.app"
+    return False, "Model missing — ./install.sh or dotlab intervene"
 
 
 def index_html() -> bytes:
@@ -161,16 +163,26 @@ def health_payload() -> dict:
             "error": "",
         }
     names = list(_TAGS.get("names") or [])
-    found = has_model(names, MODEL)
+    # Prefer configured model; accept legacy gamemaster tags during rename
+    model = MODEL
+    found = has_model(names, model)
+    if not found:
+        for alt in ("dotlab", "gamemaster", "dotlab:latest", "gamemaster:latest"):
+            if has_model(names, alt.split(":")[0] if ":" in alt else alt) or has_model(names, alt):
+                model = alt.split(":")[0]
+                found = True
+                break
     ollama_ok = bool(_TAGS.get("ok")) or bool(names)
     return {
         "ok": bool(found),
+        "product": PRODUCT,
         "backend": "ollama",
         "provider": "",
-        "model": MODEL,
+        "model": model if found else MODEL,
         "ollama": ollama_ok,
         "has_model": found,
         "local": True,
+        "projects_root": str(projects_root()),
         "error": "" if found else (_TAGS.get("error") or "model missing"),
     }
 
@@ -539,7 +551,7 @@ def main() -> int:
         return 1
 
     print("╔══════════════════════════════════════════╗")
-    print("║   Gamemaster — startet…        ║")
+    print(f"║   {PRODUCT} — starting…                    ║")
     print("╚══════════════════════════════════════════╝")
 
     if cloudlib.active_provider():
@@ -571,9 +583,9 @@ def main() -> int:
 
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = f"http://127.0.0.1:{PORT}/?t={int(time.time())}"
-    print(f"✓ Chat: {url}")
-    print("  Instant craft: feel/enemies/palette — no model wait")
-    print("  Browser will open. Fenster offen lassen. Beenden: Ctrl+C")
+    print(f"✓ Dashboard: {url}")
+    print("  Instant craft · Play · Projects")
+    print("  Leave this terminal open. Stop: Ctrl+C")
     print("")
 
     def open_browser() -> None:

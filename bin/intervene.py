@@ -24,24 +24,30 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from gmcommon import CONFIG, DEFAULT_MODEL, DENSE_MODEL, ROOT, ensure_ollama, run
+from gmcommon import (
+    CONFIG,
+    DEFAULT_MODEL,
+    DENSE_MODEL,
+    FLASH_MODEL,
+    PRODUCT,
+    ROOT,
+    ensure_ollama,
+    run,
+)
 
-FLASH_MODEL = os.environ.get("GAMEMASTER_FLASH", "gamemaster-flash")
 ENV_PATH = CONFIG / "ollama-env.sh"
 PROFILE_PATH = CONFIG / "active-profile.json"
 
-OLLAMA_ENV = """# Gamemaster TURBO — game-coding defaults (Apple Silicon friendly)
-# Source from start / gamemaster CLI. Do not put secrets here.
+OLLAMA_ENV = f"""# {PRODUCT} TURBO — game-coding defaults (Apple Silicon friendly)
+# Source from start / dotlab CLI. Do not put secrets here.
 export OLLAMA_FLASH_ATTENTION=1
 export OLLAMA_KEEP_ALIVE=24h
-# One heavy model at a time beats thrashing two 30Bs
 export OLLAMA_NUM_PARALLEL=1
 export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KV_CACHE_TYPE=q8_0
 export OLLAMA_NUM_BATCH=512
 export OLLAMA_SCHED_SPREAD=false
-# Prefer Metal; leave runner free to pick
-export OLLAMA_LLM_LIBRARY="${OLLAMA_LLM_LIBRARY:-}"
+export OLLAMA_LLM_LIBRARY="${{OLLAMA_LLM_LIBRARY:-}}"
 """
 
 
@@ -232,7 +238,7 @@ def smoke() -> bool:
 
 
 def status() -> int:
-    print("Gamemaster intervene status")
+    print("dotLab intervene status")
     print(f"  root: {ROOT}")
     print(f"  env:  {ENV_PATH} {'✓' if ENV_PATH.is_file() else 'missing'}")
     if PROFILE_PATH.is_file():
@@ -274,7 +280,7 @@ def main() -> int:
         return status()
 
     print("╔══════════════════════════════════════════╗")
-    print("║  Gamemaster INTERVENE — local Grok       ║")
+    print(f"║  {PRODUCT} INTERVENE — local Grok craft     ║")
     print("╚══════════════════════════════════════════╝")
 
     if args.warmup:
@@ -306,11 +312,24 @@ def main() -> int:
         smoke()
 
     print("")
-    print("Local Grok stack ready:")
-    print("  · Instant craft: patch feel/enemies/palette (no LLM)")
-    print("  · First game: chat Make this game → slice")
-    print("  · Model: gamemaster (game system) + gamemaster-flash (tiny)")
-    print("  · Restart chat: ./start")
+    # Legacy aliases so older installs keep working
+    for legacy, modern in (
+        ("gamemaster", DEFAULT_MODEL),
+        ("gamemaster-flash", FLASH_MODEL),
+        ("gamemaster-dense", DENSE_MODEL),
+    ):
+        if modern != legacy and modern in (results.get("created") or []):
+            try:
+                body = f"FROM {modern}\n"
+                ollama_create(legacy, body)
+                print(f"  ✓ alias {legacy} → {modern}")
+            except Exception:
+                pass
+
+    print(f"Local {PRODUCT} stack ready:")
+    print("  · Instant craft: feel / enemies / palette (no LLM)")
+    print("  · Dashboard: ./start → Make game → Play")
+    print(f"  · Models: {DEFAULT_MODEL} + {FLASH_MODEL}")
     print(f"  · Profile: {PROFILE_PATH}")
     return 0 if results.get("ok") else 1
 

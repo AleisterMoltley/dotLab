@@ -660,7 +660,9 @@ npm run dev
     if not gi.exists():
         put(".gitignore", GAME_GITIGNORE)
 
-    meta = dest / ".gamemaster"
+    from gmcommon import meta_dir
+
+    meta = meta_dir(dest)
     meta.mkdir(parents=True, exist_ok=True)
     (meta / "slice.json").write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")
     return written
@@ -677,7 +679,11 @@ def ask_system(project: Path | None, user_text: str) -> str:
         wp = project / "WIKI.md"
         if wp.is_file():
             wiki = wp.read_text(encoding="utf-8")[:900]
-        sp = project / ".gamemaster" / "slice.json"
+        from gmcommon import meta_dir
+
+        sp = meta_dir(project) / "slice.json"
+        if not sp.is_file():
+            sp = project / ".gamemaster" / "slice.json"
         if sp.is_file():
             spec_txt = sp.read_text(encoding="utf-8")[:900]
     packs = ""

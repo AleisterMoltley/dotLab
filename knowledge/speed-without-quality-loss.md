@@ -1,4 +1,4 @@
-# Speed without quality loss (Gamemaster TURBO)
+# Speed without quality loss (dotLab TURBO)
 
 ## The real bottleneck (not “bigger model”)
 Agent sessions spend most wall-time on **prompt re-processing** (system + knowledge + files every tool step), not generation.

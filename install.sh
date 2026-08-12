@@ -12,7 +12,7 @@ warn() { echo -e "${YEL}!${NC} $*"; }
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║  Gamemaster — Installation                           ║"
+echo "║  dotLab — Installation                           ║"
 echo "║  Three.js worlds · Seeker · Shaders · \$0 · offline   ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
@@ -110,7 +110,7 @@ sed -e "s|^FROM .*|FROM ${BASE_MODEL}|" \
     -e "s|^PARAMETER num_ctx .*|PARAMETER num_ctx ${CTX}|" \
     "$ROOT/Modelfile" > "$TMP_MF"
 
-CUSTOM="gamemaster"
+CUSTOM="dotlab"
 info "Creating $CUSTOM from $BASE_MODEL (ctx=$CTX)…"
 ollama create "$CUSTOM" -f "$TMP_MF"
 rm -f "$TMP_MF"
@@ -122,9 +122,9 @@ if [[ -f "$ROOT/Modelfile.flash" ]] && ollama list 2>/dev/null | awk '{print $1}
   sed -e "s|^FROM .*|FROM qwen2.5-coder:7b|" \
       -e "s|^PARAMETER num_ctx .*|PARAMETER num_ctx 4096|" \
       "$ROOT/Modelfile.flash" > "$TMPF"
-  ollama create gamemaster-flash -f "$TMPF"
+  ollama create dotlab-flash -f "$TMPF"
   rm -f "$TMPF"
-  ok "Flash: gamemaster-flash (7B)"
+  ok "Flash: dotlab-flash (7B)"
 fi
 
 if [[ "$PROFILE" == "dual" ]] || [[ "$PROFILE" == "dense" ]]; then
@@ -133,9 +133,9 @@ if [[ "$PROFILE" == "dual" ]] || [[ "$PROFILE" == "dense" ]]; then
     sed -e "s|^FROM .*|FROM qwen2.5-coder:32b|" \
         -e "s|^PARAMETER num_ctx .*|PARAMETER num_ctx ${CTX}|" \
         "$ROOT/Modelfile" > "$TMP2"
-    ollama create gamemaster-dense -f "$TMP2"
+    ollama create dotlab-dense -f "$TMP2"
     rm -f "$TMP2"
-    ok "Extra: gamemaster-dense (32B)"
+    ok "Extra: dotlab-dense (32B)"
   fi
 fi
 
@@ -153,7 +153,8 @@ chmod +x "$ROOT/bin/"* "$ROOT/install.sh" "$ROOT/start" "$ROOT/START.command" 2>
 
 BIN_DIR="$HOME/.local/bin"
 mkdir -p "$BIN_DIR"
-ln -sfn "$ROOT/bin/gamemaster" "$BIN_DIR/gamemaster"
+ln -sfn "$ROOT/bin/dotlab" "$BIN_DIR/dotlab"
+ln -sfn "$ROOT/bin/dotlab" "$BIN_DIR/gamemaster"
 ln -sfn "$ROOT/start" "$BIN_DIR/gm"
 ln -sfn "$ROOT/bin/agent.py" "$BIN_DIR/gamemaster-agent"
 ln -sfn "$ROOT/bin/studio.py" "$BIN_DIR/gamemaster-studio"
@@ -163,7 +164,7 @@ ln -sfn "$ROOT/bin/turbo.py" "$BIN_DIR/gamemaster-turbo"
 ln -sfn "$ROOT/bin/self-update.py" "$BIN_DIR/gamemaster-update"
 ln -sfn "$ROOT/bin/worlds.py" "$BIN_DIR/gamemaster-worlds"
 ln -sfn "$ROOT/bin/github.py" "$BIN_DIR/gamemaster-github"
-ok "CLI: gamemaster · gm"
+ok "CLI: dotlab · gamemaster · gm"
 
 if ! command -v gh >/dev/null 2>&1; then
   warn "GitHub CLI (gh) not found — ship needs it: brew install gh && gamemaster github login"
@@ -192,7 +193,7 @@ ok "Install complete (profile: $PROFILE / $BASE_MODEL)"
 cat <<EOF
 
 ${GREEN}══════════════════════════════════════════════════════${NC}
-  Gamemaster is ready.
+  dotLab is ready.
 
   Start:     ./start   or   gamemaster
   Chat:      gamemaster "Village slice: walk, NPC dialogue, ragdoll"
@@ -203,7 +204,7 @@ ${GREEN}════════════════════════
   Tests:     python3 tests/run.py
   Playtest:  gamemaster playtest -p ./my-game --critic
   Turbo:     gamemaster turbo warmup
-  Intervene: gamemaster intervene   # re-bake Grok craft into Ollama
+  Intervene: dotlab intervene   # re-bake Grok craft into Ollama
 
   Profiles: ./install.sh --dual | --max | --dense | --14b | --7b
 ${GREEN}══════════════════════════════════════════════════════${NC}

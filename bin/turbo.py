@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gamemaster TURBO — routing + slim knowledge (no quality loss).
+dotLab TURBO — routing + slim knowledge (no quality loss).
 
 PACKS / ROUTES / route_task / select_knowledge are the knobs.
 New knowledge file → knowledge/INDEX.md + PACKS + ROUTES.
@@ -36,7 +36,9 @@ from gmcommon import DEFAULT_MODEL, DENSE_MODEL, KNOWLEDGE, OLLAMA, ROOT, ollama
 # Stable tier names → ollama tags
 TIERS = {
     # Prefer baked flash model (game system prompt); fall back to raw 7b
-    "flash": os.environ.get("GAMEMASTER_FLASH", "gamemaster-flash"),
+    "flash": os.environ.get("DOTLAB_FLASH")
+    or os.environ.get("GAMEMASTER_FLASH")
+    or "dotlab-flash",
     "max": DEFAULT_MODEL,
     "dense": DENSE_MODEL,
 }
@@ -116,11 +118,26 @@ def resolve_tier(tier: str) -> str:
     if any(n == want or n.startswith(want + ":") for n in avail):
         return want
     fallbacks = {
-        "flash": ["gamemaster-flash", "qwen2.5-coder:7b", "gamemaster", "qwen2.5-coder:14b"],
-        "max": ["gamemaster", "qwen3-coder:30b", "qwen2.5-coder:14b", "qwen2.5-coder:7b"],
+        "flash": [
+            "dotlab-flash",
+            "gamemaster-flash",
+            "qwen2.5-coder:7b",
+            "dotlab",
+            "gamemaster",
+            "qwen2.5-coder:14b",
+        ],
+        "max": [
+            "dotlab",
+            "gamemaster",
+            "qwen3-coder:30b",
+            "qwen2.5-coder:14b",
+            "qwen2.5-coder:7b",
+        ],
         "dense": [
+            "dotlab-dense",
             "gamemaster-dense",
             "qwen2.5-coder:32b",
+            "dotlab",
             "gamemaster",
             "qwen3-coder:30b",
         ],
@@ -252,7 +269,7 @@ def select_knowledge(prompt: str, max_chars: int = 14000) -> str:
 def ollama_env_exports() -> str:
     """Shell exports for max Apple Silicon throughput (game coding)."""
     return """
-# Gamemaster TURBO — game-coding defaults (Apple Silicon friendly)
+# dotLab TURBO — game-coding defaults (Apple Silicon friendly)
 export OLLAMA_FLASH_ATTENTION=1
 export OLLAMA_KEEP_ALIVE=24h
 export OLLAMA_NUM_PARALLEL=1
@@ -271,7 +288,7 @@ def write_env_file() -> Path:
 
 def warmup(tiers: list[str] | None = None) -> None:
     tiers = tiers or ["flash", "max"]
-    print("🔥 Gamemaster TURBO warmup…")
+    print("🔥 dotLab TURBO warmup…")
     for t in tiers:
         model = resolve_tier(t)
         print(f"  → load {model} ({t})")
@@ -297,7 +314,7 @@ def warmup(tiers: list[str] | None = None) -> None:
 
 def bench() -> None:
     """Micro-benchmark for local claims (not cloud apples-to-apples)."""
-    print("📊 Gamemaster TURBO bench (local coding)")
+    print("📊 dotLab TURBO bench (local coding)")
     cases = [
         ("flash", "Say hi in 3 words"),
         ("max", "Write a JS function clamp(n,a,b) only code"),
@@ -387,7 +404,7 @@ def apply_launchd_keepalive() -> None:
 
 
 def status() -> None:
-    print("Gamemaster TURBO status")
+    print("dotLab TURBO status")
     write_env_file()
     print(f"  env file: {ROOT / 'config' / 'ollama-env.sh'}")
     for t in ("flash", "max", "dense"):
@@ -402,7 +419,7 @@ def status() -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Gamemaster TURBO")
+    ap = argparse.ArgumentParser(description="dotLab TURBO")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     sub.add_parser("warmup")

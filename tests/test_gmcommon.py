@@ -21,7 +21,7 @@ class TestGmcommon(unittest.TestCase):
 
     def test_slugify_project(self) -> None:
         self.assertEqual(g.slugify_project("Wild Coast!!"), "wild-coast")
-        self.assertEqual(g.slugify_project(""), "gamemaster-project")
+        self.assertEqual(g.slugify_project(""), "dotlab-project")
 
     def test_slugify_repo(self) -> None:
         self.assertEqual(g.slugify_repo("My Game v2"), "my-game-v2")

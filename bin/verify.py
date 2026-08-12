@@ -21,7 +21,7 @@ from pathlib import Path
 
 from gmcommon import run
 
-SKIP_DIRS = {"node_modules", ".git", "dist", "build", ".gamemaster", ".vite"}
+SKIP_DIRS = {"node_modules", ".git", "dist", "build", ".gamemaster", ".dotlab", ".vite"}
 
 # weight: P0 = 8, P1 = 3, P2 = 1
 CHECKS_META = {

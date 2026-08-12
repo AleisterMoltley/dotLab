@@ -1,4 +1,4 @@
-# Gamemaster Studio Playbook
+# dotLab Studio Playbook
 
 ## When to use which mode
 

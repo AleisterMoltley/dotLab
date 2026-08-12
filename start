@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gamemaster launcher
+# dotLab launcher
 #   ./start              → browser chat
 #   ./start --term       → terminal chat
 #   ./start studio ...   → multi-agent studio
@@ -96,7 +96,7 @@ if ! ollama list 2>/dev/null | awk '{print $1}' | grep -qE '^gamemaster(:|$)'; t
 fi
 
 if [[ "$MODE" == "term" ]]; then
-  exec "$ROOT/bin/gamemaster"
+  exec "$ROOT/bin/dotlab"
 fi
 
 if [[ "$MODE" == "agent" ]]; then

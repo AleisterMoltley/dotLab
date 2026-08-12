@@ -1,16 +1,19 @@
-# Gamemaster
+# dotLab
+
+> Formerly *Gamemaster* — same stack, new name.
+
 
 Local Three.js game studio. One prompt → a playable slice. Worlds, physics, dialogue, shaders, Solana Seeker. **$0** on [Ollama](https://ollama.com). Paid cloud models are optional and off until you turn them on.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 
-Gamemaster is not a generic chatbot. It is a toolchain that **ships games**: a game-tuned local model, a four-role studio, file agents, a world generator, scaffolds, playtest, and `ship` to GitHub.
+dotLab is not a generic chatbot. It is a toolchain that **ships games**: a game-tuned local model, a four-role studio, file agents, a world generator, scaffolds, playtest, and `ship` to GitHub.
 
 ## What you get
 
 | Piece | What it does |
 |-------|----------------|
-| **Models** | `gamemaster` (Qwen3-Coder 30B MoE) and `gamemaster-dense` (32B), plus a 7B flash tier |
+| **Models** | `dotlab` (Qwen3-Coder 30B MoE) and `gamemaster-dense` (32B), plus a 7B flash tier |
 | **Studio** | Director → Architect → Coder → Critic. Council votes on pitches |
 | **Agent** | Reads and writes files in your game (`list` / `read` / `write` / `search` / `run`) |
 | **Worlds** | Prompt → regions → height field → editable instances you can walk |
@@ -42,7 +45,7 @@ chmod +x install.sh start bin/*
 ./install.sh --dual
 ```
 
-`install.sh` pulls the Ollama models, builds the `gamemaster` / `gamemaster-dense` tags from `Modelfile`, and puts `gamemaster` on `~/.local/bin`.
+`install.sh` pulls the Ollama models, builds the `dotlab` / `gamemaster-dense` tags from `Modelfile`, and puts `dotlab` on `~/.local/bin`.
 
 ### Profiles
 
@@ -76,7 +79,7 @@ source ./config/ollama-env.sh
 gamemaster turbo warmup
 ```
 
-Games you scaffold or start from the chat live in **`~/Gamemaster/Projects`**. Open that folder in Finder, or use **Your games** on the start screen.
+Games you scaffold or start from the chat live in **`~/dotLab/Projects`**. Open that folder in Finder, or use **Your games** on the start screen.
 
 ## First game (five minutes)
 
@@ -265,14 +268,14 @@ Working on the repo itself: read **[AGENTS.md](AGENTS.md)**, then `python3 tests
 | Tier | Default | Role |
 |------|---------|------|
 | **flash** | `qwen2.5-coder:7b` | Short Q&A |
-| **max** | `gamemaster` | Coding |
+| **max** | `dotlab` | Coding |
 | **dense** | `gamemaster-dense` | Hard refactors / critique |
 
 ```bash
 gamemaster --tier dense "refactor the entity system"
 ```
 
-Editor (Continue, etc.): `http://127.0.0.1:11434/v1` · key `ollama` · model `gamemaster`. See `config/README-editor.md`.
+Editor (Continue, etc.): `http://127.0.0.1:11434/v1` · key `ollama` · model `dotlab`. See `config/README-editor.md`.
 
 ## Feel and completeness
 

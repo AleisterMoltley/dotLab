@@ -24,7 +24,7 @@ class TestIntervene(unittest.TestCase):
         self.assertIn("FROM qwen2.5-coder:14b", body)
         self.assertIn("PARAMETER num_ctx 12288", body)
         self.assertIn("Grok", body)
-        self.assertIn("Gamemaster", body)
+        self.assertTrue("dotLab" in body or "Gamemaster" in body)
         self.assertIn("t=8s", body)
 
     def test_detect_base_shape(self) -> None:

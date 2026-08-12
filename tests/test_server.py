@@ -33,14 +33,15 @@ class TestHealth(unittest.TestCase):
         self.assertTrue(h["has_model"])
 
     def test_index_html_bakes_status(self) -> None:
-        server.remember_tags(["gamemaster:latest"], ok=True)
+        server.remember_tags(["dotlab:latest", "gamemaster:latest"], ok=True)
         with mock.patch.object(server.cloudlib, "status_dict", return_value={"enabled": False}):
             html = server.index_html().decode()
-        self.assertIn("online · gamemaster · $0", html)
+        self.assertTrue("online ·" in html and "$0" in html)
+        self.assertIn("dotLab", html)
         self.assertIn('class="dot ok"', html)
         self.assertNotIn("starting…", html)
         self.assertIn('id="composer"', html)
-        self.assertIn("GM.bootSend", html)
+        self.assertIn("DL.bootSend", html)
         self.assertTrue((server.CHAT_DIR / "app.js").is_file())
 
     def test_projects_root_in_payload(self) -> None:

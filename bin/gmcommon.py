@@ -30,16 +30,34 @@ CONFIG = ROOT / "config"
 CHAT_DIR = ROOT / "chat"
 LIVE_DIR = ROOT / "live"
 
-OLLAMA = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
-DEFAULT_MODEL = os.environ.get("GAMEMASTER_MODEL", "gamemaster")
-DENSE_MODEL = os.environ.get("GAMEMASTER_DENSE", "gamemaster-dense")
+# Product brand (user-facing). Legacy env names GAMEMASTER_* still work.
+PRODUCT = "dotLab"
+PRODUCT_SLUG = "dotlab"
 
-GAME_GITIGNORE = """# Gamemaster game
+OLLAMA = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+DEFAULT_MODEL = (
+    os.environ.get("DOTLAB_MODEL")
+    or os.environ.get("GAMEMASTER_MODEL")
+    or "dotlab"
+)
+DENSE_MODEL = (
+    os.environ.get("DOTLAB_DENSE")
+    or os.environ.get("GAMEMASTER_DENSE")
+    or "dotlab-dense"
+)
+FLASH_MODEL = (
+    os.environ.get("DOTLAB_FLASH")
+    or os.environ.get("GAMEMASTER_FLASH")
+    or "dotlab-flash"
+)
+
+GAME_GITIGNORE = """# dotLab game
 node_modules/
 dist/
 build/
 .vite/
 .DS_Store
+.dotlab/
 .gamemaster/
 .env
 .env.*
@@ -112,7 +130,17 @@ def run(
 def slugify_project(name: str) -> str:
     """Folder / npm name: kebab, no dots."""
     s = re.sub(r"[^a-zA-Z0-9]+", "-", (name or "").strip().lower()).strip("-")
-    return s or "gamemaster-project"
+    return s or "dotlab-project"
+
+
+def meta_dir(project: Path) -> Path:
+    """Per-game meta folder (.dotlab preferred; legacy .gamemaster accepted)."""
+    project = Path(project)
+    for name in (".dotlab", ".gamemaster"):
+        p = project / name
+        if p.is_dir():
+            return p
+    return project / ".dotlab"
 
 
 def slugify_repo(name: str) -> str:
@@ -127,19 +155,29 @@ def looks_like_game(project: Path) -> bool:
 
 def projects_root() -> Path:
     """Default place new games are written. Created on first use."""
-    raw = os.environ.get("GAMEMASTER_PROJECTS")
-    root = Path(raw).expanduser() if raw else Path.home() / "Gamemaster" / "Projects"
+    raw = os.environ.get("DOTLAB_PROJECTS") or os.environ.get("GAMEMASTER_PROJECTS")
+    if raw:
+        root = Path(raw).expanduser()
+    else:
+        root = Path.home() / "dotLab" / "Projects"
+        # Migrate path preference: keep writing to legacy if already in use
+        legacy_gm = Path.home() / "Gamemaster" / "Projects"
+        if not root.is_dir() and legacy_gm.is_dir() and any(legacy_gm.iterdir()):
+            root = legacy_gm
     root.mkdir(parents=True, exist_ok=True)
     return root
 
 
 def project_search_roots() -> list[Path]:
     roots = [projects_root()]
-    if os.environ.get("GAMEMASTER_PROJECTS"):
+    if os.environ.get("DOTLAB_PROJECTS") or os.environ.get("GAMEMASTER_PROJECTS"):
         return roots
-    legacy = Path.home() / "GrokGameStudio" / "Projects"
-    if legacy.is_dir() and legacy.resolve() != roots[0].resolve():
-        roots.append(legacy)
+    for legacy in (
+        Path.home() / "Gamemaster" / "Projects",
+        Path.home() / "GrokGameStudio" / "Projects",
+    ):
+        if legacy.is_dir() and legacy.resolve() not in {r.resolve() for r in roots}:
+            roots.append(legacy)
     return roots
 
 
@@ -179,7 +217,7 @@ def ensure_game_gitignore(project: Path) -> None:
         gi.write_text(GAME_GITIGNORE, encoding="utf-8")
         return
     text = gi.read_text(encoding="utf-8", errors="ignore")
-    extra = [line for line in ("node_modules/", ".gamemaster/", ".env", "dist/") if line not in text]
+    extra = [line for line in ("node_modules/", ".dotlab/", ".gamemaster/", ".env", "dist/") if line not in text]
     if extra:
         gi.write_text(text.rstrip() + "\n" + "\n".join(extra) + "\n", encoding="utf-8")
 

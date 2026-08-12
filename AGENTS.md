@@ -4,7 +4,7 @@ Read this before editing. Goal: **small, testable patches**. Do not rewrite the 
 
 ## What this is
 
-**Gamemaster** = local Three.js game studio (Ollama).  
+**dotLab** = local Three.js game studio (Ollama). Formerly Gamemaster.  
 Engine is **always Three.js** (Vite + vanilla). Solana Seeker = same game + Mobile Wallet Adapter.
 
 Layout:
@@ -27,7 +27,7 @@ Modelfile       baked Ollama system prompt
 | You want to… | Touch |
 |--------------|--------|
 | Shared paths / process / game `.gitignore` | `bin/gmcommon.py` |
-| CLI flags / subcommands | `bin/gamemaster` then `start` if the same verb exists |
+| CLI flags / subcommands | `bin/dotlab` (alias `gamemaster`) then `start` if the same verb exists |
 | GitHub login / commit / push | `bin/github.py` + `chat/index.html` + `live/dashboard.html` |
 | Knowledge routing | `bin/turbo.py` (`PACKS`, `ROUTES`, `route_task`) |
 | Model identity / taste | `knowledge/brain.md` + `Modelfile` then `gamemaster update --modelfile` |
@@ -85,7 +85,7 @@ Need Ollama only for: studio, agent, chat, `update --modelfile`, worlds generate
 ## How to add a CLI verb
 
 1. Implement `bin/<verb>.py` with `main() -> int`.
-2. Add a `case` in `bin/gamemaster` **and** `start`.
+2. Add a `case` in `bin/dotlab` (alias `gamemaster`) **and** `start`.
 3. One line in the `gamemaster -h` usage block.
 
 ## Style

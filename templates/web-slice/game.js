@@ -582,7 +582,7 @@ export function createGame({ genre, title }) {
 
   return {
     start() {
-      console.log(`[Gamemaster/Grok] ${title} · ${genre} · ${SPEC.setting} · ship-bar`);
+      console.log(`[dotLab] ${title} · ${genre} · ${SPEC.setting} · ship-bar`);
       requestAnimationFrame(frame);
     },
     die,

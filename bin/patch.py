@@ -76,7 +76,13 @@ _REBUILD = re.compile(
 
 
 def load_spec(project: Path) -> dict | None:
-    path = project / ".gamemaster" / "slice.json"
+    from gmcommon import meta_dir
+
+    path = meta_dir(project) / "slice.json"
+    if not path.is_file():
+        # one more try legacy only if meta_dir pointed elsewhere empty
+        legacy = project / ".gamemaster" / "slice.json"
+        path = legacy if legacy.is_file() else path
     if not path.is_file():
         return None
     try:
@@ -87,7 +93,9 @@ def load_spec(project: Path) -> dict | None:
 
 
 def save_spec(project: Path, spec: dict) -> None:
-    meta = project / ".gamemaster"
+    from gmcommon import meta_dir
+
+    meta = meta_dir(project)
     meta.mkdir(parents=True, exist_ok=True)
     (meta / "slice.json").write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")
 
@@ -315,7 +323,7 @@ def diagnose(project: Path) -> str:
         )
         lines.append(f"- counts: enemies {spec.get('enemyCount')} coins {spec.get('coinCount')}")
     else:
-        lines.append("- no .gamemaster/slice.json (scaffold/patch not used yet)")
+        lines.append("- no .dotlab/slice.json (scaffold/patch not used yet)")
     vr = verify.evaluate(project)
     lines.append("")
     lines.append(vr["report"])
