@@ -47,7 +47,7 @@ Modelfile       baked Ollama system prompt
 | Pixel bake / sprite vocab | `lib/pixel/` + `knowledge/pixel-kit.md` + `templates/pixel-game/` |
 | World generation | `bin/worlds.py` + `templates/world-game/` |
 | Play-while-build | `bin/live.py` + `live/dashboard.html` |
-| Chat server | `bin/server.py` + `chat/index.html` |
+| Chat server / dashboard APIs | `bin/server.py` + `bin/studio_ops.py` + `chat/` |
 | Prefs | `bin/prefs.py` |
 | Game wiki + file map (auto-loaded) | `bin/wiki.py` (`WIKI.md`, `MAP.md`) |
 | Game kit (todos, feel audit, art-test, pixel vendor) | `bin/kit.py` — also agent tool `kit` |

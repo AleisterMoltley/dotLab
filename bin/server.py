@@ -19,6 +19,7 @@ import cloud as cloudlib  # noqa: E402
 import github as githublib  # noqa: E402
 import patch as patchlib  # noqa: E402
 import slice as slicelib  # noqa: E402
+import studio_ops as ops  # noqa: E402
 from gmcommon import (
     CHAT_DIR,
     DEFAULT_MODEL,
@@ -104,6 +105,10 @@ def start_preview(project: Path) -> dict:
     )
     _PREVIEWS[key] = {"proc": proc, "url": url, "port": port, "log": handle}
     ok = http_up(url, timeout=40.0)
+    try:
+        ops.session_set_play(project, url)
+    except Exception:
+        pass
     return {"ok": ok, "url": url, "path": key, "reused": False, "log": str(log)}
 
 
@@ -172,11 +177,14 @@ def health_payload() -> dict:
     if cloud.get("enabled"):
         return {
             "ok": True,
+            "product": PRODUCT,
             "backend": "cloud",
             "provider": cloud.get("provider") or "",
             "model": cloud.get("model") or "",
             "ollama": False,
             "has_model": True,
+            "cloud": cloud,
+            "projects_root": str(projects_root()),
             "local": False,
             "error": "",
         }
@@ -193,6 +201,8 @@ def health_payload() -> dict:
         "ollama": ollama_ok,
         "has_model": found,
         "local": True,
+        "cloud": cloudlib.status_dict(),
+        "models": list(_TAGS.get("names") or [])[:40],
         "projects_root": str(projects_root()),
         "error": "" if found else (_TAGS.get("error") or "model missing"),
     }
@@ -351,7 +361,37 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             return
         if path == "/api/projects":
-            return self._json(200, {"root": str(projects_root()), "projects": list_game_projects()})
+            projects = ops.enrich_projects(list_game_projects(), with_verify=True)
+            return self._json(200, {"root": str(projects_root()), "projects": projects})
+        if path == "/api/projects/session":
+            qs = parse_qs(urlparse(self.path).query)
+            raw_p = (qs.get("path") or [""])[0]
+            pdir = Path(raw_p).expanduser()
+            if not pdir.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            return self._json(200, {"ok": True, "session": ops.load_session(pdir), "path": str(pdir)})
+        if path == "/api/projects/play-status":
+            qs = parse_qs(urlparse(self.path).query)
+            raw_p = (qs.get("path") or [""])[0]
+            pdir = Path(raw_p).expanduser()
+            if not pdir.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            return self._json(200, ops.preview_status(pdir, _PREVIEWS))
+        if path == "/api/projects/verify":
+            qs = parse_qs(urlparse(self.path).query)
+            raw_p = (qs.get("path") or [""])[0]
+            pdir = Path(raw_p).expanduser()
+            if not pdir.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            force = (qs.get("force") or [""])[0] in ("1", "true", "yes")
+            return self._json(200, {"ok": True, "verify": ops.cached_verify(pdir, force=force)})
+        if path == "/api/projects/agent":
+            qs = parse_qs(urlparse(self.path).query)
+            raw_p = (qs.get("path") or [""])[0]
+            pdir = Path(raw_p).expanduser()
+            if not pdir.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            return self._json(200, ops.agent_status(pdir))
         if path in ("/api/health", "/api/cloud"):
             if path == "/api/health":
                 return self._json(200, health_payload())
@@ -388,13 +428,53 @@ class Handler(SimpleHTTPRequestHandler):
         if path.endswith("/play"):
             if not target.is_dir() or not looks_like_game(target):
                 return self._json(400, {"ok": False, "error": "not a game folder"})
+            open_tab = body.get("open", True)
             result = start_preview(target)
-            if result.get("ok") and result.get("url"):
+            if open_tab and result.get("ok") and result.get("url"):
                 if sys.platform == "darwin":
                     subprocess.run(["open", result["url"]], check=False)
                 else:
                     webbrowser.open(result["url"])
+            st = ops.preview_status(target, _PREVIEWS)
+            result.update({"up": st.get("up"), "running": st.get("running"), "log_tail": st.get("log_tail")})
             return self._json(200, result)
+        if path.endswith("/play-status"):
+            if not target.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            return self._json(200, ops.preview_status(target, _PREVIEWS))
+        if path.endswith("/verify"):
+            if not target.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            return self._json(200, {"ok": True, "verify": ops.cached_verify(target, force=bool(body.get("force")))})
+        if path.endswith("/rename"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            new_name = str(body.get("name") or "").strip()
+            if not new_name:
+                return self._json(400, {"ok": False, "error": "name required"})
+            return self._json(200, ops.rename_project(target, new_name))
+        if path.endswith("/export"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            return self._json(200, ops.export_zip(target))
+        if path.endswith("/editor"):
+            if not target.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            return self._json(200, ops.open_editor(target))
+        if path.endswith("/session"):
+            if not target.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            if body.get("note"):
+                data = ops.session_note(target, str(body.get("kind") or "note"), str(body.get("note")))
+                return self._json(200, {"ok": True, "session": data})
+            return self._json(200, {"ok": True, "session": ops.load_session(target)})
+        if path.endswith("/agent"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            prompt = str(body.get("prompt") or body.get("q") or "").strip()
+            if not prompt:
+                return self._json(400, {"ok": False, "error": "prompt required"})
+            return self._json(200, ops.start_agent(target, prompt, model=str(body.get("model") or "")))
         if path.endswith("/new"):
             prompt = str(body.get("prompt") or body.get("name") or "new game").strip()
             name = slugify_project(str(body.get("name") or prompt[:48] or "new-game"))
@@ -495,6 +575,25 @@ class Handler(SimpleHTTPRequestHandler):
         body = self.rfile.read(length) if length else b"{}"
         if path.startswith("/api/projects"):
             return self._projects_post(path, body)
+        if path == "/api/cloud":
+            try:
+                payload = json.loads(body.decode() or "{}")
+            except json.JSONDecodeError:
+                payload = {}
+            action = str(payload.get("action") or "").lower()
+            try:
+                if action == "off":
+                    cloudlib.cmd_off()
+                elif action == "on":
+                    name = str(payload.get("provider") or "grok")
+                    code = cloudlib.cmd_on(name)
+                    if code != 0:
+                        return self._json(400, {"ok": False, "error": f"cloud on {name} failed (key?)"})
+                else:
+                    return self._json(400, {"ok": False, "error": "action on|off"})
+                return self._json(200, {"ok": True, **cloudlib.status_dict()})
+            except Exception as e:
+                return self._json(500, {"ok": False, "error": str(e)})
         if path == "/api/ask":
             try:
                 payload = json.loads(body.decode() or "{}")
@@ -517,6 +616,11 @@ class Handler(SimpleHTTPRequestHandler):
                 except Exception:
                     patched = None
                 if patched and patched.get("ok"):
+                    try:
+                        ops.session_note(pdir, "craft", user_txt, {"mode": patched.get("mode")})
+                        ops.cached_verify(pdir, force=True)
+                    except Exception:
+                        pass
                     return self._json(
                         200,
                         {
@@ -527,6 +631,7 @@ class Handler(SimpleHTTPRequestHandler):
                             "rejected": "",
                             "mode": patched.get("mode") or "patch",
                             "instant": True,
+                            "iterate": True,
                         },
                     )
             route = {"model": MODEL, "num_predict": 4096, "temperature": 0.18, "num_ctx": NUM_CTX}

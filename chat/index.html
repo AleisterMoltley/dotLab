@@ -123,9 +123,52 @@
       margin-top: 3px; font: 10px/1.35 var(--mono); color: var(--muted);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
+    .badge {
+      display: inline-block; font: 9px/1 var(--mono); letter-spacing: 0.04em;
+      padding: 2px 5px; border: 1px solid var(--line); border-radius: 2px; color: var(--faint);
+      text-transform: uppercase;
+    }
+    .badge.ok { color: var(--ok); border-color: #3a4a20; }
+    .badge.bad { color: var(--bad); border-color: #5a2020; }
+    .badge.na { color: var(--faint); }
     .proj .acts { display: none; gap: 4px; margin-top: 6px; }
     .proj:hover .acts, .proj.on .acts { display: flex; }
     .empty-list { padding: 12px 10px; color: var(--faint); font-size: 12px; }
+    .playbar {
+      display: none; max-width: 720px; margin: 0 auto 12px;
+      border: 1px solid var(--line); background: var(--elev); border-radius: var(--r);
+      padding: 8px 10px; font: 11px/1.4 var(--mono); color: var(--muted);
+    }
+    .playbar.show { display: block; }
+    .playbar .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; }
+    .playbar a { color: var(--text); }
+    .playbar pre {
+      margin: 8px 0 0; max-height: 96px; overflow: auto; white-space: pre-wrap;
+      color: var(--faint); font: 10px/1.35 var(--mono); border-top: 1px solid var(--line); padding-top: 6px;
+    }
+    .session {
+      display: none; max-width: 720px; margin: 0 auto 12px;
+      border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px;
+      font: 11px/1.4 var(--mono); color: var(--muted);
+    }
+    .session.show { display: block; }
+    .session b { color: var(--text); font-weight: 600; }
+    .iterate {
+      display: none; max-width: 720px; margin: 0 auto 10px;
+      padding: 8px 0 0;
+    }
+    .iterate.show { display: block; }
+    .iterate .label { font: 10px/1 var(--mono); color: var(--faint); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+    .agentbox {
+      display: none; max-width: 720px; margin: 0 auto 12px;
+      border: 1px solid var(--line); border-radius: var(--r); padding: 10px;
+      background: var(--panel);
+    }
+    .agentbox.show { display: block; }
+    .agentbox pre {
+      margin: 8px 0 0; max-height: 160px; overflow: auto; white-space: pre-wrap;
+      font: 10px/1.35 var(--mono); color: var(--faint); border-top: 1px solid var(--line); padding-top: 6px;
+    }
 
     .side-foot {
       border-top: 1px solid var(--line); padding: 10px 12px 12px;
@@ -319,10 +362,16 @@
         <div class="crumb" id="contextLine">No project</div>
       </div>
       <div class="top-r">
-        <button type="button" class="btn sm" id="nowPlay" disabled title="Play (⌘↵ after build)">Play</button>
+        <button type="button" class="btn sm" id="nowPlay" disabled title="Play (⌘P)">Play</button>
         <button type="button" class="btn sm" id="nowShow" disabled>Folder</button>
-        <button type="button" class="btn sm" id="nowDup" disabled title="Duplicate project">Duplicate</button>
-        <button type="button" class="btn sm" id="nowDel" disabled title="Delete project">Delete</button>
+        <button type="button" class="btn sm" id="nowEditor" disabled title="Open in Cursor/VS Code">Editor</button>
+        <button type="button" class="btn sm" id="nowZip" disabled title="Export zip">Zip</button>
+        <button type="button" class="btn sm" id="nowVerify" disabled title="Run P0 verify">Verify</button>
+        <button type="button" class="btn sm" id="nowAgent" disabled title="Deep change via agent">Deep</button>
+        <button type="button" class="btn sm" id="nowDup" disabled>Dup</button>
+        <button type="button" class="btn sm" id="nowRename" disabled>Rename</button>
+        <button type="button" class="btn sm" id="nowDel" disabled>Del</button>
+        <button type="button" class="btn sm" id="btnSettings">Model</button>
         <button type="button" class="btn sm" id="btnGh">Ship</button>
       </div>
     </header>
@@ -335,8 +384,28 @@
           <ol>
             <li><i>01</i><span><b>Write what the player does</b>at t=8s — place optional</span></li>
             <li><i>02</i><span><b>Play</b>runs this folder’s Vite server</span></li>
-            <li><i>03</i><span><b>Craft</b>floaty / more enemies / neon — instant, no model</span></li>
+            <li><i>03</i><span><b>Craft / Verify / Deep</b>instant tweak · P0 gate · agent expand</span></li>
           </ol>
+        </div>
+        <div class="session" id="sessionBar"></div>
+        <div class="playbar" id="playBar"></div>
+        <div class="iterate" id="iterateBar">
+          <div class="label">After play — what felt off?</div>
+          <div class="chips">
+            <button type="button" class="chip craft" data-craft="jump feels floaty">floaty</button>
+            <button type="button" class="chip craft" data-craft="too hard">too hard</button>
+            <button type="button" class="chip craft" data-craft="too easy">too easy</button>
+            <button type="button" class="chip craft" data-craft="more juice">more juice</button>
+            <button type="button" class="chip craft" data-craft="faster">faster</button>
+            <button type="button" class="chip craft" data-craft="more enemies">+enemies</button>
+          </div>
+        </div>
+        <div class="agentbox" id="agentBox">
+          <div class="row" style="display:flex;gap:6px;align-items:center;justify-content:space-between">
+            <b style="font:12px var(--mono);color:var(--text)">Agent</b>
+            <span id="agentState" class="badge na">idle</span>
+          </div>
+          <pre id="agentLog"></pre>
         </div>
       </div>
     </div>
@@ -410,10 +479,59 @@
         <button type="button" class="btn" id="toolFolder">Folder</button>
         <button type="button" class="btn" id="toolDup">Duplicate</button>
         <button type="button" class="btn" id="toolDel">Delete</button>
+        <button type="button" class="btn" id="toolEditor">Editor</button>
+        <button type="button" class="btn" id="toolZip">Export zip</button>
+        <button type="button" class="btn" id="toolVerify">Verify</button>
+        <button type="button" class="btn" id="toolAgent">Deep agent</button>
       </div>
       <label for="project">Folder path</label>
       <input id="project" type="text" placeholder="/path/to/game" />
       <div class="row"><button type="button" class="btn" id="toolsClose">Close</button></div>
+    </div>
+  </div>
+
+  <div class="sheet" id="settingsSheet">
+    <div class="box">
+      <h3>Model / cloud</h3>
+      <p id="settingsStatus">Local Ollama by default.</p>
+      <label for="cloudProvider">Paid provider (optional)</label>
+      <select id="cloudProvider">
+        <option value="grok">grok</option>
+        <option value="claude">claude</option>
+        <option value="openai">openai</option>
+        <option value="gemini">gemini</option>
+      </select>
+      <div class="row" style="margin-top:10px">
+        <button type="button" class="btn" id="cloudOff">Local</button>
+        <button type="button" class="btn primary" id="cloudOn">Cloud on</button>
+        <button type="button" class="btn" id="settingsClose">Close</button>
+      </div>
+      <p class="hint" style="margin-top:10px" id="settingsHint">Keys via env (XAI_API_KEY …) or `dotlab cloud set`.</p>
+    </div>
+  </div>
+
+  <div class="sheet" id="agentSheet">
+    <div class="box">
+      <h3>Deep change (agent)</h3>
+      <p>Runs the file agent on this project. Use for dialogue, multi-weapon, systems — not feel numbers.</p>
+      <label for="agentPrompt">Task</label>
+      <textarea id="agentPrompt" rows="4" placeholder="Add a second weapon and reload…"></textarea>
+      <div class="row">
+        <button type="button" class="btn primary" id="agentStart">Run agent</button>
+        <button type="button" class="btn" id="agentClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet" id="renameSheet">
+    <div class="box">
+      <h3>Rename project</h3>
+      <label for="renameInput">New folder name</label>
+      <input id="renameInput" type="text" />
+      <div class="row">
+        <button type="button" class="btn primary" id="renameGo">Rename</button>
+        <button type="button" class="btn" id="renameClose">Close</button>
+      </div>
     </div>
   </div>
 
@@ -444,8 +562,9 @@
         <div><span>New game</span><span class="kbd">⌘ N</span></div>
         <div><span>Focus filter</span><span class="kbd">⌘ F</span></div>
         <div><span>This help</span><span class="kbd">?</span></div>
+        <div><span>Verify</span><span class="kbd">⌘⇧V</span></div>
       </div>
-      <p style="margin-top:12px">Missing ideas later: verify badge, live log tail, cloud toggle, rename, export zip.</p>
+      <p style="margin-top:12px">Verify badges · Play status · Craft · Deep agent · Zip · Editor · Cloud toggle.</p>
       <div class="row"><button type="button" class="btn" id="helpClose">Close</button></div>
     </div>
   </div>

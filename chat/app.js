@@ -6,6 +6,9 @@
   var history = [];
   var projectsCache = [];
   var current = { path: "", name: "" };
+  var playPoll = null;
+  var agentPoll = null;
+  var health = {};
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -13,7 +16,6 @@
       return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
     });
   }
-
   function relTime(ts) {
     if (!ts) return "";
     var s = Math.max(0, (Date.now() / 1000) - Number(ts));
@@ -23,6 +25,19 @@
     if (s < 86400 * 14) return Math.floor(s / 86400) + "d";
     var d = new Date(ts * 1000);
     return (d.getMonth() + 1) + "/" + d.getDate();
+  }
+  function api(path, body) {
+    var opt = { headers: { "Content-Type": "application/json" } };
+    if (body) { opt.method = "POST"; opt.body = JSON.stringify(body); }
+    return fetch(path, opt).then(function (r) { return r.json(); });
+  }
+
+  function setProjectButtons(on) {
+    ["nowPlay", "nowShow", "nowEditor", "nowZip", "nowVerify", "nowAgent", "nowDup", "nowRename", "nowDel",
+      "toolPlay", "toolFolder", "toolDup", "toolDel", "toolEditor", "toolZip", "toolVerify", "toolAgent"].forEach(function (id) {
+      var el = $(id);
+      if (el) el.disabled = !on;
+    });
   }
 
   function setCurrent(path, name) {
@@ -47,29 +62,31 @@
     if (craft) craft.hidden = !current.path;
     if (examples) examples.hidden = !!current.path;
     if (newOpts) newOpts.style.display = current.path ? "none" : "grid";
-
-    ["nowPlay", "nowShow", "nowDup", "nowDel", "toolPlay", "toolFolder", "toolDup", "toolDel"].forEach(function (id) {
-      var el = $(id);
-      if (el) el.disabled = !current.path;
-    });
+    setProjectButtons(!!current.path);
     if (sendBtn) sendBtn.textContent = current.path ? "Continue" : "Make game";
     var hint = $("composerHint");
     if (hint) {
-      hint.innerHTML = current.path
-        ? 'Craft chips = instant · model for systems'
-        : 'Enter send · <span class="kbd">⌘P</span> play';
+      hint.textContent = current.path
+        ? "Craft = instant · Deep = agent · Enter send"
+        : "Enter send · ⌘P play · ⌘N new";
+    }
+    if (!current.path) {
+      hidePlayBar();
+      hideSession();
+      hideIterate();
+      hideAgentBox();
+      stopPlayPoll();
+      stopAgentPoll();
+    } else {
+      loadSession();
+      refreshPlayStatus();
     }
     renderProjects();
   }
 
-  function api(path, body) {
-    var opt = { headers: { "Content-Type": "application/json" } };
-    if (body) { opt.method = "POST"; opt.body = JSON.stringify(body); }
-    return fetch(path, opt).then(function (r) { return r.json(); });
-  }
-
   function refreshHealth() {
     return api("/api/health").then(function (h) {
+      health = h || {};
       var ok = !!(h && h.ok);
       var led = $("dot");
       var text = $("statusText");
@@ -79,7 +96,7 @@
       }
       if (text) {
         if (h && h.backend === "cloud") {
-          text.textContent = (h.provider || "cloud") + " · " + (h.model || "");
+          text.textContent = "cloud · " + (h.provider || "") + " · " + (h.model || "");
         } else if (ok) {
           text.textContent = (h.model || "dotlab") + " · local";
         } else if (h && !h.ollama) {
@@ -91,6 +108,14 @@
       if (h && h.projects_root) {
         var rootEl = $("projectsRoot");
         if (rootEl) rootEl.textContent = h.projects_root;
+      }
+      var ss = $("settingsStatus");
+      if (ss && h) {
+        if (h.backend === "cloud") {
+          ss.textContent = "Cloud ON · " + (h.provider || "") + " · " + (h.model || "") + " (paid)";
+        } else {
+          ss.textContent = "Local · " + (h.model || "dotlab") + " · $0";
+        }
       }
       return h;
     }).catch(function () {
@@ -120,6 +145,12 @@
     });
   }
 
+  function verifyBadge(p) {
+    if (p.verify_ok === true) return '<span class="badge ok">P0 ' + (p.verify_score || "") + "</span>";
+    if (p.verify_ok === false) return '<span class="badge bad">P0 fail</span>';
+    return '<span class="badge na">—</span>';
+  }
+
   function renderProjects() {
     var list = $("projectList");
     var count = $("projectCount");
@@ -137,9 +168,9 @@
       var meta = [p.genre, p.verb].filter(Boolean).join(" · ") || p.path;
       return (
         '<div class="proj' + on + '" data-path="' + esc(p.path) + '" data-name="' + esc(p.name) + '">' +
-        '<div class="t"><span class="name">' + esc(p.name) + '</span>' +
+        '<div class="t"><span class="name">' + esc(p.name) + "</span>" +
         '<span class="when">' + esc(relTime(p.mtime)) + "</span></div>" +
-        '<div class="meta" title="' + esc(meta) + '">' + esc(meta) + "</div>" +
+        '<div class="meta" title="' + esc(meta) + '">' + verifyBadge(p) + " " + esc(meta) + "</div>" +
         '<div class="acts">' +
         '<button type="button" class="btn icon" data-act="play">Play</button>' +
         '<button type="button" class="btn icon" data-act="dup">Dup</button>' +
@@ -160,12 +191,126 @@
     return el.querySelector(".body");
   }
 
-  function playPath(path) {
+  function showIterate(on) {
+    var el = $("iterateBar");
+    if (el) el.classList.toggle("show", !!on && !!current.path);
+  }
+  function hideIterate() { showIterate(false); }
+
+  function hidePlayBar() {
+    var el = $("playBar");
+    if (el) { el.classList.remove("show"); el.innerHTML = ""; }
+  }
+  function hideSession() {
+    var el = $("sessionBar");
+    if (el) { el.classList.remove("show"); el.innerHTML = ""; }
+  }
+  function hideAgentBox() {
+    var el = $("agentBox");
+    if (el) el.classList.remove("show");
+  }
+
+  function showPlayBar(d) {
+    var el = $("playBar");
+    if (!el) return;
+    var up = d && d.up;
+    var running = d && d.running;
+    var url = (d && d.url) || "";
+    var badge = up ? '<span class="badge ok">up</span>' : (running ? '<span class="badge na">starting</span>' : '<span class="badge na">stopped</span>');
+    el.innerHTML =
+      '<div class="row"><span>Play ' + badge +
+      (url ? ' · <a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + "</a>" : "") +
+      "</span><span>" +
+      (url ? '<button type="button" class="btn sm" id="playReopen">Open</button> ' : "") +
+      '<button type="button" class="btn sm" id="playRefresh">Refresh</button>' +
+      "</span></div>" +
+      (d && d.log_tail ? "<pre>" + esc(d.log_tail) + "</pre>" : "");
+    el.classList.add("show");
+    var reopen = $("playReopen");
+    if (reopen && url) reopen.onclick = function () { window.open(url, "_blank"); };
+    var refresh = $("playRefresh");
+    if (refresh) refresh.onclick = function () { refreshPlayStatus(); };
+  }
+
+  function stopPlayPoll() {
+    if (playPoll) { clearInterval(playPoll); playPoll = null; }
+  }
+  function refreshPlayStatus() {
+    if (!current.path) return;
+    api("/api/projects/play-status?path=" + encodeURIComponent(current.path)).then(function (d) {
+      if (d && (d.running || d.url || d.log_tail)) showPlayBar(d);
+    }).catch(function () {});
+  }
+
+  function loadSession() {
+    if (!current.path) return;
+    api("/api/projects/session?path=" + encodeURIComponent(current.path)).then(function (d) {
+      var el = $("sessionBar");
+      if (!el || !d || !d.session) return;
+      var s = d.session;
+      var crafts = (s.crafts || []).slice(0, 3).map(function (c) { return c.text; }).filter(Boolean);
+      var parts = [];
+      if (s.last_play) parts.push("last play <a href=\"" + esc(s.last_play) + "\" target=\"_blank\" rel=\"noopener\">open</a>");
+      if (crafts.length) parts.push("recent: " + crafts.map(function (t) { return esc(t); }).join(" · "));
+      if (!parts.length) {
+        el.classList.remove("show");
+        return;
+      }
+      el.innerHTML = "<b>session</b> · " + parts.join(" · ");
+      el.classList.add("show");
+    }).catch(function () {});
+  }
+
+  function playPath(path, openTab) {
     if (!path) return;
-    api("/api/projects/play", { path: path }).then(function (d) {
+    api("/api/projects/play", { path: path, open: openTab !== false }).then(function (d) {
       if (!d || !d.ok) {
         addMsg("bot", "Play failed. " + ((d && d.error) || "Open folder → npm i && npm run dev."));
+        return;
       }
+      showPlayBar(d);
+      showIterate(true);
+      loadSession();
+      stopPlayPoll();
+      playPoll = setInterval(refreshPlayStatus, 2500);
+      setTimeout(stopPlayPoll, 60000);
+    });
+  }
+
+  function runVerify(path) {
+    if (!path) return;
+    addMsg("bot", "Verifying…");
+    api("/api/projects/verify", { path: path, force: true }).then(function (d) {
+      var v = d && d.verify;
+      if (!v) {
+        addMsg("bot", "Verify failed.");
+        return;
+      }
+      var line = v.ok
+        ? "Verify OK · score " + v.score + "/100"
+        : "Verify FAIL · P0: " + ((v.p0_fail || []).join(", ") || "unknown");
+      addMsg("bot", line + (v.report ? "\n" + v.report : ""));
+      loadProjects();
+    });
+  }
+
+  function exportZip(path) {
+    if (!path) return;
+    api("/api/projects/export", { path: path }).then(function (d) {
+      if (!d || !d.ok) {
+        addMsg("bot", "Export failed. " + ((d && d.error) || ""));
+        return;
+      }
+      addMsg("bot", "Zip written:\n" + d.path + "\n(" + d.bytes + " bytes)");
+      api("/api/projects/reveal", { path: d.path.replace(/\/[^/]+$/, "") });
+    });
+  }
+
+  function openEditor(path) {
+    if (!path) return;
+    api("/api/projects/editor", { path: path }).then(function (d) {
+      if (!d || !d.ok) addMsg("bot", "Editor: " + ((d && d.error) || "not found"));
+      else addMsg("bot", "Opened in " + (d.cmd || "editor"));
     });
   }
 
@@ -184,7 +329,7 @@
 
   function deletePath(path, name) {
     if (!path) return;
-    if (!confirm("Delete project “" + (name || path) + "”?\nThis cannot be undone.")) return;
+    if (!confirm("Delete project “" + (name || path) + "”?\nCannot be undone.")) return;
     api("/api/projects/delete", { path: path }).then(function (d) {
       if (!d || !d.ok) {
         addMsg("bot", "Delete failed. " + ((d && d.error) || ""));
@@ -196,6 +341,58 @@
     });
   }
 
+  function renamePath(path) {
+    if (!path) return;
+    var sheet = $("renameSheet");
+    var inp = $("renameInput");
+    if (inp) inp.value = current.name || path.split("/").pop();
+    if (sheet) sheet.classList.add("show");
+  }
+
+  function startAgent(prompt) {
+    if (!current.path || !prompt) return;
+    var box = $("agentBox");
+    if (box) box.classList.add("show");
+    var st = $("agentState");
+    if (st) { st.textContent = "running"; st.className = "badge na"; }
+    api("/api/projects/agent", { path: current.path, prompt: prompt }).then(function (d) {
+      if (!d || !d.ok) {
+        addMsg("bot", "Agent: " + ((d && d.error) || "failed"));
+        if (st) { st.textContent = "error"; st.className = "badge bad"; }
+        return;
+      }
+      addMsg("bot", "Agent started — deep change in progress.");
+      stopAgentPoll();
+      agentPoll = setInterval(pollAgent, 2000);
+      pollAgent();
+    });
+  }
+
+  function stopAgentPoll() {
+    if (agentPoll) { clearInterval(agentPoll); agentPoll = null; }
+  }
+
+  function pollAgent() {
+    if (!current.path) return;
+    api("/api/projects/agent?path=" + encodeURIComponent(current.path)).then(function (d) {
+      var logEl = $("agentLog");
+      var st = $("agentState");
+      if (logEl && d.log_tail) logEl.textContent = d.log_tail;
+      if (st) {
+        if (d.running) {
+          st.textContent = "running";
+          st.className = "badge na";
+        } else {
+          st.textContent = d.exit === 0 ? "done" : ("exit " + d.exit);
+          st.className = d.exit === 0 ? "badge ok" : "badge bad";
+          stopAgentPoll();
+          loadProjects();
+          if (d.exit === 0) addMsg("bot", "Agent finished. Verify + Play.");
+        }
+      }
+    }).catch(function () {});
+  }
+
   function newGameMode() {
     setCurrent("", "");
     history = [];
@@ -205,7 +402,6 @@
       input.focus();
     }
     document.body.classList.remove("has-chat");
-    // keep welcome visible: remove chat msgs optional — leave history in log if any
   }
 
   window.DL.send = function (forcedText) {
@@ -243,6 +439,8 @@
         addMsg("bot", summary);
         history.push({ role: "user", content: text });
         history.push({ role: "assistant", content: summary });
+        showIterate(true);
+        if (created.path) runVerify(created.path);
         return;
       }
 
@@ -265,9 +463,12 @@
           if (d.instant) t = "· " + t;
           body.textContent = t;
           history.push({ role: "assistant", content: t });
+          if (d.instant || d.iterate) showIterate(true);
+          loadSession();
+          loadProjects();
         })
         .catch(function (e) {
-          body.textContent = "Model unreachable. Keep the terminal open · Ollama.app\n\n" + e.message;
+          body.textContent = "Model unreachable. Keep terminal open · Ollama.app\n\n" + e.message;
         });
     }).then(function () {
       if (sendBtn) {
@@ -276,7 +477,6 @@
       }
       if (input) input.focus();
       log.scrollTop = log.scrollHeight;
-      loadProjects();
     });
     return false;
   };
@@ -331,9 +531,7 @@
   }
 
   var search = $("projectSearch");
-  if (search) {
-    search.addEventListener("input", renderProjects);
-  }
+  if (search) search.addEventListener("input", renderProjects);
 
   function bind(id, fn) {
     var el = $(id);
@@ -369,11 +567,74 @@
     closeSheets();
     if (current.path) deletePath(current.path, current.name);
   });
+  bind("nowEditor", function () { if (current.path) openEditor(current.path); });
+  bind("toolEditor", function () { closeSheets(); if (current.path) openEditor(current.path); });
+  bind("nowZip", function () { if (current.path) exportZip(current.path); });
+  bind("toolZip", function () { closeSheets(); if (current.path) exportZip(current.path); });
+  bind("nowVerify", function () { if (current.path) runVerify(current.path); });
+  bind("toolVerify", function () { closeSheets(); if (current.path) runVerify(current.path); });
+  bind("nowAgent", function () {
+    if (!current.path) return;
+    var ta = $("agentPrompt");
+    if (ta) ta.value = "";
+    openSheet("agentSheet");
+  });
+  bind("toolAgent", function () {
+    closeSheets();
+    if (!current.path) return;
+    openSheet("agentSheet");
+  });
+  bind("agentStart", function () {
+    var ta = $("agentPrompt");
+    var prompt = (ta && ta.value || "").trim();
+    if (!prompt) return;
+    closeSheets();
+    startAgent(prompt);
+  });
+  bind("agentClose", closeSheets);
+  bind("nowRename", function () { if (current.path) renamePath(current.path); });
+  bind("renameGo", function () {
+    var name = (($("renameInput") && $("renameInput").value) || "").trim();
+    if (!name || !current.path) return;
+    api("/api/projects/rename", { path: current.path, name: name }).then(function (d) {
+      if (!d || !d.ok) {
+        addMsg("bot", "Rename failed. " + ((d && d.error) || ""));
+        return;
+      }
+      setCurrent(d.path, d.name);
+      loadProjects();
+      closeSheets();
+      addMsg("bot", "Renamed → " + d.name);
+    });
+  });
+  bind("renameClose", closeSheets);
 
   bind("btnTools", function () { openSheet("toolsSheet"); });
   bind("toolsClose", closeSheets);
   bind("btnHelp", function () { openSheet("helpSheet"); });
   bind("helpClose", closeSheets);
+  bind("btnSettings", function () {
+    refreshHealth();
+    openSheet("settingsSheet");
+  });
+  bind("settingsClose", closeSheets);
+  bind("cloudOff", function () {
+    api("/api/cloud", { action: "off" }).then(function () {
+      refreshHealth();
+      addMsg("bot", "Cloud off · local Ollama");
+    });
+  });
+  bind("cloudOn", function () {
+    var p = ($("cloudProvider") && $("cloudProvider").value) || "grok";
+    api("/api/cloud", { action: "on", provider: p }).then(function (d) {
+      if (!d || !d.ok) {
+        addMsg("bot", "Cloud on failed — set key: export XAI_API_KEY=… then `dotlab cloud on " + p + "`");
+        return;
+      }
+      refreshHealth();
+      addMsg("bot", "Cloud on · " + p + " (paid)");
+    });
+  });
   bind("btnGh", function () {
     var gp = $("ghProject");
     if (gp) gp.value = current.path || (projectEl && projectEl.value) || "";
@@ -417,7 +678,6 @@
     });
   }
 
-  // keyboard
   document.addEventListener("keydown", function (e) {
     var meta = e.metaKey || e.ctrlKey;
     if (meta && e.key.toLowerCase() === "p") {
@@ -431,6 +691,10 @@
     if (meta && e.key.toLowerCase() === "f") {
       e.preventDefault();
       if (search) search.focus();
+    }
+    if (meta && e.shiftKey && e.key.toLowerCase() === "v") {
+      e.preventDefault();
+      if (current.path) runVerify(current.path);
     }
     if (e.key === "?" && !e.metaKey && !e.ctrlKey && document.activeElement !== input) {
       openSheet("helpSheet");
