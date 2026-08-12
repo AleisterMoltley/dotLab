@@ -33,14 +33,95 @@ CHECKS_META = {
     "renderer": 8,
     "scene": 8,
     "syntax": 8,
+    "secrets": 8,
+    "deps_allow": 8,
     "loop": 3,
     "lights": 3,
     "config": 3,
     "no_alert": 3,
+    "genre_contract": 8,  # only enforced when genre known (fps/arena/platformer/runner)
     "feel_keys": 1,
     "playtest": 1,
     "wiki": 1,
 }
+
+
+def _load_genre_meta(project: Path) -> dict:
+    """genre / loop / camera from slice.json if present."""
+    out = {"genre": "", "loop": "", "camera": ""}
+    for meta_name in (".dotlab", ".gamemaster"):
+        sp = project / meta_name / "slice.json"
+        if not sp.is_file():
+            continue
+        try:
+            data = json.loads(sp.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                out["genre"] = str(data.get("genre") or "")
+                out["loop"] = str(data.get("loop") or "")
+                out["camera"] = str(data.get("camera") or "")
+                return out
+        except Exception:
+            pass
+    # heuristic from JS
+    return out
+
+
+def genre_contract(project: Path, js: str) -> tuple[bool, str, bool]:
+    """
+    Host genre invariants. Returns (ok, detail, enforced).
+    enforced=False → check skipped (counts as ok, not in score as P0).
+    """
+    meta = _load_genre_meta(project)
+    genre = (meta.get("genre") or "").lower()
+    loop = (meta.get("loop") or "").lower()
+    camera = (meta.get("camera") or "").lower()
+    # infer from code if meta empty
+    if not genre and not loop:
+        if re.search(r"pointerlock|requestPointerLock|adsFov|fireRpm|hitscan", js, re.I):
+            genre, loop, camera = "fps", "shoot", "fps"
+        elif re.search(r"coyoteMs|jumpBuffer", js) and re.search(r"platform", js, re.I):
+            genre, loop = "platformer", "jump"
+        else:
+            return True, "no genre meta (skip contract)", False
+
+    family = genre
+    if loop == "shoot" and genre not in ("fps", "arena", "tower-defense"):
+        family = "fps" if camera == "fps" else "arena"
+    if loop == "jump":
+        family = "platformer"
+    if loop == "run":
+        family = "runner"
+
+    missing: list[str] = []
+    if family in ("fps", "arena") or loop == "shoot":
+        if not re.search(r"hitstop|TimeJuice|shake", js):
+            missing.append("juice/hitstop")
+        if not re.search(r"fireCd|fireRpm|shoot|pointerlock|requestPointerLock|mousedown|pointerdown", js, re.I):
+            missing.append("fire/input")
+        if family == "fps" and not re.search(
+            r"pointerlock|requestPointerLock|mouseSens|movementX", js, re.I
+        ):
+            missing.append("look/pointer")
+        if not re.search(r"craft/|TimeJuice|sfx\.|hitmark", js):
+            # soft: craft kit present
+            if not (project / "src" / "craft").is_dir():
+                missing.append("craft kit")
+    elif family == "platformer" or loop == "jump":
+        if "coyoteMs" not in js and "coyote" not in js.lower():
+            missing.append("coyote")
+        if not re.search(r"jumpBuffer|jumpForce|jump", js, re.I):
+            missing.append("jump")
+        if not re.search(r"gravity", js, re.I):
+            missing.append("gravity")
+    elif family == "runner" or loop == "run":
+        if not re.search(r"runSpeed|lane|hazard|obstacle", js, re.I):
+            missing.append("runner loop keys")
+    else:
+        return True, f"genre={genre or 'generic'} (no hard contract)", False
+
+    if missing:
+        return False, f"{family}: missing {', '.join(missing)}", True
+    return True, f"{family}: contract ok", True
 
 
 def _is_pixel_kit(folder: Path) -> bool:
@@ -124,6 +205,26 @@ def evaluate(project: Path) -> dict:
     syn_ok, syn_d = node_syntax(project)
     add("syntax", syn_ok, syn_d)
 
+    # Secrets + dependency allowlist (P0 security)
+    try:
+        import security as seclib
+
+        secret_hits = seclib.scan_project_secrets(project, max_files=40)
+        add(
+            "secrets",
+            not secret_hits,
+            "clean" if not secret_hits else f"leaks: {secret_hits[0].get('kind')} in {secret_hits[0].get('path')}",
+        )
+        dep = seclib.check_package_json(project)
+        add(
+            "deps_allow",
+            bool(dep.get("ok")),
+            dep.get("message") or ("ok" if dep.get("ok") else "blocked deps"),
+        )
+    except Exception as e:
+        add("secrets", True, f"skip ({e})")
+        add("deps_allow", True, "skip")
+
     loop_ok = bool(re.search(r"requestAnimationFrame|setAnimationLoop", js))
     add("loop", loop_ok, "rAF/setAnimationLoop" if loop_ok else "no frame loop")
 
@@ -135,6 +236,17 @@ def evaluate(project: Path) -> dict:
 
     alert = bool(re.search(r"\balert\s*\(", js + html))
     add("no_alert", not alert, "no alert()" if not alert else "alert() is not dialogue")
+
+    g_ok, g_detail, g_enforced = genre_contract(project, js)
+    if g_enforced:
+        add("genre_contract", g_ok, g_detail)
+    else:
+        # still record for report but weight 0 effectively via always-ok P2
+        checks["genre_contract"] = {
+            "ok": True,
+            "detail": g_detail,
+            "weight": 1,
+        }
 
     feel_hits = sum(1 for k in ("gravity", "coyoteMs", "camLag", "jumpForce") if k in js)
     add("feel_keys", feel_hits >= 2, f"{feel_hits}/4 core feel keys")

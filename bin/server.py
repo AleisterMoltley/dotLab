@@ -685,21 +685,106 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 pass
             sys_msg = slicelib.ask_system(pdir if pdir and pdir.is_dir() else None, user_txt)
+            # Isolate any project blobs already in history
+            try:
+                import security as seclib
+
+                # keep system clean; user content from wiki-like dumps marked if huge
+                cleaned = []
+                for m in messages:
+                    if m.get("role") == "system":
+                        cleaned.append(m)
+                        continue
+                    c = str(m.get("content") or "")
+                    if len(c) > 4000 and "<<<UNTRUSTED" not in c:
+                        cleaned.append(
+                            {
+                                **m,
+                                "content": seclib.isolate_untrusted(c, source="chat", max_chars=8000),
+                            }
+                        )
+                    else:
+                        cleaned.append(m)
+                messages = cleaned
+            except Exception:
+                pass
             if not messages or messages[0].get("role") != "system":
                 messages = [{"role": "system", "content": sys_msg}] + list(messages)
             else:
                 messages = [{"role": "system", "content": sys_msg}] + list(messages[1:])
+            want_stream = bool(payload.get("stream")) and pdir and pdir.is_dir()
+            model_name = payload.get("model") or route.get("model") or MODEL
+            temp = float(
+                (payload.get("options") or {}).get("temperature", route.get("temperature", 0.18))
+            )
+            npred = int(
+                (payload.get("options") or {}).get("num_predict", route.get("num_predict", 4096))
+            )
+            nctx = int((payload.get("options") or {}).get("num_ctx", route.get("num_ctx", NUM_CTX)))
             try:
+                # Streaming apply: patch as @@ end arrives (perceived latency)
+                if want_stream and not cloudlib.active_provider():
+                    try:
+                        import quality as qualitylib
+
+                        chunks_acc: list[str] = []
+                        written_stream: list[str] = []
+
+                        def _on_file(rel: str) -> None:
+                            if rel not in written_stream:
+                                written_stream.append(rel)
+
+                        def _gen():
+                            for piece in cloudlib.ollama_chat_stream(
+                                messages,
+                                model=model_name,
+                                temperature=temp,
+                                num_predict=npred,
+                                num_ctx=nctx,
+                            ):
+                                chunks_acc.append(piece)
+                                yield piece
+
+                        applied = qualitylib.stream_extract_and_apply(
+                            pdir, _gen(), on_file=_on_file
+                        )
+                        text = "".join(chunks_acc)
+                        written = list(applied.get("written") or written_stream)
+                        rejected = ""
+                        if not written:
+                            applied2 = slicelib.apply_model_files(pdir, text)
+                            written = list(applied2.get("written") or [])
+                            if applied2.get("rejected") and applied2.get("reason") != "no files":
+                                rejected = str(applied2.get("reason") or "")
+                        note = ""
+                        if written:
+                            note = "\n\nSaved " + ", ".join(written) + " in " + proj
+                        elif proj and rejected:
+                            note = "\n\nKept the playable slice (" + rejected + ")."
+                        elif proj:
+                            note = "\n\nPlayable slice is already in " + proj + ". Click Play."
+                        return self._json(
+                            200,
+                            {
+                                "ok": True,
+                                "text": text + note,
+                                "written": written,
+                                "project": proj,
+                                "rejected": rejected,
+                                "mode": "llm_stream_apply",
+                                "instant": False,
+                                "streamed": True,
+                            },
+                        )
+                    except Exception:
+                        pass  # fall through to non-stream
+
                 text = cloudlib.chat(
                     messages,
-                    model=payload.get("model") or route.get("model") or MODEL,
-                    temperature=float(
-                        (payload.get("options") or {}).get("temperature", route.get("temperature", 0.18))
-                    ),
-                    num_predict=int(
-                        (payload.get("options") or {}).get("num_predict", route.get("num_predict", 4096))
-                    ),
-                    num_ctx=int((payload.get("options") or {}).get("num_ctx", route.get("num_ctx", NUM_CTX))),
+                    model=model_name,
+                    temperature=temp,
+                    num_predict=npred,
+                    num_ctx=nctx,
                 )
                 written: list[str] = []
                 rejected = ""
@@ -708,7 +793,6 @@ class Handler(SimpleHTTPRequestHandler):
                     written = list(applied.get("written") or [])
                     if applied.get("rejected") and applied.get("reason") != "no files":
                         rejected = str(applied.get("reason") or "")
-                    # Log accept pairs for future LoRA when write succeeded
                     if written:
                         try:
                             import quality as qualitylib

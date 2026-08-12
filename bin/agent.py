@@ -237,11 +237,26 @@ def tool_read(project: Path, path: str, start: str | None = None, end: str | Non
 
 
 def tool_write(project: Path, path: str, content: str) -> str:
+    import security as seclib
+
+    rel = (path or "").strip().lstrip("./")
+    ok, err = seclib.write_allowed(project, rel)
+    if not ok:
+        seclib.audit(project, "write_denied", {"path": rel, "error": err})
+        return f"ERROR: {err}"
+    # Secrets + package allowlist
+    hits = seclib.scan_secrets(content or "", path=rel)
+    if hits:
+        seclib.audit(project, "secret_blocked", {"path": rel, "kind": hits[0].get("kind")})
+        return f"ERROR: secret-like content blocked ({hits[0].get('kind')}) — remove keys before write"
+    if rel == "package.json" or rel.endswith("/package.json"):
+        pok, perr = seclib.validate_package_write(content or "")
+        if not pok:
+            return f"ERROR: {perr}"
     # Patch-only gate: block full replace of large protected files
     try:
         import quality as qualitylib
 
-        rel = path.strip().lstrip("./")
         res = qualitylib.apply_full_write(project, rel, content or "", force=False)
         if not res.get("ok"):
             return (
@@ -256,6 +271,11 @@ def tool_write(project: Path, path: str, content: str) -> str:
             bak = f.with_suffix(f.suffix + ".bak")
             bak.write_bytes(f.read_bytes())
         f.write_text(content, encoding="utf-8")
+    seclib.audit(
+        project,
+        "write_file",
+        {"path": path, "hash": seclib.content_hash(content or ""), "n": len(content or "")},
+    )
     try:
         import live as livelib  # type: ignore
 
@@ -269,7 +289,6 @@ def tool_write(project: Path, path: str, content: str) -> str:
         )
     except Exception:
         pass
-    # LoRA accept-pair logging (best effort)
     try:
         import quality as qualitylib
 
@@ -286,15 +305,33 @@ def tool_write(project: Path, path: str, content: str) -> str:
 
 
 def tool_apply_patch(project: Path, path: str, search: str, replace: str) -> str:
-    """Surgical search/replace — preferred over full write_file."""
+    """Surgical search/replace — preferred over full write_file. AST-safe when possible."""
+    import security as seclib
+
+    rel = (path or "").strip().lstrip("./")
+    ok, err = seclib.write_allowed(project, rel)
+    if not ok:
+        return f"ERROR: {err}"
+    hits = seclib.scan_secrets(replace or "", path=rel)
+    if hits:
+        return f"ERROR: secret-like content blocked ({hits[0].get('kind')})"
     try:
         import quality as qualitylib
 
         before = qualitylib.snapshot_file(project, path)
-        res = qualitylib.apply_search_replace(project, path, search or "", replace or "")
+        # Prefer AST-safe replace for .js
+        if rel.endswith((".js", ".mjs")):
+            res = qualitylib.ast_safe_replace(project, rel, search or "", replace or "")
+        else:
+            res = qualitylib.apply_search_replace(project, path, search or "", replace or "")
         if not res.get("ok"):
             return f"ERROR: {res.get('error')}"
         after = qualitylib.snapshot_file(project, path)
+        seclib.audit(
+            project,
+            "apply_patch",
+            {"path": rel, "mode": res.get("mode"), "hash": seclib.content_hash(after)},
+        )
         try:
             qualitylib.log_accept_pair(
                 project,
@@ -350,24 +387,46 @@ def tool_search(project: Path, query: str, glob_pat: str = "*.{js,ts,mjs,html,cs
 
 
 def tool_run(project: Path, cmd: str) -> str:
-    cmd = cmd.strip()
-    banned = ["rm -rf", "sudo", "mkfs", "dd if=", ":(){", "shutdown", "reboot", "diskutil erase"]
-    low = cmd.lower()
-    if any(b in low for b in banned):
-        return "ERROR: command blocked (Sicherheitsfilter)"
-    if len(cmd) > 400:
-        return "ERROR: command too long"
+    import security as seclib
+
+    cmd = (cmd or "").strip()
+    ok, reason = seclib.run_allowed(cmd)
+    if not ok:
+        seclib.audit(project, "run_denied", {"cmd": cmd[:200], "reason": reason})
+        return f"ERROR: {reason}"
+    # scrub env: do not pass cloud keys into child processes
+    env = os.environ.copy()
+    for k in list(env.keys()):
+        if re.search(r"(?i)(API_KEY|SECRET|TOKEN|PASSWORD|PRIVATE)", k) and k not in (
+            "PATH",
+            "HOME",
+            "USER",
+            "LANG",
+            "TERM",
+        ):
+            # keep PATH etc; drop secret-looking vars
+            if k in (
+                "XAI_API_KEY",
+                "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "GEMINI_API_KEY",
+                "GITHUB_TOKEN",
+                "GH_TOKEN",
+            ):
+                env.pop(k, None)
     try:
         r = subprocess.run(
             cmd,
             shell=True,
-            cwd=str(project),
+            cwd=str(project.resolve()),
             capture_output=True,
             text=True,
             timeout=120,
+            env=env,
         )
         out = (r.stdout or "") + (r.stderr or "")
         out = out[-MAX_TOOL_OUT:]
+        seclib.audit(project, "run", {"cmd": cmd[:200], "exit": r.returncode})
         return f"exit={r.returncode}\n{out}"
     except subprocess.TimeoutExpired:
         return "ERROR: timeout 120s"
@@ -447,10 +506,12 @@ def load_knowledge(project: Path | None = None, task: str = "") -> str:
         pass
     try:
         import wiki as wikilib  # type: ignore
+        import security as seclib
 
         wb = wikilib.prompt_block(project) if project else ""
         if wb:
-            chunks.insert(0, wb)
+            # Untrusted project wiki — isolate from system instructions
+            chunks.insert(0, seclib.isolate_untrusted(wb, source="wiki", max_chars=4000))
     except Exception:
         pass
     return "\n\n".join(chunks)
@@ -523,13 +584,16 @@ def main() -> int:
     # Slice RAG: few successful snippets (cheap prefill)
     try:
         import rag as raglib
+        import security as seclib
 
         rb = raglib.prompt_block(task, k=3, max_chars=2800)
         if rb:
-            knowledge = (knowledge + "\n\n" + rb) if knowledge else rb
+            knowledge = (
+                knowledge + "\n\n" + seclib.isolate_untrusted(rb, source="rag", max_chars=2800)
+            ) if knowledge else seclib.isolate_untrusted(rb, source="rag", max_chars=2800)
     except Exception:
         pass
-    route = {"model": model, "num_ctx": 16384, "num_predict": 6144, "temperature": 0.18}
+    route = {"model": model, "num_ctx": 16384, "num_predict": 6144, "temperature": 0.18, "tier": "max"}
     try:
         import turbo as turbolib
 
@@ -546,9 +610,20 @@ def main() -> int:
     except Exception:
         pass
 
+    # Step budget: continue-style short, full feature longer
+    step_budget = args.steps
+    if args.steps == MAX_STEPS:
+        if re.search(r"(?i)\b(fix|tweak|floaty|faster|slower|feel|jump|enemy|hp|juice)\b", task) and len(task) < 160:
+            step_budget = int(os.environ.get("DOTLAB_STEPS_CONTINUE", "4"))
+        elif re.search(r"(?i)\b(add|implement|feature|weapon|dialogue|boss)\b", task):
+            step_budget = int(os.environ.get("DOTLAB_STEPS_FEATURE", "8"))
+        else:
+            step_budget = min(args.steps, int(os.environ.get("DOTLAB_STEPS_DEFAULT", "10")))
+
     system = (
         identitylib.system_for("agent", extra_packs=False)
         + "\nHonor USER PREFERENCE MEMORY. Prefer apply_patch over full rewrites.\n"
+        + "First tool should be read_file or apply_patch — avoid list_dir loops.\n"
         + SYSTEM_EXTRA
         + ("\n\n# Knowledge\n" + knowledge if knowledge else "")
     )
@@ -556,9 +631,9 @@ def main() -> int:
     num_ctx = int(os.environ.get("GAMEMASTER_NUM_CTX", str(route.get("num_ctx") or 16384)))
     has_map = (project / "MAP.md").is_file() or (project / "WIKI.md").is_file()
     start_hint = (
-        "Read WIKI.md then src/game.js (start:1 end:80). Write complete files. tool call done when P0-safe."
+        "read_file path: src/game.js start: 1 end: 80 — then apply_patch. done when P0-safe."
         if has_map
-        else "list_dir path: . then read src/game.js. Write complete files. tool call done when P0-safe."
+        else "read_file path: src/game.js — then apply_patch. Avoid list_dir. done when P0-safe."
     )
 
     messages = [
@@ -566,20 +641,21 @@ def main() -> int:
         {
             "role": "user",
             "content": (
-                f"Project root: {project}\n\nTask:\n{task}\n\n"
+                f"Project: (root hidden — use relative paths)\n\nTask:\n{task}\n\n"
                 f"{start_hint}"
             ),
         },
     ]
 
-    print(f"🤖 MAX Agent · model={model} · ctx={num_ctx} · turbo knowledge")
+    print(f"🤖 MAX Agent · model={model} · ctx={num_ctx} · steps≤{step_budget} · turbo knowledge")
     print(f"📁 {project}")
     print(f"🎯 {task}")
     print("─" * 48)
 
     verify_repair_used = False
-    for step in range(1, args.steps + 1):
-        print(f"\n──  {step}/{args.steps} ──")
+    list_dir_count = 0
+    for step in range(1, step_budget + 1):
+        print(f"\n──  {step}/{step_budget} ──")
         try:
             reply = chat(messages, model=model, num_ctx=num_ctx)
         except urllib.error.HTTPError as e:
@@ -633,7 +709,14 @@ def main() -> int:
                 for k, v in targs.items()
             }
             print(f"🔧 {name} {preview}")
-            result = run_tool(project, name, targs)
+            if name == "list_dir":
+                list_dir_count += 1
+                if list_dir_count > 2:
+                    result = "ERROR: list_dir budget exhausted — read_file or apply_patch instead"
+                else:
+                    result = run_tool(project, name, targs)
+            else:
+                result = run_tool(project, name, targs)
             if len(result) > MAX_TOOL_OUT:
                 result = result[:MAX_TOOL_OUT] + "\n…[truncated]"
             print(f"↳ {result[:500]}{'…' if len(result) > 500 else ''}")

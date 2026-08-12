@@ -111,6 +111,7 @@ def chat(
     temperature: float = 0.35,
     num_predict: int = 4096,
     num_ctx: int | None = None,
+    tier: str = "max",
 ) -> str:
     ctx = num_ctx if num_ctx is not None else min(NUM_CTX, 32768)
     return llm_chat(
@@ -119,6 +120,7 @@ def chat(
         temperature=temperature,
         num_predict=num_predict,
         num_ctx=ctx,
+        tier=tier,
     )
 
 
@@ -309,11 +311,20 @@ def role_architect(
         f"Brief:\n{brief}\n\nDesign (Director):\n{design}\n\n"
         f"Existing project tree:\n{project_tree or '(empty)'}\n\n{prefs}\n\n{knowledge}"
     )
+    # Architect is structure-only (non-code body) — flash is enough when available
+    arch_model = model
+    try:
+        import turbo as turbolib
+
+        arch_model = turbolib.resolve_tier("flash")
+    except Exception:
+        pass
     return chat(
         [{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
-        model=model,
+        model=arch_model,
         temperature=0.25,
-        num_predict=4000,
+        num_predict=3000,
+        tier="flash",
     )
 
 
@@ -340,12 +351,14 @@ def role_critic(
     sys_p = (
         identitylib.system_for("critic", extra_packs=False)
         + "\nIf PLAYTEST METRICS exist: prioritize empirical data (FPS, errors, death→retry).\n"
-        "Output:\n"
-        "1) Severity list (P0/P1/P2) — max 8 findings\n"
-        "2) Feel verdict (1–10) + why\n"
-        "3) Must-fix now (top 3)\n"
-        "4) Kill list (what to cut)\n"
-        "5) One golden tweak that would 2x fun\n"
+        "End with a JSON block (fenced or bare) including:\n"
+        '{"feel_tweaks":{"gravity":28,"moveSpeed":7.2},"p0":["..."],"must_fix":["..."],'
+        '"kill":["..."],"feel_score":7,"golden":"one number tweak"}\n'
+        "Also write short prose:\n"
+        "1) Severity list (P0/P1/P2) — max 8\n"
+        "2) Feel verdict (1–10)\n"
+        "3) Must-fix top 3 (code only — feel goes in feel_tweaks)\n"
+        "4) Kill list\n"
         "English.\n"
     )
     user = (
@@ -355,8 +368,9 @@ def role_critic(
     return chat(
         [{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
         model=model,
-        temperature=0.4,
-        num_predict=3000,
+        temperature=0.35,
+        num_predict=2200,
+        tier="flash",
     )
 
 
@@ -661,60 +675,29 @@ def pipeline_build(
         "No Vector3 allocs in the loop. End with done."
     )
 
-    # P1: Best-of-2 only when env asks and project still thin (first ship)
+    # Patch-level best-of (cheap flash patches) when DOTLAB_BEST_OF>=2
     best_n = int(os.environ.get("DOTLAB_BEST_OF", os.environ.get("GAMEMASTER_BEST_OF", "1")))
     game_js = project / "src" / "game.js"
-    thin = (not game_js.is_file()) or game_js.stat().st_size < 4000
+    has_game = game_js.is_file() and game_js.stat().st_size > 500
     code_out = ""
-    if best_n >= 2 and thin:
-        banner("⚖️ BEST-OF-N coder (verify-scored)")
-
-        def gen_a() -> str:
-            return run_coder_agent(project, task + "\nVariant A: prioritize juice + fair death.", model, steps=10)
-
-        def gen_b() -> str:
-            return run_coder_agent(
-                project, task + "\nVariant B: prioritize readability + restart <3s.", model, steps=10
+    if best_n >= 2 and has_game:
+        banner("⚖️ PATCH BEST-OF-N (flash drafts · verify pick)")
+        bo = qualitylib.patch_level_best_of(project, brief + "\n" + design[:800], n=best_n, model=model)
+        write_session(project, "03-best-of-n.json", json.dumps(bo, indent=2)[:12000] + "\n")
+        print(f"  ✓ patch best-of winner={bo.get('winner')} score={(bo.get('score') or {}).get('score')}")
+        code_out = json.dumps(bo.get("candidates") or [])[:4000]
+        # still run a short coder for novelty wiring if P0 ok but thin novelty
+        if bo.get("ok"):
+            code_out += "\n" + run_coder_agent(
+                project,
+                task + "\nHost already applied best patch candidate — only wire novelty if missing.",
+                model,
+                steps=8,
             )
-
-        # best_of_n expects text generators that produce patches; agent already writes files.
-        # So we score after each agent run with snapshot isolation:
-        base = qualitylib._snapshot_tree(project)
-        cands = []
-        winner_snap = None
-        for i, gen in enumerate((gen_a, gen_b)[:best_n]):
-            qualitylib._restore_tree(project, base)
-            out = gen()
-            sc = qualitylib.score_project(project)
-            snap = qualitylib._snapshot_tree(project)
-            cands.append({"i": i, "out": out, "score": sc, "snap": snap})
-            write_session(project, f"03-coder-cand-{i}.txt", out[-12000:])
-        cands.sort(
-            key=lambda c: (
-                1 if c["score"].get("p0_ok") else 0,
-                int(c["score"].get("score") or 0),
-            ),
-            reverse=True,
-        )
-        winner = cands[0]
-        winner_snap = winner.get("snap") or base
-        qualitylib._restore_tree(project, winner_snap)
-        code_out = winner.get("out") or ""
-        # drop heavy snaps from memory
-        for c in cands:
-            c.pop("snap", None)
-        print(f"  ✓ best-of-n winner=cand-{winner['i']} score={winner['score'].get('score')}")
-        write_session(
-            project,
-            "03-best-of-n.json",
-            json.dumps(
-                [{"i": c["i"], "score": c["score"]} for c in cands],
-                indent=2,
-            )
-            + "\n",
-        )
+        else:
+            code_out += "\n" + run_coder_agent(project, task, model, steps=12)
     else:
-        code_out = run_coder_agent(project, task, model, steps=18)
+        code_out = run_coder_agent(project, task, model, steps=12)
 
     write_session(project, "03-coder-log.txt", code_out)
     print(code_out[-2000:])

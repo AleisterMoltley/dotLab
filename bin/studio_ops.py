@@ -399,6 +399,10 @@ def export_zip(project: Path) -> dict[str, Any]:
     meta.mkdir(parents=True, exist_ok=True)
     out = meta / f"{project.name}-export.zip"
     skip_dirs = {"node_modules", ".git", "dist", "build", ".vite"}
+    try:
+        import security as seclib
+    except Exception:
+        seclib = None  # type: ignore
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for dirpath, dirnames, filenames in os.walk(project):
             dirnames[:] = [d for d in dirnames if d not in skip_dirs]
@@ -408,7 +412,20 @@ def export_zip(project: Path) -> dict[str, Any]:
                     continue
                 fp = root / name
                 try:
-                    zf.write(fp, fp.relative_to(project).as_posix())
+                    rel = fp.relative_to(project).as_posix()
+                except ValueError:
+                    continue
+                if seclib is not None and not seclib.should_export_file(rel):
+                    continue
+                # skip secrets in content for small text files
+                if seclib is not None and fp.suffix in (".js", ".ts", ".json", ".md", ".env", ".txt"):
+                    try:
+                        if seclib.scan_file_secrets(fp):
+                            continue
+                    except Exception:
+                        pass
+                try:
+                    zf.write(fp, rel)
                 except OSError:
                     continue
     return {"ok": True, "path": str(out), "bytes": out.stat().st_size}

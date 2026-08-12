@@ -56,6 +56,8 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/rag.py" "$@" ;;
     slots)
       shift; exec python3 "$ROOT/bin/slots.py" "$@" ;;
+    golden|ci-golden)
+      shift; exec python3 "$ROOT/bin/golden.py" "$@" ;;
     ship)
       shift; exec python3 "$ROOT/bin/github.py" ship "$@" ;;
     cloud)

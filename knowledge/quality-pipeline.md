@@ -42,9 +42,30 @@ gamemaster rag query "fps dash hitstop"
 gamemaster slots -p ./game --director-json path.json
 ```
 
+## Priority stack (quality · tempo · security)
+
+| # | Feature | Module |
+|---|---------|--------|
+| 1 | Genre contracts (fps/platformer/arena/runner) | `verify.genre_contract` |
+| 2 | Run allowlist + write jail | `security.py` + `agent` |
+| 3 | Critic feel → host patch only | `quality.extract_critic_feel` / `apply_feel_tweaks` |
+| 4 | Secrets + package allowlist | `security` + verify P0 |
+| 5 | Step caps + flash non-code | `agent`, `studio` architect/critic |
+| 6 | Patch-level best-of-N | `quality.patch_level_best_of` |
+| 7 | Golden slice CI | `bin/golden.py` |
+| 8 | Stream-apply on ask | `server` `/api/ask` `stream:true` |
+| 9 | Prompt-injection isolation | `security.isolate_untrusted` |
+| 10 | AST-safe patch (`node --check`) | `quality.ast_safe_replace` |
+
+```bash
+gamemaster golden
+gamemaster golden --json
+```
+
 ## Scoreboard (not tok/s)
 
 1. Time-to-playable (prompt → P0 green)
 2. verify score + P0 fail rate
 3. Human accept rate (prefs / keep)
 4. Prefill size per agent turn
+5. `gamemaster golden` green

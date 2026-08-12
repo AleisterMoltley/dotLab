@@ -374,6 +374,14 @@ def _allowed_write_path(rel: str, *, is_new: bool) -> tuple[bool, str]:
 
 def apply_search_replace(project: Path, path: str, search: str, replace: str) -> dict[str, Any]:
     rel = path.strip().lstrip("./")
+    try:
+        import security as seclib
+
+        ok, err = seclib.write_allowed(project, rel)
+        if not ok:
+            return {"ok": False, "path": rel, "error": err}
+    except Exception:
+        pass
     dest = (project / rel).resolve()
     try:
         dest.relative_to(project.resolve())
@@ -396,10 +404,277 @@ def apply_search_replace(project: Path, path: str, search: str, replace: str) ->
     return {"ok": True, "path": rel, "mode": "search_replace"}
 
 
+def _node_syntax_ok(project: Path, rel: str) -> tuple[bool, str]:
+    import shutil
+    from gmcommon import run
+
+    node = shutil.which("node")
+    if not node:
+        return True, "skip"
+    code, out = run([node, "--check", str(project / rel)], cwd=project, timeout=15)
+    return code == 0, out[-200:] if out else ""
+
+
+def ast_safe_replace(
+    project: Path, path: str, search: str, replace: str
+) -> dict[str, Any]:
+    """
+    Apply search/replace then require node --check (parse-safe).
+    Rolls back on syntax failure. Prefer over raw replace for .js.
+    """
+    rel = path.strip().lstrip("./")
+    dest = project / rel
+    if not dest.is_file():
+        return {"ok": False, "path": rel, "error": "file missing"}
+    before = dest.read_text(encoding="utf-8")
+    res = apply_search_replace(project, rel, search, replace)
+    if not res.get("ok"):
+        return res
+    if rel.endswith((".js", ".mjs")):
+        ok, detail = _node_syntax_ok(project, rel)
+        if not ok:
+            dest.write_text(before, encoding="utf-8")
+            return {
+                "ok": False,
+                "path": rel,
+                "error": f"AST/syntax check failed after patch: {detail}",
+                "mode": "ast_rollback",
+            }
+    res["mode"] = "ast_safe"
+    return res
+
+
+# Feel keys host may apply from critic JSON (no coder needed)
+FEEL_KEYS = frozenset(
+    {
+        "gravity",
+        "moveSpeed",
+        "jumpForce",
+        "accel",
+        "friction",
+        "coyoteMs",
+        "jumpBufferMs",
+        "jumpCut",
+        "camLag",
+        "camDist",
+        "camHeight",
+        "eyeHeight",
+        "fov",
+        "adsFov",
+        "mouseSens",
+        "fireRpm",
+        "damage",
+        "spread",
+        "adsSpread",
+        "hitstopMs",
+        "shakeHit",
+        "hp",
+        "dashSpeed",
+        "dashMs",
+        "dashCdMs",
+    }
+)
+
+
+def extract_critic_feel(critique: str) -> dict[str, float]:
+    """Parse feel_tweaks from critic JSON or `gravity: 28` style lines."""
+    out: dict[str, float] = {}
+    data = extract_json_object(critique or "")
+    if data:
+        tweaks = data.get("feel_tweaks") or data.get("feel") or {}
+        if isinstance(tweaks, dict):
+            for k, v in tweaks.items():
+                if str(k) in FEEL_KEYS:
+                    try:
+                        out[str(k)] = float(v)
+                    except (TypeError, ValueError):
+                        pass
+    # prose: gravity → 28 or gravity: 28
+    for m in re.finditer(
+        r"\b(" + "|".join(sorted(FEEL_KEYS, key=len, reverse=True)) + r")\b\s*[:=→]\s*(-?\d+(?:\.\d+)?)",
+        critique or "",
+        re.I,
+    ):
+        key = m.group(1)
+        # normalize case to FEEL_KEYS
+        for fk in FEEL_KEYS:
+            if fk.lower() == key.lower():
+                try:
+                    out[fk] = float(m.group(2))
+                except ValueError:
+                    pass
+                break
+    return out
+
+
+def apply_feel_tweaks(project: Path, tweaks: dict[str, float]) -> dict[str, Any]:
+    """Host-only feel application via patch/slice rebuild path."""
+    if not tweaks:
+        return {"ok": True, "applied": [], "mode": "noop"}
+    import patch as patchlib
+    import slice as slicelib
+
+    project = Path(project)
+    spec = patchlib.load_spec(project)
+    if not isinstance(spec, dict):
+        return {"ok": False, "error": "no slice.json"}
+    patchlib._ensure_counts(spec)
+    feel = spec.setdefault("feel", {})
+    applied = []
+    for k, v in tweaks.items():
+        if k not in FEEL_KEYS:
+            continue
+        if k in ("coyoteMs", "jumpBufferMs", "hitstopMs", "fireRpm", "dashMs", "dashCdMs", "hp"):
+            feel[k] = int(round(v))
+        else:
+            feel[k] = float(v)
+        applied.append(f"{k}={feel[k]}")
+    if not applied:
+        return {"ok": True, "applied": [], "mode": "noop"}
+    patchlib.save_spec(project, spec)
+    written = slicelib.write_web_slice(project, spec)
+    return {"ok": True, "applied": applied, "written": written, "mode": "host_feel"}
+
+
+def patch_level_best_of(
+    project: Path,
+    prompt: str,
+    *,
+    n: int = 2,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """
+    Flash drafts N short patches; host scores with verify; optional max refine winner.
+    Much cheaper than full agent × N.
+    """
+    from cloud import chat as llm_chat
+
+    n = max(1, min(3, n))
+    flash = draft_model_tag()
+    target = model or DEFAULT_MODEL
+    base = _snapshot_tree(project)
+    # include tiny context from game head
+    head = ""
+    gp = project / "src" / "game.js"
+    if gp.is_file():
+        head = gp.read_text(encoding="utf-8", errors="ignore")[:2500]
+    sys_p = (
+        "You emit ONLY surgical patches in @@ file / @@ search / @@ replace / @@ end form. "
+        "No prose. Touch minimal lines. Host owns feel numbers."
+    )
+    results = []
+    for i in range(n):
+        _restore_tree(project, base)
+        user = (
+            f"Task: {prompt}\n\nCurrent src/game.js head:\n```js\n{head}\n```\n"
+            f"Variant {i + 1}: different approach, same task."
+        )
+        try:
+            text = llm_chat(
+                [
+                    {"role": "system", "content": sys_p},
+                    {"role": "user", "content": user},
+                ],
+                model=flash,
+                temperature=0.25 + i * 0.15,
+                num_predict=2048,
+                num_ctx=8192,
+            )
+        except Exception as e:
+            results.append({"i": i, "error": str(e), "score": {"score": -1, "p0_ok": False}})
+            continue
+        applied = apply_patches(project, text)
+        sc = score_project(project)
+        results.append(
+            {
+                "i": i,
+                "text": text,
+                "apply": applied,
+                "score": sc,
+                "snap": _snapshot_tree(project),
+            }
+        )
+    results.sort(
+        key=lambda r: (
+            1 if (r.get("score") or {}).get("p0_ok") else 0,
+            int((r.get("score") or {}).get("score") or -1),
+        ),
+        reverse=True,
+    )
+    if not results or results[0].get("error"):
+        _restore_tree(project, base)
+        return {"ok": False, "error": "no viable patch candidate", "candidates": results}
+    winner = results[0]
+    # restore winner
+    if winner.get("snap"):
+        _restore_tree(project, winner["snap"])
+    else:
+        _restore_tree(project, base)
+        apply_patches(project, winner.get("text") or "")
+    # optional max refine if not p0
+    sc = score_project(project)
+    if not sc.get("p0_ok") and use_speculative() and target != flash:
+        try:
+            refine = llm_chat(
+                [
+                    {"role": "system", "content": sys_p},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Fix P0 only. Previous patch:\n{winner.get('text','')[:3000]}\n"
+                            f"Verify:\n{sc.get('report','')[:1500]}"
+                        ),
+                    },
+                ],
+                model=target,
+                temperature=0.12,
+                num_predict=2048,
+                num_ctx=12288,
+            )
+            apply_patches(project, refine)
+            sc = score_project(project)
+            winner["refined"] = True
+        except Exception:
+            pass
+    for r in results:
+        r.pop("snap", None)
+        r.pop("text", None)
+    return {
+        "ok": bool(sc.get("p0_ok")),
+        "winner": winner.get("i"),
+        "score": sc,
+        "candidates": [
+            {"i": r["i"], "score": r.get("score"), "error": r.get("error")} for r in results
+        ],
+        "mode": "patch_best_of",
+    }
+
+
 def apply_full_write(
     project: Path, path: str, content: str, *, force: bool = False
 ) -> dict[str, Any]:
-    rel = path.strip().lstrip("./")
+    rel = path.strip()
+    while rel.startswith("./"):
+        rel = rel[2:]
+    try:
+        import security as seclib
+
+        sok, serr = seclib.write_allowed(project, rel)
+        if not sok:
+            return {"ok": False, "path": rel, "error": serr}
+        hits = seclib.scan_secrets(content or "", path=rel)
+        if hits:
+            return {
+                "ok": False,
+                "path": rel,
+                "error": f"secret-like content blocked ({hits[0].get('kind')})",
+            }
+        if rel == "package.json" or rel.endswith("/package.json"):
+            pok, perr = seclib.validate_package_write(content or "")
+            if not pok:
+                return {"ok": False, "path": rel, "error": perr}
+    except Exception:
+        pass
     dest = project / rel
     exists = dest.is_file()
     ok, err = _allowed_write_path(rel, is_new=not exists)
@@ -691,17 +966,19 @@ def auto_critic_and_repair(
     run_coder: Callable[[Path, str, str, int], str] | None = None,
 ) -> dict[str, Any]:
     """
-    One critic call + at most one repair agent pass + verify.
+    Critic (prefer flash for speed) → host feel_tweaks → at most one code repair if P0.
     """
     import studio as studiolib
 
+    # Flash for critic prose when possible; dense only if forced
     critic_model = model
     try:
         import turbo as turbolib
 
-        critic_model = turbolib.resolve_tier("dense")
+        # Non-code: flash first
+        critic_model = turbolib.resolve_tier("flash")
     except Exception:
-        critic_model = DENSE_MODEL or model
+        critic_model = FLASH_MODEL or model
 
     critique = studiolib.role_critic(
         brief, design, architecture, code_summary, critic_model, project=project
@@ -710,36 +987,41 @@ def auto_critic_and_repair(
     meta.mkdir(parents=True, exist_ok=True)
     (meta / "04-critic-auto.md").write_text(critique, encoding="utf-8")
 
-    # extract must-fix
+    # Host feel from critic (no LLM)
+    tweaks = extract_critic_feel(critique)
+    feel_result = apply_feel_tweaks(project, tweaks) if tweaks else {"applied": []}
+    if feel_result.get("applied"):
+        (meta / "04b-feel-host.json").write_text(
+            json.dumps(feel_result, indent=2) + "\n", encoding="utf-8"
+        )
+
     must = []
     for m in re.finditer(
         r"(?im)^(?:\d+\.|[-*]|P0[:\s]|Must[- ]fix[:\s]+)(.+)$", critique
     ):
         line = m.group(1).strip()
-        if len(line) > 12:
+        if len(line) > 12 and not re.search(r"\b(gravity|jumpForce|moveSpeed|coyote)\b", line, re.I):
             must.append(line[:200])
         if len(must) >= 3:
             break
-    if not must:
-        must = ["Apply critic top feel/clarity fixes only; no new features."]
 
     sc_before = score_project(project)
     repair_out = ""
     if run_coder is None:
         run_coder = studiolib.run_coder_agent
 
-    # only repair if critic found real issues or p0 fail
-    needs = (not sc_before["p0_ok"]) or bool(
-        re.search(r"\bP0\b|must[- ]fix|broken|unfair|boring", critique, re.I)
+    # Code repair only on P0 or explicit broken/unfair (feel already host-applied)
+    needs_code = (not sc_before["p0_ok"]) or bool(
+        re.search(r"\bP0\b|crash|syntax|broken import|black screen", critique, re.I)
     )
-    if needs:
+    if needs_code and must:
         fix_task = (
-            "Apply ONLY these must-fix items. Patch-only. No new features.\n\n"
+            "Apply ONLY these must-fix items. Patch-only. Feel numbers already applied by host.\n\n"
             + "\n".join(f"- {x}" for x in must)
             + f"\n\nCRITIC (full):\n{critique[:3500]}\n\n"
             + CODER_PATCH_INSTRUCTION
         )
-        repair_out = run_coder(project, fix_task, model, 8)
+        repair_out = run_coder(project, fix_task, model, 6)
         (meta / "05-repair-auto.txt").write_text(repair_out[-20000:], encoding="utf-8")
 
     sc_after = score_project(project)
@@ -751,6 +1033,8 @@ def auto_critic_and_repair(
     return {
         "critique": critique,
         "must_fix": must,
+        "feel_tweaks": tweaks,
+        "feel_applied": feel_result.get("applied") or [],
         "repaired": bool(repair_out),
         "score_before": sc_before,
         "score_after": sc_after,
