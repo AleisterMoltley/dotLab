@@ -20,7 +20,7 @@ Modes:
   studio review   — Critic on existing project
   studio parallel — split workstreams (player / world / ui) then integrate
 
-All Ollama. No cloud credits.
+Local Ollama by default. Optional paid cloud only if the user enables it.
 """
 from __future__ import annotations
 
@@ -40,7 +40,8 @@ from pathlib import Path
 import agent as agentlib  # noqa: E402
 import prefs as prefslib  # noqa: E402
 import wiki as wikilib  # noqa: E402
-from gmcommon import DEFAULT_MODEL, DENSE_MODEL, KNOWLEDGE, OLLAMA, ROOT, ensure_ollama
+from cloud import chat as llm_chat, require_backend
+from gmcommon import DEFAULT_MODEL, DENSE_MODEL, KNOWLEDGE, OLLAMA, ROOT
 
 NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "65536"))
 
@@ -111,30 +112,14 @@ def chat(
     num_predict: int = 4096,
     num_ctx: int | None = None,
 ) -> str:
-    # Prefer mid context for studio roles (faster prefill); override via env
     ctx = num_ctx if num_ctx is not None else min(NUM_CTX, 32768)
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "keep_alive": "24h",
-        "options": {
-            "temperature": temperature,
-            "num_ctx": ctx,
-            "num_predict": num_predict,
-            "num_batch": 512,
-        },
-    }
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        f"{OLLAMA}/api/chat",
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
+    return llm_chat(
+        messages,
+        model=model,
+        temperature=temperature,
+        num_predict=num_predict,
+        num_ctx=ctx,
     )
-    with urllib.request.urlopen(req, timeout=600) as r:
-        res = json.loads(r.read().decode())
-    return (res.get("message") or {}).get("content") or ""
 
 
 def load_pack(*names: str, limit: int = 6000) -> str:
@@ -833,6 +818,7 @@ def main() -> int:
     ap.add_argument("-p", "--project", required=True, help="Project directory")
     ap.add_argument("brief", nargs="+", help="What to make / improve")
     ap.add_argument("-m", "--model", default=DEFAULT_MODEL)
+    ap.add_argument("--cloud", default="", help="Optional paid provider: grok|claude|openai|gemini")
     ap.add_argument(
         "--build",
         action="store_true",
@@ -871,7 +857,9 @@ def main() -> int:
             args.mode == "council" and args.build
         )
 
-    ensure_ollama()
+    if args.cloud:
+        os.environ["GAMEMASTER_CLOUD"] = args.cloud
+    require_backend()
     print(f"🎮 Gamemaster STUDIO · mode={args.mode} · model={model}")
     print(f"📁 {project}")
     print(f"🎯 {brief}")

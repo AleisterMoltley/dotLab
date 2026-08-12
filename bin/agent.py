@@ -18,7 +18,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from gmcommon import DEFAULT_MODEL, OLLAMA, ROOT, ensure_ollama, ollama_json
+from cloud import chat as llm_chat, require_backend
+from gmcommon import DEFAULT_MODEL, OLLAMA, ROOT, ollama_json
 
 MAX_STEPS = int(os.environ.get("GAMEMASTER_AGENT_STEPS", "20"))
 MAX_FILE = 120_000
@@ -70,21 +71,13 @@ def http_json(path: str, payload: dict | None = None, timeout: float = 600.0) ->
 
 
 def chat(messages: list[dict], model: str, temperature: float = 0.2, num_ctx: int | None = None) -> str:
-    ctx = num_ctx or int(os.environ.get("GAMEMASTER_NUM_CTX", "32768"))
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "keep_alive": "24h",
-        "options": {
-            "temperature": temperature,
-            "num_ctx": ctx,
-            "num_predict": int(os.environ.get("GAMEMASTER_PREDICT", "8192")),
-            "num_batch": 512,
-        },
-    }
-    res = http_json("/api/chat", payload)
-    return (res.get("message") or {}).get("content") or ""
+    return llm_chat(
+        messages,
+        model=model,
+        temperature=temperature,
+        num_predict=int(os.environ.get("GAMEMASTER_PREDICT", "8192")),
+        num_ctx=num_ctx,
+    )
 
 
 def parse_tool_body(body: str) -> dict:
@@ -386,6 +379,7 @@ def main() -> int:
     ap.add_argument("-p", "--project", required=True, help="Project root")
     ap.add_argument("prompt", nargs="+", help="Aufgabe")
     ap.add_argument("-m", "--model", default=DEFAULT_MODEL)
+    ap.add_argument("--cloud", default="", help="Optional paid provider: grok|claude|openai|gemini")
     ap.add_argument("--steps", type=int, default=MAX_STEPS)
     ap.add_argument("--no-knowledge", action="store_true")
     ap.add_argument(
@@ -426,7 +420,9 @@ def main() -> int:
         except Exception as e:
             print(f"  ⚠ live: {e}")
 
-    ensure_ollama()
+    if args.cloud:
+        os.environ["GAMEMASTER_CLOUD"] = args.cloud
+    require_backend()
     task = " ".join(args.prompt)
 
     knowledge = "" if args.no_knowledge else load_knowledge(project, task)

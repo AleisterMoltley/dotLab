@@ -35,7 +35,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from gmcommon import DEFAULT_MODEL, OLLAMA, ROOT
+from cloud import active_provider, chat as llm_chat
+from gmcommon import DEFAULT_MODEL, OLLAMA, ROOT, ollama_up as gm_ollama_up
 
 CONFIG_PATH = ROOT / "config" / "worldclaw.json"
 EXAMPLE_CONFIG = ROOT / "config" / "worldclaw.example.json"
@@ -116,39 +117,21 @@ Fix floating (lower y), penetration (raise y), wrong scale, bad facing.
 Only include instances that change."""
 
 
-def http_json(path: str, payload: dict | None = None, timeout: float = 600.0) -> dict:
-    data = None if payload is None else json.dumps(payload).encode()
-    req = urllib.request.Request(
-        f"{OLLAMA}{path}",
-        data=data,
-        headers={"Content-Type": "application/json"} if data else {},
-        method="POST" if data is not None else "GET",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
-
-
 def ollama_up() -> bool:
-    try:
-        http_json("/api/tags", timeout=3.0)
-        return True
-    except Exception:
-        return False
+    return gm_ollama_up()
+
+
+def llm_ready() -> bool:
+    return bool(active_provider()) or ollama_up()
 
 
 def chat(messages: list[dict], model: str, temperature: float = 0.25) -> str:
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "keep_alive": "24h",
-        "options": {
-            "temperature": temperature,
-            "num_ctx": int(os.environ.get("GAMEMASTER_NUM_CTX", "32768")),
-            "num_predict": int(os.environ.get("GAMEMASTER_PREDICT", "4096")),
-        },
-    }
-    return (http_json("/api/chat", payload).get("message") or {}).get("content") or ""
+    return llm_chat(
+        messages,
+        model=model,
+        temperature=temperature,
+        num_predict=int(os.environ.get("GAMEMASTER_PREDICT", "4096")),
+    )
 
 
 def extract_json_block(text: str) -> dict:
@@ -908,7 +891,9 @@ def pipeline(
 
 
 def cmd_plan(args: argparse.Namespace) -> int:
-    model = None if args.offline or not ollama_up() else args.model
+    if getattr(args, "cloud", ""):
+        os.environ["GAMEMASTER_CLOUD"] = args.cloud
+    model = None if args.offline or not llm_ready() else args.model
     spec = stage_plan(args.prompt, model)
     out = Path(args.out) if args.out else Path.cwd() / "worldclaw-spec.json"
     write_json(out, spec)
@@ -919,9 +904,13 @@ def cmd_generate(args: argparse.Namespace) -> int:
     project = Path(args.project).expanduser().resolve()
     project.mkdir(parents=True, exist_ok=True)
     prompt = " ".join(args.prompt)
-    online = (not args.offline) and ollama_up()
+    if args.cloud:
+        os.environ["GAMEMASTER_CLOUD"] = args.cloud
+    online = (not args.offline) and llm_ready()
     if not online:
-        print("  ℹ offline / no Ollama — heuristic F_plan")
+        print("  ℹ offline / no LLM — heuristic F_plan")
+    elif active_provider():
+        print(f"  ☁ cloud {active_provider()} (paid)")
     pipeline(
         project,
         prompt,
@@ -963,7 +952,8 @@ def main() -> int:
     p_gen.add_argument("--name", default=None)
     p_gen.add_argument("--no-refine", action="store_true")
     p_gen.add_argument("--live", action="store_true")
-    p_gen.add_argument("--offline", action="store_true", help="heuristic plan (no Ollama)")
+    p_gen.add_argument("--offline", action="store_true", help="heuristic plan (no LLM)")
+    p_gen.add_argument("--cloud", default="", help="Optional paid provider: grok|claude|openai|gemini")
     p_gen.set_defaults(func=cmd_generate)
 
     p_plan = sub.add_parser("plan", help="F_plan only — write spec JSON")
@@ -971,6 +961,7 @@ def main() -> int:
     p_plan.add_argument("-m", "--model", default=DEFAULT_MODEL)
     p_plan.add_argument("-o", "--out", default=None)
     p_plan.add_argument("--offline", action="store_true")
+    p_plan.add_argument("--cloud", default="", help="Optional paid provider")
     p_plan.set_defaults(func=cmd_plan)
 
     args = ap.parse_args()

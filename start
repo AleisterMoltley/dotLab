@@ -46,6 +46,8 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/verify.py" "$@" ;;
     ship)
       shift; exec python3 "$ROOT/bin/github.py" ship "$@" ;;
+    cloud)
+      shift; exec python3 "$ROOT/bin/cloud.py" "$@" ;;
   esac
 fi
 

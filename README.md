@@ -27,6 +27,7 @@ Gamemaster is an open-source local AI toolchain for **shipping playable Three.js
 | **Wiki + map** | `WIKI.md` / `MAP.md` auto-loaded into Studio, Agent, and CLI |
 | **Kit** | Grok build tools: todos, feel audit, art-test, wiki_add (agent + CLI) |
 | **Verify** | Deterministic slice grade (no LLM). P0 fail blocks `done` and forces repair |
+| **Cloud (opt-in)** | Grok / Claude / OpenAI / Gemini — **off until you turn it on** |
 
 ## For humans and AIs working in this repo
 
@@ -165,6 +166,23 @@ gamemaster kit pixel -p ./Wilds      # vendor lib/pixel into src/pixel
 - New games get a `.gitignore` (no `node_modules`, `.env`, `.gamemaster`).
 - Chat UI and the Play window have a **GitHub / Ship** button that uses the same flow.
 - Tokens stay in the `gh` keyring — Gamemaster never writes a PAT to disk.
+
+## Optional paid models
+
+Default is local Ollama ($0). A key in your environment does **not** switch you over.
+
+```bash
+export XAI_API_KEY=…          # or ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
+gamemaster cloud status
+gamemaster cloud on grok      # persist: use Grok until you turn it off
+gamemaster cloud off          # back to local
+
+# one shot, no persist
+gamemaster --cloud grok "Tighten the jump feel"
+gamemaster studio build -p ./Wilds "village slice" --cloud claude
+```
+
+Keys prefer the env var. `gamemaster cloud set grok --key …` stores a copy in `config/cloud.json` (gitignored, mode 0600). Custom OpenAI-compatible endpoints: `cloud set openrouter --base https://openrouter.ai/api/v1 --model anthropic/claude-sonnet-4.5 --key-env OPENROUTER_API_KEY`.
 
 ## Architecture
 

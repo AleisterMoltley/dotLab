@@ -31,6 +31,7 @@ Place (light, fog=bg, scale) · Body (controller+spring cam) · Matter (capsule 
 
 Whole world = 2 biomes, 1 talk, 1 physics toy, 1 shader accent, 1 flag that changes the place.
 WorldClaw: `P=F_plan` → `T=F_terrain` → `O=F_region` → `Compose(T,O)`. Intent extracts only; plan completes. `--offline` if no Ollama.
+Local Ollama is the default. Paid cloud (Grok/Claude/…) only if the user enabled it — never assume an API key.
 
 ## Engine
 

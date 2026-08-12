@@ -41,11 +41,13 @@ gamemaster — local Three.js game studio (Ollama, $0)
   gamemaster wiki show|add|map|prompt -p DIR
   gamemaster kit todo|art-test|feel|verify|pixel -p DIR
   gamemaster verify -p DIR
+  gamemaster cloud status|on|off|set   # optional paid Grok/Claude/OpenAI/Gemini
 
 Options:
   -f, --file PATH          attach file context
   -p, --project DIR        project context / agent root
   -m, --model NAME         force model
+  --cloud grok|claude|openai|gemini   one-shot paid provider (default: local)
   --tier flash|max|dense   force quality tier (default auto)
   --agent                  file agent (requires -p)
   --no-knowledge           disable knowledge packs
@@ -66,10 +68,20 @@ Examples:
   gamemaster turbo warmup
   gamemaster github login
   gamemaster ship -p ./Wilds -m "open-world village slice"
+  gamemaster cloud on grok
+  gamemaster --cloud claude "Tighten coyote time"
 EOF
 }
 
+cloud_active() {
+  python3 "$ROOT/bin/cloud.py" active >/dev/null 2>&1
+}
+
 ensure_ollama() {
+  if cloud_active; then
+    echo "☁ cloud $(python3 "$ROOT/bin/cloud.py" active) (paid)" >&2
+    return 0
+  fi
   command -v ollama >/dev/null 2>&1 || die "Ollama missing — https://ollama.com"
   if ! curl -sf "$OLLAMA_HOST/api/tags" >/dev/null 2>&1; then
     echo "⏳ Starting Ollama…"
@@ -186,6 +198,22 @@ ${user_msg}"
   local ctx="$NUM_CTX"
   [[ "$ctx" -eq 0 ]] && ctx=32768
 
+  if cloud_active && command -v jq >/dev/null 2>&1; then
+    local payload
+    payload=$(jq -n \
+      --arg model "$MODEL" \
+      --arg sys "$STABLE_SYSTEM" \
+      --arg content "$full_user" \
+      --argjson temp "$TEMPERATURE" \
+      --argjson pred "$NUM_PREDICT" \
+      '{model:$model, temperature:$temp, num_predict:$pred,
+        messages:[
+          {role:"system", content:$sys},
+          {role:"user", content:$content}
+        ]}')
+    printf '%s' "$payload" | python3 "$ROOT/bin/cloud.py" complete --json
+    return
+  fi
   if command -v jq >/dev/null 2>&1; then
     local payload
     payload=$(jq -n \
@@ -294,6 +322,10 @@ if [[ $# -gt 0 ]]; then
       shift
       exec python3 "$ROOT/bin/github.py" ship "$@"
       ;;
+    cloud)
+      shift
+      exec python3 "$ROOT/bin/cloud.py" "$@"
+      ;;
     genres)
       exec python3 "$ROOT/bin/scaffold.py" list-genres
       ;;
@@ -307,6 +339,7 @@ while [[ $# -gt 0 ]]; do
     -f|--file) FILES+=("$2"); shift 2 ;;
     -p|--project) PROJECT="$2"; shift 2 ;;
     -m|--model) MODEL="$2"; FORCE_MODEL=1; shift 2 ;;
+    --cloud) export GAMEMASTER_CLOUD="$2"; shift 2 ;;
     --tier) TIER_FORCE="$2"; shift 2 ;;
     --agent) AGENT=1; shift ;;
     --live) LIVE=1; shift ;;

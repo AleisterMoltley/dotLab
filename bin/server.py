@@ -14,6 +14,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import cloud as cloudlib  # noqa: E402
 import github as githublib  # noqa: E402
 from gmcommon import CHAT_DIR, DEFAULT_MODEL, OLLAMA, ROOT, ensure_ollama
 
@@ -86,6 +87,32 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 pass
 
+    def _cloud_chat(self, payload: dict) -> None:
+        messages = payload.get("messages") or []
+        opts = payload.get("options") or {}
+        try:
+            text = cloudlib.chat(
+                messages,
+                model=payload.get("model") or "",
+                temperature=float(opts.get("temperature", 0.2)),
+                num_predict=int(opts.get("num_predict", 8192)),
+            )
+        except Exception as e:
+            return self._json(502, {"error": str(e)})
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        # Word-split so the existing stream UI still ticks.
+        words = text.split(" ")
+        for i, w in enumerate(words):
+            piece = w if i == 0 else " " + w
+            line = json.dumps({"message": {"role": "assistant", "content": piece}, "done": False}) + "\n"
+            self.wfile.write(line.encode())
+            self.wfile.flush()
+        self.wfile.write(json.dumps({"message": {"content": ""}, "done": True}).encode() + b"\n")
+
     def _json(self, status: int, data: dict) -> None:
         raw = json.dumps(data).encode()
         self.send_response(status)
@@ -125,7 +152,13 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         if self._github("GET"):
             return
+        if self.path.startswith("/api/cloud"):
+            return self._json(200, cloudlib.status_dict())
         if self.path.startswith("/api/tags"):
+            if cloudlib.active_provider():
+                st = cloudlib.status_dict()
+                name = st.get("model") or st.get("provider") or "cloud"
+                return self._json(200, {"models": [{"name": name, "cloud": True}]})
             return self._proxy("/api/tags")
         if self.path in ("/", "/index.html"):
             self.path = "/index.html"
@@ -138,11 +171,12 @@ class Handler(SimpleHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length else b"{}"
         if self.path.startswith("/api/chat"):
-            # force stream true for UI
             try:
                 payload = json.loads(body.decode() or "{}")
             except json.JSONDecodeError:
                 payload = {}
+            if cloudlib.active_provider():
+                return self._cloud_chat(payload)
             payload.setdefault("model", MODEL)
             payload["stream"] = True
             opts = payload.get("options") or {}
@@ -163,22 +197,30 @@ def main() -> int:
     print("║   Gamemaster — startet…        ║")
     print("╚══════════════════════════════════════════╝")
 
-    if not ensure_ollama(fatal=False):
-        print("❌ Ollama not reachable. Open Ollama.app and try again.")
-        print("   Download: https://ollama.com")
-        return 1
-    print("✓ Ollama online")
-
-    # model check
-    try:
-        with urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=5) as r:
-            names = [m.get("name", "") for m in json.loads(r.read()).get("models", [])]
-        if not any(n == MODEL or n.startswith(MODEL + ":") for n in names):
-            print(f"❌ Model '{MODEL}' missing.")
-            print(f"   Einmalig:  cd {ROOT} && ./install.sh")
+    if cloudlib.active_provider():
+        try:
+            cloudlib.require_backend()
+        except SystemExit as e:
+            print(f"❌ {e}")
             return 1
-    except Exception as e:
-        print("⚠ Could not list models:", e)
+        st = cloudlib.status_dict()
+        print(f"✓ Cloud LLM: {st['provider']} · {st['model']}  (paid — `gamemaster cloud off` to go local)")
+    else:
+        if not ensure_ollama(fatal=False):
+            print("❌ Ollama not reachable. Open Ollama.app and try again.")
+            print("   Download: https://ollama.com")
+            print("   Or opt in to a paid model: gamemaster cloud on grok")
+            return 1
+        print("✓ Ollama online")
+        try:
+            with urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=5) as r:
+                names = [m.get("name", "") for m in json.loads(r.read()).get("models", [])]
+            if not any(n == MODEL or n.startswith(MODEL + ":") for n in names):
+                print(f"❌ Model '{MODEL}' missing.")
+                print(f"   Einmalig:  cd {ROOT} && ./install.sh")
+                return 1
+        except Exception as e:
+            print("⚠ Could not list models:", e)
 
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = f"http://127.0.0.1:{PORT}/"

@@ -43,13 +43,14 @@ Modelfile       baked Ollama system prompt
 | Game wiki + file map (auto-loaded) | `bin/wiki.py` (`WIKI.md`, `MAP.md`) |
 | Grok kit (todos, feel audit, art-test, pixel vendor) | `bin/kit.py` — also agent tool `kit` |
 | Slice verify (P0 gate, no Ollama) | `bin/verify.py` — agent `done` + studio after coder |
+| Optional paid LLMs (off by default) | `bin/cloud.py` — grok / claude / openai / gemini |
 | Install / PATH | `install.sh` |
 
 ## Invariants (do not break)
 
 1. **stdlib-only Python** in `bin/` (no pip). Node only for scaffolds, playtest, Vite games.
 2. Scripts live in `bin/` and `import gmcommon` — `sys.path[0]` is already `bin/` when run as `python3 bin/foo.py`.
-3. Never commit `node_modules`, `.env`, `config/user-prefs.json`, `config/github.json`, `.gamemaster/`.
+3. Never commit `node_modules`, `.env`, `config/user-prefs.json`, `config/github.json`, `config/cloud.json`, `.gamemaster/`.
 4. **Do not `git init` / ship `$HOME` or this repo** (`github.guard_project`).
 5. User-facing text: English. Code identifiers: English. Match the user language only in chat replies.
 6. After a behaviour change: `python3 tests/run.py` (must stay green, no Ollama).
