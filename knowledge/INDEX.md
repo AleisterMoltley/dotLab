@@ -4,6 +4,7 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 
 | File | When |
 |------|------|
+| `grok-craft.md` | Always (core) — frontier pair decision tree, continue→patch law |
 | `brain.md` | Always (core) — craft law |
 | `session-loop.md` | extra loop detail (if routed) |
 | `craft-taste.md` | extra taste essays (if routed) |
@@ -33,5 +34,9 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 | `fun-first-design.md` | slim pointer at craft |
 | `studio-playbook.md` | which studio mode |
 | `live/LATEST.md` | auto npm versions |
+| `speed-without-quality-loss.md` | turbo philosophy (human + env docs; not auto-routed) |
+| `gap-analysis.md` | studio vs cloud gaps (human; not auto-routed) |
+| `market-leader-playbook.md` | product strategy (human; not auto-routed) |
+| `self-update.md` | update flow (human; not auto-routed) |
 
 Do not add a pack that is not listed here and in `turbo.PACKS`.

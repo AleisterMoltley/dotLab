@@ -42,7 +42,7 @@ TIERS = {
 
 # Knowledge packs by domain (order = priority, sizes capped in select)
 PACKS = {
-    "core": ["brain.md", "game-systems.md", "threejs-cheatsheet.md"],
+    "core": ["grok-craft.md", "brain.md", "game-systems.md", "threejs-cheatsheet.md"],
     "three": ["threejs-advanced.md", "threejs-ecosystem.md"],
     "shader": ["shaders-glsl-tsl.md", "multipass.md"],
     "game": ["feel-tables.md", "game-patterns.md", "game-genres.md"],
@@ -57,6 +57,9 @@ PACKS = {
     "playtest": ["playtest-harness.md", "prefs-and-playtest.md", "pair-partner.md"],
     "live": ["live/LATEST.md"],
 }
+
+# Cache /api/tags — resolve_tier used to hit Ollama every route call
+_TAGS_CACHE: dict = {"ts": 0.0, "names": set()}
 
 # Keyword → pack ids (first match wins extra packs; all matches accumulate)
 ROUTES = [
@@ -80,21 +83,29 @@ def http_json(path: str, payload: dict | None = None, timeout: float = 120.0) ->
     return ollama_json(path, payload, timeout=timeout)
 
 
-def models_available() -> set[str]:
+def models_available(force: bool = False) -> set[str]:
+    now = time.time()
+    if not force and _TAGS_CACHE["names"] and now - float(_TAGS_CACHE["ts"]) < 90.0:
+        return set(_TAGS_CACHE["names"])
     try:
-        tags = http_json("/api/tags")
-        return {m.get("name", "") for m in tags.get("models", [])}
+        tags = http_json("/api/tags", timeout=3.0)
+        names = {m.get("name", "") for m in tags.get("models", [])}
+        _TAGS_CACHE["ts"] = now
+        _TAGS_CACHE["names"] = names
+        return set(names)
     except Exception:
-        return set()
+        return set(_TAGS_CACHE["names"] or set())
 
 
 def resolve_tier(tier: str) -> str:
-    """Pick best available model for tier."""
+    """Pick best available model for tier. Never blocks long on tags."""
     want = TIERS.get(tier, TIERS["max"])
     avail = models_available()
+    if not avail:
+        # Offline / cold — return configured tag; Ollama will load it
+        return want
     if any(n == want or n.startswith(want + ":") for n in avail):
         return want
-    # fallbacks
     fallbacks = {
         "flash": ["qwen2.5-coder:7b", "gamemaster", "qwen2.5-coder:14b"],
         "max": ["gamemaster", "qwen3-coder:30b", "qwen2.5-coder:14b", "qwen2.5-coder:7b"],
@@ -149,35 +160,49 @@ def route_task(prompt: str, mode: str = "auto") -> dict:
         else:
             tier, reason = "max", "default-coding"
 
-    # ctx sizing — quality preserved: enough room, not max always
+    # ctx sizing — prefill is the wall-clock killer on local 30B
     if re.search(r"\b(whole project|entire codebase|all files|multipass|large|open.?world|worldclaw|complete game)\b", p):
-        num_ctx = 65536
-    elif tier == "flash":
-        num_ctx = 8192
-    elif re.search(r"\b(agent|write_file|refactor|implement|ragdoll|dialogue|shader)\b", p):
         num_ctx = 32768
+    elif tier == "flash":
+        num_ctx = 4096
+    elif re.search(r"\b(agent|write_file|refactor|implement|ragdoll|dialogue|shader)\b", p):
+        num_ctx = 24576
     else:
-        num_ctx = 16384
+        num_ctx = 12288
 
-    num_predict = 2048 if tier == "flash" else (8192 if tier == "max" else 6144)
-    temperature = 0.15 if tier == "dense" else (0.35 if "design" in p or "pitch" in p else 0.2)
+    # short continue-style asks: fewer tokens out
+    short = len(prompt) < 180
+    if tier == "flash":
+        num_predict = 1024
+    elif short and re.search(r"\b(fix|tweak|floaty|faster|slower|feel|enemy|jump)\b", p):
+        num_predict = 3072
+    elif tier == "max":
+        num_predict = 6144
+    else:
+        num_predict = 5120
+    temperature = 0.15 if tier == "dense" else (0.35 if "design" in p or "pitch" in p else 0.18)
 
+    # GAMEMASTER_NUM_CTX overrides only if explicitly set
+    env_ctx = os.environ.get("GAMEMASTER_NUM_CTX")
     return {
         "tier": tier,
         "model": resolve_tier(tier),
-        "num_ctx": int(os.environ.get("GAMEMASTER_NUM_CTX", num_ctx)),
+        "num_ctx": int(env_ctx) if env_ctx else num_ctx,
         "num_predict": num_predict,
         "temperature": temperature,
         "reason": reason,
     }
 
 
-def select_knowledge(prompt: str, max_chars: int = 28000) -> str:
+def select_knowledge(prompt: str, max_chars: int = 14000) -> str:
     """Pick only relevant knowledge packs — biggest free speedup for agents."""
     p = prompt.lower()
     # Only slim knowledge for true chit-chat (flash tier)
     if route_task(prompt).get("tier") == "flash":
-        max_chars = min(max_chars, 8000)
+        max_chars = min(max_chars, 4000)
+    # continue / feel tweaks: tiny pack
+    if re.search(r"\b(floaty|faster|slower|feel|enemy|enemies|gegner|jump|juice|hp)\b", p) and len(prompt) < 120:
+        max_chars = min(max_chars, 3500)
     pack_ids: list[str] = []
     for rx, ids in ROUTES:
         if re.search(rx, p, re.I):
@@ -195,17 +220,19 @@ def select_knowledge(prompt: str, max_chars: int = 28000) -> str:
 
     chunks: list[str] = []
     used = 0
-    per = max(2000, max_chars // max(1, len(ordered)))
+    per = max(1200, max_chars // max(1, len(ordered) + 1))
     for pid in ordered:
         for name in PACKS.get(pid, []):
             path = KNOWLEDGE / name
             if not path.exists():
                 continue
-            text = path.read_text(encoding="utf-8")[:per]
+            # Front-load craft packs; trim the rest harder
+            cap = min(per, 2800 if name in ("grok-craft.md", "brain.md", "feel-tables.md") else per)
+            text = path.read_text(encoding="utf-8")[:cap]
             block = f"## {name}\n{text}"
             if used + len(block) > max_chars:
                 remain = max_chars - used
-                if remain > 500:
+                if remain > 400:
                     chunks.append(block[:remain])
                 return "\n\n".join(chunks)
             chunks.append(block)

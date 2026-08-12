@@ -31,9 +31,22 @@ class TestRoute(unittest.TestCase):
 class TestKnowledge(unittest.TestCase):
     def test_core_always_present(self) -> None:
         k = turbo.select_knowledge("hello", max_chars=12000)
+        self.assertIn("grok-craft.md", k)
         self.assertIn("brain.md", k)
         self.assertIn("game-systems.md", k)
         self.assertIn("t=8s", k)
+
+    def test_models_available_is_cached(self) -> None:
+        import time
+
+        turbo._TAGS_CACHE["ts"] = time.time()
+        turbo._TAGS_CACHE["names"] = {"gamemaster:latest"}
+        a = turbo.models_available()
+        turbo._TAGS_CACHE["names"] = {"still-cached-name"}
+        turbo._TAGS_CACHE["ts"] = time.time()
+        b = turbo.models_available()
+        self.assertEqual(b, {"still-cached-name"})
+        self.assertEqual(a, {"gamemaster:latest"})
 
     def test_combat_pulls_juice(self) -> None:
         k = turbo.select_knowledge("third person village combat", max_chars=28000)

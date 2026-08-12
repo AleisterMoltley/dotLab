@@ -37,6 +37,7 @@ export function createGame({ genre, title }) {
   scene.add(accent, fill);
 
   const hud = ensureHud();
+  const cross = ensureCrosshair(SPEC.camera === 'fps');
   const keys = Object.create(null);
   const pointer = { locked: false, mx: 0, my: 0 };
   const state = {
@@ -298,7 +299,7 @@ export function createGame({ genre, title }) {
   function shoot() {
     if (state.dead || SPEC.loop !== 'shoot') return;
     weapon.flash();
-    state.shake = 0.35;
+    state.shake = 0.28 * (SPEC.juice || 1);
     blip(180, 0.04, 'sawtooth');
     _ndc.set(0, 0);
     _ray.setFromCamera(_ndc, camera);
@@ -308,11 +309,22 @@ export function createGame({ genre, title }) {
       if (e) {
         e.hp -= 1;
         e.mesh.material.emissiveIntensity = 2.2;
-        state.hitstop = CONFIG.hitstopMs / 1000;
+        const j = SPEC.juice || 1;
+        state.hitstop = (CONFIG.hitstopMs / 1000) * j;
+        state.shake = Math.min(1.2, 0.35 * j + (CONFIG.shakeHit || 0.12));
         state.score += 10;
         if (e.hp <= 0) {
           e.mesh.visible = false;
           blip(140, 0.08, 'square');
+          // respawn after a beat so the arena stays alive
+          setTimeout(() => {
+            if (state.dead) return;
+            e.hp = 1;
+            e.mesh.visible = true;
+            const a = Math.random() * Math.PI * 2;
+            const r = 8 + Math.random() * 10;
+            e.mesh.position.set(Math.cos(a) * r, e.baseY, Math.sin(a) * r - 4);
+          }, 1800);
         }
         updateHud();
       }
@@ -446,6 +458,22 @@ function ensureHud() {
   return el;
 }
 
+function ensureCrosshair(on) {
+  let el = document.getElementById('cross');
+  if (!on) {
+    if (el) el.style.display = 'none';
+    return el;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'cross';
+    el.style.cssText = 'position:fixed;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border:2px solid rgba(255,255,255,.85);border-radius:50%;pointer-events:none;box-shadow:0 0 6px #000;z-index:5';
+    document.body.appendChild(el);
+  }
+  el.style.display = 'block';
+  return el;
+}
+
 function mat(color, extra) {
   return new THREE.MeshStandardMaterial(Object.assign({
     color,
@@ -472,8 +500,9 @@ function buildWorld(scene, rnd) {
   const group = new THREE.Group();
   scene.add(group);
 
+  const dens = Math.max(0.5, Math.min(2, SPEC.density || 1));
   if (kind === 'neon') {
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < Math.floor(14 * dens); i++) {
       const h = 4 + rnd() * 14;
       const box = new THREE.Mesh(
         new THREE.BoxGeometry(2.2 + rnd() * 1.4, h, 2.2 + rnd() * 1.2),
@@ -570,8 +599,12 @@ function buildActors(scene, rnd) {
   let hunter = null;
   let door = null;
 
+  const enemyN = Math.max(0, SPEC.enemyCount | 0) || (SPEC.loop === 'shoot' ? 7 : 0);
+  const coinN = Math.max(0, SPEC.coinCount | 0) || (SPEC.loop === 'jump' || SPEC.loop === 'talk' || SPEC.loop === 'collect' ? 6 : 0);
+  const hazardN = Math.max(0, SPEC.hazardCount | 0) || (SPEC.loop === 'run' ? 8 : 0);
+
   if (SPEC.loop === 'shoot') {
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < enemyN; i++) {
       const mesh = new THREE.Mesh(
         new THREE.IcosahedronGeometry(0.55, 0),
         mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.7, metalness: 0.4 }),
@@ -587,7 +620,7 @@ function buildActors(scene, rnd) {
   }
 
   if (SPEC.loop === 'jump' || SPEC.loop === 'talk' || SPEC.loop === 'collect') {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < Math.max(coinN, 1); i++) {
       const plat = new THREE.Mesh(
         new THREE.BoxGeometry(3.2, 0.4, 3.2),
         mat(pal.building, { metalness: 0.2 }),
@@ -616,7 +649,7 @@ function buildActors(scene, rnd) {
   }
 
   if (SPEC.loop === 'run') {
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < hazardN; i++) {
       const h = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.4, 1.1), mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.3 }));
       h.position.set((i % 3 - 1) * 2.2, 0.7, -8 - i * 6);
       scene.add(h);

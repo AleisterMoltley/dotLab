@@ -321,6 +321,7 @@ def compile_prompt(prompt: str, genre: str | None = None) -> dict:
     feel.setdefault("mouseSens", 0.0022)
     feel.setdefault("pitchMin", -1.15)
     feel.setdefault("pitchMax", 1.25)
+    loop = _LOOP.get(g, "talk")
     spec = {
         "prompt": text,
         "title": _title(text),
@@ -328,13 +329,18 @@ def compile_prompt(prompt: str, genre: str | None = None) -> dict:
         "genre": g,
         "setting": setting,
         "props": props,
-        "loop": _LOOP.get(g, "talk"),
+        "loop": loop,
         "camera": _CAMERA.get(g, "tps"),
         "verb": _verb(g, setting),
         "palette": dict(_PALETTES.get(props, _PALETTES["dusk"])),
         "feel": feel,
         "seed": seed,
         "kind": infer_kind(text),
+        "enemyCount": 7 if loop == "shoot" else (1 if loop == "sneak" else 0),
+        "coinCount": 6 if loop in ("jump", "talk", "collect") else 0,
+        "hazardCount": 8 if loop == "run" else 0,
+        "density": 1.0,
+        "juice": 1.0,
     }
     return spec
 
@@ -470,10 +476,18 @@ def render_game_js(spec: dict) -> str:
         "verb": spec["verb"],
         "palette": spec["palette"],
         "seed": spec["seed"],
+        "enemyCount": int(spec.get("enemyCount") or 0),
+        "coinCount": int(spec.get("coinCount") or 0),
+        "hazardCount": int(spec.get("hazardCount") or 0),
+        "density": float(spec.get("density") or 1.0),
+        "juice": float(spec.get("juice") or 1.0),
     }
+    feel = dict(spec.get("feel") or {})
+    feel.setdefault("shakeHit", 0.12)
+    feel.setdefault("hitstopMs", 40)
     src = _template()
     src = src.replace("__SPEC__", json.dumps(slim, ensure_ascii=False))
-    src = src.replace("__CONFIG__", json.dumps(spec["feel"], ensure_ascii=False))
+    src = src.replace("__CONFIG__", json.dumps(feel, ensure_ascii=False))
     return src
 
 
@@ -620,42 +634,44 @@ npm run dev
 
 
 def ask_system(project: Path | None, user_text: str) -> str:
-    brain = ""
-    bp = KNOWLEDGE / "brain.md"
-    if bp.is_file():
-        brain = bp.read_text(encoding="utf-8")[:1600]
+    """Slim system prompt — prefill is the main local latency cost."""
+    craft = ""
+    for name in ("grok-craft.md", "brain.md"):
+        bp = KNOWLEDGE / name
+        if bp.is_file():
+            craft = bp.read_text(encoding="utf-8")[:2200]
+            break
     wiki = ""
     spec_txt = ""
     if project:
         wp = project / "WIKI.md"
         if wp.is_file():
-            wiki = wp.read_text(encoding="utf-8")[:1800]
+            wiki = wp.read_text(encoding="utf-8")[:900]
         sp = project / ".gamemaster" / "slice.json"
         if sp.is_file():
-            spec_txt = sp.read_text(encoding="utf-8")[:1200]
+            spec_txt = sp.read_text(encoding="utf-8")[:900]
     packs = ""
     try:
         import turbo
 
-        packs = turbo.select_knowledge(user_text, max_chars=2400)
+        packs = turbo.select_knowledge(user_text, max_chars=1600)
     except Exception:
         packs = ""
     return (
-        "You are Gamemaster, a game pair that ships playable Three.js.\n"
-        "This folder already has a PLAYABLE slice that matches the player prompt.\n"
-        "Only emit files if the new file is complete and closer to the prompt.\n"
-        "If you cannot beat the slice, write a short play-guide and emit no fences.\n\n"
-        f"{brain}\n\n"
+        "You are Gamemaster — a game pair. Ship playable Three.js. Not chat.\n"
+        "A playable slice already exists. Prefer surgical file edits over rewrites.\n"
+        "If you cannot improve the slice, reply with controls only — no fences.\n\n"
+        f"{craft}\n\n"
         f"PLAYER: {user_text}\n\n"
         f"SLICE:\n{spec_txt}\n\n"
         f"WIKI:\n{wiki}\n\n"
         f"{packs}\n\n"
-        "If you write code, fence every file with a path:\n"
+        "Emit complete files only:\n"
         "```js src/game.js\n"
         "full file\n"
         "```\n"
-        "Rules: Three.js, fog=background, CONFIG numbers, no holes, "
-        "no new Vector3 in the loop, no alert(), three/addons never examples/jsm.\n"
+        "Rules: Three.js, fog=background, CONFIG, no holes, no new Vector3 in loop, "
+        "no alert(), three/addons never examples/jsm, __GF_PLAYTEST__.\n"
     )
 
 

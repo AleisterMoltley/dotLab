@@ -328,33 +328,29 @@ def run_tool(project: Path, name: str, args: dict) -> str:
 
 def load_knowledge(project: Path | None = None, task: str = "") -> str:
     chunks: list[str] = []
-    # turbo slim packs by task keywords
+    # turbo slim packs by task keywords — prefill is the latency budget
     try:
         sys.path.insert(0, str(ROOT / "bin"))
         import turbo as turbolib  # type: ignore
 
-        k = turbolib.select_knowledge(task or "three.js complete game world agent", max_chars=32000)
+        k = turbolib.select_knowledge(task or "three.js game agent", max_chars=12000)
         if k:
             chunks.append(k)
-        # always agent protocol (tools)
         ap = ROOT / "knowledge" / "agent-protocol.md"
         if ap.exists():
-            chunks.append(ap.read_text(encoding="utf-8")[:4000])
+            chunks.append(ap.read_text(encoding="utf-8")[:2500])
     except Exception:
         for name in (
+            "grok-craft.md",
+            "brain.md",
             "game-systems.md",
             "threejs-cheatsheet.md",
-            "threejs-advanced.md",
-            "physics-ragdoll.md",
-            "world-building.md",
-            "dialogue-narrative.md",
-            "game-patterns.md",
+            "feel-tables.md",
             "agent-protocol.md",
-            "fun-first-design.md",
         ):
             p = ROOT / "knowledge" / name
             if p.exists():
-                chunks.append(p.read_text(encoding="utf-8")[:6000])
+                chunks.append(p.read_text(encoding="utf-8")[:3500])
     try:
         import prefs as prefslib  # type: ignore
 
@@ -425,17 +421,44 @@ def main() -> int:
     require_backend()
     task = " ".join(args.prompt)
 
+    # Instant craft first — many agent tasks are feel/count/palette
+    try:
+        import patch as patchlib
+
+        patched = patchlib.try_patch(project, task)
+        if patched and patched.get("ok"):
+            print(patched.get("summary") or "patched")
+            print("  (instant craft — skipped LLM agent loop)")
+            return 0
+    except Exception:
+        pass
+
     knowledge = "" if args.no_knowledge else load_knowledge(project, task)
-    # Stable system prefix first for cache; knowledge second
+    route = {"model": model, "num_ctx": 16384, "num_predict": 6144, "temperature": 0.18}
+    try:
+        import turbo as turbolib
+
+        route = turbolib.route_task(task)
+        if args.model == DEFAULT_MODEL:
+            model = route.get("model") or model
+    except Exception:
+        pass
+
     system = (
         "You are Gamemaster agent — Three.js game implementer. File tools only as specified. "
-        "Honor USER PREFERENCE MEMORY. Complete runnable Three.js game code (worlds, physics, dialogue, shaders).\n"
+        "Honor USER PREFERENCE MEMORY. Complete runnable Three.js game code.\n"
+        "Prefer editing src/game.js. Read MAP.md or WIKI.md before list_dir.\n"
         + SYSTEM_EXTRA
         + ("\n\n# Knowledge\n" + knowledge if knowledge else "")
     )
 
-    # dynamic ctx: shorter after first steps when history grows... keep 32k default
-    num_ctx = int(os.environ.get("GAMEMASTER_NUM_CTX", "32768"))
+    num_ctx = int(os.environ.get("GAMEMASTER_NUM_CTX", str(route.get("num_ctx") or 16384)))
+    has_map = (project / "MAP.md").is_file() or (project / "WIKI.md").is_file()
+    start_hint = (
+        "Read WIKI.md then src/game.js (start:1 end:80). Write complete files. tool call done when P0-safe."
+        if has_map
+        else "list_dir path: . then read src/game.js. Write complete files. tool call done when P0-safe."
+    )
 
     messages = [
         {"role": "system", "content": system},
@@ -443,8 +466,7 @@ def main() -> int:
             "role": "user",
             "content": (
                 f"Project root: {project}\n\nTask:\n{task}\n\n"
-                "Starting mit list_dir path: . — dann read/write mit vollen Pfaden (src/...), "
-                "complete the ENTIRE task, dann tool call done."
+                f"{start_hint}"
             ),
         },
     ]

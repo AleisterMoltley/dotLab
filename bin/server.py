@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 import cloud as cloudlib  # noqa: E402
 import github as githublib  # noqa: E402
+import patch as patchlib  # noqa: E402
 import slice as slicelib  # noqa: E402
 from gmcommon import (
     CHAT_DIR,
@@ -33,7 +34,8 @@ from gmcommon import (
 
 PORT = int(os.environ.get("GAMEMASTER_PORT", "8765"))
 MODEL = os.environ.get("GAMEMASTER_MODEL", DEFAULT_MODEL)
-NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "65536"))
+# Prefill dominates wall time — 16k default, not 65k
+NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "16384"))
 
 _TAGS: dict = {"ts": 0.0, "names": [], "ok": False, "error": ""}
 _PREVIEWS: dict[str, dict] = {}
@@ -431,6 +433,32 @@ class Handler(SimpleHTTPRequestHandler):
                 if m.get("role") == "user":
                     user_txt = str(m.get("content") or "")
                     break
+            # Instant craft path — most continues never touch the 30B
+            if pdir and pdir.is_dir() and user_txt.strip():
+                try:
+                    patched = patchlib.try_patch(pdir, user_txt)
+                except Exception:
+                    patched = None
+                if patched and patched.get("ok"):
+                    return self._json(
+                        200,
+                        {
+                            "ok": True,
+                            "text": patched.get("summary") or "Patched.",
+                            "written": patched.get("written") or [],
+                            "project": proj,
+                            "rejected": "",
+                            "mode": patched.get("mode") or "patch",
+                            "instant": True,
+                        },
+                    )
+            route = {"model": MODEL, "num_predict": 4096, "temperature": 0.18, "num_ctx": NUM_CTX}
+            try:
+                import turbo as turbolib
+
+                route = turbolib.route_task(user_txt or "game continue")
+            except Exception:
+                pass
             sys_msg = slicelib.ask_system(pdir if pdir and pdir.is_dir() else None, user_txt)
             if not messages or messages[0].get("role") != "system":
                 messages = [{"role": "system", "content": sys_msg}] + list(messages)
@@ -439,9 +467,14 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 text = cloudlib.chat(
                     messages,
-                    model=payload.get("model") or MODEL,
-                    temperature=float((payload.get("options") or {}).get("temperature", 0.2)),
-                    num_predict=int((payload.get("options") or {}).get("num_predict", 8192)),
+                    model=payload.get("model") or route.get("model") or MODEL,
+                    temperature=float(
+                        (payload.get("options") or {}).get("temperature", route.get("temperature", 0.18))
+                    ),
+                    num_predict=int(
+                        (payload.get("options") or {}).get("num_predict", route.get("num_predict", 4096))
+                    ),
+                    num_ctx=int((payload.get("options") or {}).get("num_ctx", route.get("num_ctx", NUM_CTX))),
                 )
                 written: list[str] = []
                 rejected = ""
@@ -465,6 +498,8 @@ class Handler(SimpleHTTPRequestHandler):
                         "written": written,
                         "project": proj,
                         "rejected": rejected,
+                        "mode": "llm",
+                        "instant": False,
                     },
                 )
             except Exception as e:
@@ -476,12 +511,23 @@ class Handler(SimpleHTTPRequestHandler):
                 payload = {}
             if cloudlib.active_provider():
                 return self._cloud_chat(payload)
-            payload.setdefault("model", MODEL)
+            # Route + slim defaults for streamed chat too
+            user_bits = " ".join(
+                str(m.get("content") or "") for m in (payload.get("messages") or []) if m.get("role") == "user"
+            )
+            route = {"model": MODEL, "num_ctx": NUM_CTX, "num_predict": 6144, "temperature": 0.2}
+            try:
+                import turbo as turbolib
+
+                route = turbolib.route_task(user_bits or "game")
+            except Exception:
+                pass
+            payload.setdefault("model", route.get("model") or MODEL)
             payload["stream"] = True
             opts = payload.get("options") or {}
-            opts.setdefault("temperature", 0.2)
-            opts.setdefault("num_ctx", NUM_CTX)
-            opts.setdefault("num_predict", 16384)
+            opts.setdefault("temperature", route.get("temperature", 0.2))
+            opts.setdefault("num_ctx", route.get("num_ctx", NUM_CTX))
+            opts.setdefault("num_predict", route.get("num_predict", 6144))
             payload["options"] = opts
             return self._proxy_stream("/api/chat", json.dumps(payload).encode())
         self.send_error(404)
@@ -526,6 +572,7 @@ def main() -> int:
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = f"http://127.0.0.1:{PORT}/?t={int(time.time())}"
     print(f"✓ Chat: {url}")
+    print("  Instant craft: feel/enemies/palette — no model wait")
     print("  Browser will open. Fenster offen lassen. Beenden: Ctrl+C")
     print("")
 
@@ -533,7 +580,31 @@ def main() -> int:
         time.sleep(0.35)
         webbrowser.open(url)
 
+    def bg_warmup() -> None:
+        """Keep max model hot so first LLM continue is not a cold load."""
+        if cloudlib.active_provider():
+            return
+        try:
+            import turbo as turbolib
+
+            model = turbolib.resolve_tier("max")
+            turbolib.http_json(
+                "/api/chat",
+                {
+                    "model": model,
+                    "messages": [{"role": "user", "content": "OK"}],
+                    "stream": False,
+                    "keep_alive": "24h",
+                    "options": {"num_predict": 2, "temperature": 0, "num_ctx": 2048},
+                },
+                timeout=180.0,
+            )
+            print(f"✓ Warm {model} (keep_alive 24h)")
+        except Exception as e:
+            print(f"  ⚠ warmup: {e}")
+
     threading.Thread(target=open_browser, daemon=True).start()
+    threading.Thread(target=bg_warmup, daemon=True).start()
 
     try:
         httpd.serve_forever()

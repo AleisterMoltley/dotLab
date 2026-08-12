@@ -88,7 +88,7 @@
 
       var path = current.path;
       history.push({ role: "user", content: text });
-      var body = addMsg("bot", "Changing the game…");
+      var body = addMsg("bot", "Craft…");
       return fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -100,6 +100,7 @@
         .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || r.status); return d; }); })
         .then(function (d) {
           var t = d.text || d.error || "No reply";
+          if (d.instant) t = "⚡ " + t;
           body.textContent = t;
           history.push({ role: "assistant", content: t });
         })
