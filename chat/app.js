@@ -620,6 +620,17 @@
     document.body.classList.remove("has-chat");
   }
 
+  // Keep Engine and Type selects loosely in sync
+  var engEl = $("optEngine");
+  var kindEl = $("optKind");
+  if (engEl) {
+    engEl.addEventListener("change", function () {
+      if (!kindEl) return;
+      if (engEl.value === "pixel") kindEl.value = "pixel-game";
+      else if (engEl.value === "three" && kindEl.value === "pixel-game") kindEl.value = "web-game";
+    });
+  }
+
   window.DL.send = function (forcedText) {
     var text = (forcedText != null ? forcedText : (input && input.value || "")).replace(/^\s+|\s+$/g, "");
     if (!text || (sendBtn && sendBtn.disabled)) return false;
@@ -631,6 +642,10 @@
     var making = !current.path;
     var kind = ($("optKind") && $("optKind").value) || "auto";
     var genre = ($("optGenre") && $("optGenre").value) || "";
+    var engine = ($("optEngine") && $("optEngine").value) || "auto";
+    // Engine dropdown wins over type when set
+    if (engine === "pixel" && kind === "auto") kind = "pixel-game";
+    if (engine === "three" && kind === "auto") kind = "web-game";
 
     var start = making
       ? api("/api/projects/new", {
@@ -638,6 +653,7 @@
           prompt: text,
           kind: kind,
           genre: genre || undefined,
+          engine: engine === "auto" ? undefined : engine,
         }).then(function (d) {
           if (d && d.path) setCurrent(d.path, d.name);
           loadProjects();

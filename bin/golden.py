@@ -199,7 +199,7 @@ def run_case(case: dict, *, screenshots: bool = False) -> dict:
             spec = slicelib.compile_prompt(
                 str(case.get("prompt") or cid), genre=case.get("genre")
             )
-            slicelib.write_web_slice(dest, spec)
+            slicelib.write_slice(dest, spec)
             project = dest
         else:
             project = Path(case["path"]).expanduser().resolve()

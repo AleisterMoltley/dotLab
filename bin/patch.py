@@ -227,7 +227,7 @@ def try_patch(project: Path, text: str) -> dict[str, Any] | None:
         if spec and spec.get("title"):
             new_spec["title"] = spec["title"]
         _ensure_counts(new_spec)
-        written = slicelib.write_web_slice(project, new_spec)
+        written = slicelib.write_slice(project, new_spec)
         return {
             "ok": True,
             "mode": "rebuild",
@@ -243,7 +243,7 @@ def try_patch(project: Path, text: str) -> dict[str, Any] | None:
         # No slice metadata — only rebuild from text if it looks like a design brief
         if long_brief or genre_hit:
             new_spec = slicelib.compile_prompt(t, genre=genre_hit)
-            written = slicelib.write_web_slice(project, new_spec)
+            written = slicelib.write_slice(project, new_spec)
             return {
                 "ok": True,
                 "mode": "rebuild",
@@ -289,7 +289,7 @@ def try_patch(project: Path, text: str) -> dict[str, Any] | None:
     if "palette" in "".join(notes) or "genre" in "".join(notes):
         spec["verb"] = slicelib._verb(spec.get("genre") or "adventure", spec.get("setting") or "place")
 
-    written = slicelib.write_web_slice(project, spec)
+    written = slicelib.write_slice(project, spec)
     summary = (
         "Instant craft (no model wait):\n- "
         + "\n- ".join(notes)

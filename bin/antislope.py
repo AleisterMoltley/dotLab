@@ -145,7 +145,10 @@ def check_silence_on_hit(js: str) -> tuple[bool, str]:
     if not re.search(r"shoot|fireCd|fireRpm|damage|hitstop", js, re.I):
         return True, "n/a (not a shoot loop)"
     has_juice = bool(
-        re.search(r"TimeJuice|hitstop|timeJuice\.|sfx\.|pulseShake|makeShake", js)
+        re.search(
+            r"TimeJuice|hitstop|timeJuice\.|sfx\.|pulseShake|makeShake|pxShake|blip\(|shakeT",
+            js,
+        )
     )
     has_damage_path = bool(re.search(r"damage|onHit|hitEnemy|applyDamage|hp\s*[-=]", js))
     if has_damage_path and not has_juice:
@@ -295,7 +298,7 @@ def taste_action(project: Path, action: str) -> dict[str, Any]:
         patchlib.save_spec(project, spec)
         import slice as slicelib
 
-        written = slicelib.write_web_slice(project, spec)
+        written = slicelib.write_slice(project, spec)
         return {"ok": True, "action": "tighter", "summary": "Host tightened gravity/friction/accel.", "written": written}
 
     if action in ("juice", "more-juice", "juicier"):
@@ -313,7 +316,7 @@ def taste_action(project: Path, action: str) -> dict[str, Any]:
         patchlib.save_spec(project, spec)
         import slice as slicelib
 
-        written = slicelib.write_web_slice(project, spec)
+        written = slicelib.write_slice(project, spec)
         return {"ok": True, "action": "juice", "summary": "Host boosted juice/hitstop/shake.", "written": written}
 
     return {"ok": False, "error": f"unknown action {action} (keep|tighter|juice)"}

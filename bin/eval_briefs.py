@@ -39,7 +39,7 @@ def run_eval() -> dict:
             spec = slicelib.compile_prompt(
                 str(b.get("brief") or ""), genre=b.get("genre")
             )
-            slicelib.write_web_slice(dest, spec)
+            slicelib.write_slice(dest, spec)
             vr = verify.evaluate(dest)
             min_s = int(b.get("min_score") or 70)
             ok = (not vr.get("p0_fail")) and int(vr.get("score") or 0) >= min_s

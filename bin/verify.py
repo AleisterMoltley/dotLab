@@ -136,9 +136,16 @@ def _is_pixel_kit(folder: Path) -> bool:
 def iter_js(project: Path) -> list[Path]:
     out: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(project):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in SKIP_DIRS and d not in ("pixelart", "pixel")
+        ]
         root = Path(dirpath)
         if _is_pixel_kit(root):
+            continue
+        # skip vendored engines (huge vocab files trip hole/TODO scanners)
+        if root.name in ("pixelart", "pixel") or "pixelart" in root.parts:
             continue
         for name in filenames:
             if name.endswith((".js", ".mjs", ".ts")):
@@ -173,6 +180,26 @@ def node_syntax(project: Path) -> tuple[bool, str]:
     return True, "ok"
 
 
+def _detect_engine(project: Path, js: str) -> str:
+    for meta_name in (".dotlab", ".gamemaster"):
+        sp = project / meta_name / "slice.json"
+        if sp.is_file():
+            try:
+                data = json.loads(sp.read_text(encoding="utf-8"))
+                eng = str((data or {}).get("engine") or "")
+                if eng in ("three", "pixel"):
+                    return eng
+            except Exception:
+                pass
+    if (project / "src" / "pixelart" / "pixelart.js").is_file():
+        return "pixel"
+    if re.search(r"from\s+['\"]three['\"]", js):
+        return "three"
+    if re.search(r"getContext\(\s*['\"]2d['\"]", js) and "pixelart" in js:
+        return "pixel"
+    return "three"
+
+
 def evaluate(project: Path) -> dict:
     """Return {score, passed, failed, p0_fail, checks, report}."""
     project = project.resolve()
@@ -183,6 +210,7 @@ def evaluate(project: Path) -> dict:
         if hp.is_file():
             html += hp.read_text(encoding="utf-8", errors="ignore")
 
+    engine = _detect_engine(project, js)
     checks: dict[str, dict] = {}
 
     def add(key: str, ok: bool, detail: str) -> None:
@@ -194,17 +222,29 @@ def evaluate(project: Path) -> dict:
     entry_ok = (project / "index.html").is_file() or (project / "src" / "main.js").is_file()
     add("entry", entry_ok, "index.html or src/main.js" if entry_ok else "no entry")
 
-    three_ok = bool(re.search(r"from\s+['\"]three['\"]|require\(\s*['\"]three['\"]", js))
-    add("three_import", three_ok, "import three" if three_ok else "no three import")
+    if engine == "pixel":
+        px_ok = bool(
+            re.search(r"pixelart|makeBakedSprite|layeredRect|getContext\(\s*['\"]2d['\"]", js)
+        ) or (project / "src" / "pixelart" / "pixelart.js").is_file()
+        add("three_import", px_ok, "pixelart engine" if px_ok else "no pixelart engine")
+        add("no_jsm", True, "pixel (no three jsm)")
+        holes = bool(re.search(r"//\s*\.\.\.|/\*\s*\.\.\.|TODO implement|rest of (the )?code", js, re.I))
+        add("no_holes", not holes, "complete" if not holes else "pseudocode / TODO hole")
+        canvas_ok = bool(re.search(r"getContext\(\s*['\"]2d['\"]|createElement\(\s*['\"]canvas['\"]", js))
+        add("renderer", canvas_ok, "canvas 2d" if canvas_ok else "missing canvas")
+        add("scene", True, "pixel 2d space")
+    else:
+        three_ok = bool(re.search(r"from\s+['\"]three['\"]|require\(\s*['\"]three['\"]", js))
+        add("three_import", three_ok, "import three" if three_ok else "no three import")
 
-    jsm = "three/examples/jsm" in js
-    add("no_jsm", not jsm, "clean addons/" if not jsm else "FORBIDDEN three/examples/jsm")
+        jsm = "three/examples/jsm" in js
+        add("no_jsm", not jsm, "clean addons/" if not jsm else "FORBIDDEN three/examples/jsm")
 
-    holes = bool(re.search(r"//\s*\.\.\.|/\*\s*\.\.\.|TODO implement|rest of (the )?code", js, re.I))
-    add("no_holes", not holes, "complete" if not holes else "pseudocode / TODO hole")
+        holes = bool(re.search(r"//\s*\.\.\.|/\*\s*\.\.\.|TODO implement|rest of (the )?code", js, re.I))
+        add("no_holes", not holes, "complete" if not holes else "pseudocode / TODO hole")
 
-    add("renderer", "WebGLRenderer" in js, "WebGLRenderer" if "WebGLRenderer" in js else "missing")
-    add("scene", "new THREE.Scene" in js or "Scene()" in js, "Scene" if "THREE.Scene" in js or "Scene()" in js else "missing")
+        add("renderer", "WebGLRenderer" in js, "WebGLRenderer" if "WebGLRenderer" in js else "missing")
+        add("scene", "new THREE.Scene" in js or "Scene()" in js, "Scene" if "THREE.Scene" in js or "Scene()" in js else "missing")
 
     syn_ok, syn_d = node_syntax(project)
     add("syntax", syn_ok, syn_d)
@@ -240,6 +280,10 @@ def evaluate(project: Path) -> dict:
 
     alert = bool(re.search(r"\balert\s*\(", js + html))
     add("no_alert", not alert, "no alert()" if not alert else "alert() is not dialogue")
+
+    # Pixel games: lights not required (2D fill)
+    if engine == "pixel":
+        checks["lights"] = {"ok": True, "detail": "pixel (no 3d lights)", "weight": 3}
 
     g_ok, g_detail, g_enforced = genre_contract(project, js)
     if g_enforced:

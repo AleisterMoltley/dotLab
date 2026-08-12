@@ -537,19 +537,36 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(409, {"ok": False, "error": "folder exists", "path": str(dest)})
             import scaffold as scaffoldlib
 
-            spec = slicelib.compile_prompt(prompt)
+            engine_raw = str(body.get("engine") or "").strip().lower()
             kind = str(body.get("kind") or "auto")
+            # Map UI kind → engine
+            if kind == "pixel-game" or engine_raw == "pixel":
+                engine = "pixel"
+            elif kind == "web-game" or engine_raw == "three":
+                engine = "three"
+            elif engine_raw in ("three", "pixel"):
+                engine = engine_raw
+            else:
+                engine = None  # auto from prompt
+            genre_opt = str(body.get("genre") or "").strip() or None
+            spec = slicelib.compile_prompt(prompt, genre=genre_opt, engine=engine)
             if kind in ("", "auto"):
                 kind = spec["kind"]
-            if kind == "pixel-game":
-                scaffoldlib.scaffold_pixel_game(dest, spec["title"])
+            if kind == "pixel-game" or spec.get("engine") == "pixel":
+                scaffoldlib.scaffold_pixel_game(
+                    dest, spec["title"], prompt=prompt, genre=spec.get("genre")
+                )
+                kind = "pixel-game"
             elif kind == "world-game":
                 scaffoldlib.scaffold_world_game(dest, spec["title"])
             elif kind == "shader-lab":
                 scaffoldlib.scaffold_shader_lab(dest, spec["title"])
             else:
                 genre = str(body.get("genre") or spec["genre"])
-                scaffoldlib.scaffold_web_game(dest, spec["title"], genre, prompt=prompt)
+                scaffoldlib.scaffold_web_game(
+                    dest, spec["title"], genre, prompt=prompt, engine="three"
+                )
+                kind = "web-game"
             try:
                 v = ops.cached_verify(dest, force=True)
             except Exception:
@@ -561,6 +578,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "name": dest.name,
                     "path": str(dest),
                     "genre": spec.get("genre"),
+                    "engine": spec.get("engine") or "three",
                     "setting": spec.get("setting"),
                     "verb": spec.get("verb"),
                     "kind": kind,

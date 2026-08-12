@@ -9,6 +9,19 @@ import verify
 
 
 class TestCompilePrompt(unittest.TestCase):
+    def test_engine_pixel_from_prompt(self) -> None:
+        s = slicelib.compile_prompt("pixel art forest platformer")
+        self.assertEqual(s["engine"], "pixel")
+        self.assertEqual(s["kind"], "pixel-game")
+
+    def test_engine_three_default(self) -> None:
+        s = slicelib.compile_prompt("skill fps neon city")
+        self.assertEqual(s["engine"], "three")
+
+    def test_engine_explicit(self) -> None:
+        s = slicelib.compile_prompt("adventure village", engine="pixel")
+        self.assertEqual(s["engine"], "pixel")
+
     def test_futuristic_shooter(self) -> None:
         spec = slicelib.compile_prompt("shooter futuristic")
         self.assertEqual(spec["genre"], "fps")

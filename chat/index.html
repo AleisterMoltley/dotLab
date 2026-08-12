@@ -482,11 +482,19 @@
       <div class="dock-inner">
         <div class="opts" id="newOptions">
           <div class="field">
+            <label for="optEngine">Engine</label>
+            <select id="optEngine" title="Rendering engine">
+              <option value="auto">Auto</option>
+              <option value="three">Three.js · WebGL</option>
+              <option value="pixel">Pixel · Canvas2D</option>
+            </select>
+          </div>
+          <div class="field">
             <label for="optKind">Type</label>
             <select id="optKind">
               <option value="auto">Auto</option>
-              <option value="web-game">Web · Three.js</option>
-              <option value="pixel-game">Pixel</option>
+              <option value="web-game">Web game</option>
+              <option value="pixel-game">Pixel game</option>
               <option value="world-game">World</option>
               <option value="shader-lab">Shader</option>
             </select>

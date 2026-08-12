@@ -15,6 +15,9 @@ import verify
 from gmcommon import GAME_GITIGNORE, KNOWLEDGE, ROOT, TEMPLATES, slugify_project
 
 CRAFT_LIB = ROOT / "lib" / "craft"
+PIXELART_LIB = ROOT / "lib" / "pixelart"
+
+ENGINES = ("three", "pixel")
 
 _FENCE = re.compile(
     r"```(?:javascript|js|html|css|ts|mjs)?[ \t]*([a-zA-Z0-9_./-]+\.(?:js|mjs|html|css|ts))?[ \t]*\n(.*?)```",
@@ -268,7 +271,25 @@ _FEEL_DEFAULT = dict(
 )
 
 
-def infer_kind(prompt: str) -> str:
+def infer_engine(prompt: str, explicit: str | None = None) -> str:
+    """three (WebGL Three.js) or pixel (Canvas2D pixelart.js)."""
+    if explicit in ENGINES:
+        return explicit
+    p = (prompt or "").lower()
+    if re.search(
+        r"\bpixel\b|pixel.?art|pixelart|sprite.?kit|2d canvas|canvas2d|bakeCanvas|tileset",
+        p,
+    ):
+        return "pixel"
+    if re.search(r"\bthree\.?js\b|webgl|3d |fps|first.?person", p):
+        return "three"
+    return "three"
+
+
+def infer_kind(prompt: str, engine: str | None = None) -> str:
+    eng = engine or infer_engine(prompt)
+    if eng == "pixel":
+        return "pixel-game"
     p = (prompt or "").lower()
     if re.search(r"pixel|sprite|tileset|bakeCanvas|pixelart", p):
         return "pixel-game"
@@ -326,9 +347,17 @@ def _title(prompt: str) -> str:
     return " ".join(w.capitalize() for w in words[:5])
 
 
-def compile_prompt(prompt: str, genre: str | None = None) -> dict:
+def compile_prompt(
+    prompt: str,
+    genre: str | None = None,
+    engine: str | None = None,
+) -> dict:
     text = (prompt or "").strip() or "small adventure"
+    eng = infer_engine(text, engine)
     g = genre if genre in GENRES else infer_genre(text)
+    # Pixel engine: FPS becomes top-down arena (no true 3D look)
+    if eng == "pixel" and g == "fps":
+        g = "arena"
     setting, props = _setting(text)
     seed = int(hashlib.md5(text.encode("utf-8")).hexdigest()[:8], 16)
     feel = dict(_FEEL_DEFAULT)
@@ -339,20 +368,25 @@ def compile_prompt(prompt: str, genre: str | None = None) -> dict:
     feel.setdefault("pitchMin", -1.15)
     feel.setdefault("pitchMax", 1.25)
     loop = _LOOP.get(g, "talk")
+    cam = _CAMERA.get(g, "tps")
+    if eng == "pixel" and cam == "fps":
+        cam = "top"
+    kind = infer_kind(text, eng)
     spec = {
         "prompt": text,
         "title": _title(text),
         "slug": slugify_project(text[:48]),
         "genre": g,
+        "engine": eng,
         "setting": setting,
         "props": props,
         "loop": loop,
-        "camera": _CAMERA.get(g, "tps"),
+        "camera": cam,
         "verb": _verb(g, setting),
         "palette": dict(_PALETTES.get(props, _PALETTES["dusk"])),
         "feel": feel,
         "seed": seed,
-        "kind": infer_kind(text),
+        "kind": kind,
         "enemyCount": 8 if loop == "shoot" else (1 if loop == "sneak" else 0),
         "coinCount": 6 if loop in ("jump", "talk", "collect") else 0,
         "hazardCount": 8 if loop == "run" else 0,
@@ -364,6 +398,12 @@ def compile_prompt(prompt: str, genre: str | None = None) -> dict:
 
 
 def summarize(spec: dict) -> str:
+    eng = spec.get("engine") or "three"
+    eng_line = (
+        "Engine: **Pixel** (Canvas2D · pixelart.js + FX)."
+        if eng == "pixel"
+        else "Engine: **Three.js** (WebGL)."
+    )
     cam = {
         "fps": "Click the game to look. WASD move, mouse look, click fire, Space jump, R restart.",
         "side": "A/D move, Space jump, R restart.",
@@ -373,6 +413,7 @@ def summarize(spec: dict) -> str:
     }.get(spec.get("camera") or "tps", "WASD move, R restart.")
     return (
         f"The fun is: {spec['verb']}.\n"
+        f"{eng_line}\n"
         f"{spec['title']} · {spec['genre']} · {spec['setting']} · loop {spec['loop']}.\n"
         f"{cam}\n"
         "Play it. Then tweak with words like floaty / more enemies / neon — instant, no model wait.\n"
@@ -531,10 +572,11 @@ def _template() -> str:
     return path.read_text(encoding="utf-8")
 
 
-def render_game_js(spec: dict) -> str:
-    slim = {
+def _slim_spec(spec: dict) -> dict:
+    return {
         "title": spec["title"],
         "genre": spec["genre"],
+        "engine": spec.get("engine") or "three",
         "setting": spec["setting"],
         "props": spec["props"],
         "loop": spec["loop"],
@@ -548,6 +590,10 @@ def render_game_js(spec: dict) -> str:
         "density": float(spec.get("density") or 1.0),
         "juice": float(spec.get("juice") or 1.0),
     }
+
+
+def render_game_js(spec: dict) -> str:
+    slim = _slim_spec(spec)
     feel = dict(spec.get("feel") or {})
     feel.setdefault("shakeHit", 0.12)
     feel.setdefault("hitstopMs", 40)
@@ -557,12 +603,159 @@ def render_game_js(spec: dict) -> str:
     return src
 
 
+def render_pixel_game_js(spec: dict) -> str:
+    slim = _slim_spec(spec)
+    feel = dict(spec.get("feel") or {})
+    feel.setdefault("shakeHit", 0.12)
+    feel.setdefault("hitstopMs", 40)
+    path = TEMPLATES / "pixel-slice" / "game.js"
+    src = path.read_text(encoding="utf-8")
+    src = src.replace("__SPEC__", json.dumps(slim, ensure_ascii=False))
+    src = src.replace("__CONFIG__", json.dumps(feel, ensure_ascii=False))
+    return src
+
+
+def write_slice(dest: Path, spec: dict) -> list[str]:
+    """Dispatch by engine: three → WebGL, pixel → Canvas2D pixelart."""
+    if (spec.get("engine") or "three") == "pixel" or spec.get("kind") == "pixel-game":
+        spec = dict(spec)
+        spec["engine"] = "pixel"
+        return write_pixel_slice(dest, spec)
+    return write_web_slice(dest, spec)
+
+
+def write_pixel_slice(dest: Path, spec: dict) -> list[str]:
+    """Vite + pure Canvas2D using vendored pixelart.js / pixelart-fx.js."""
+    import shutil
+
+    dest.mkdir(parents=True, exist_ok=True)
+    name = spec.get("title") or dest.name
+    genre = spec["genre"]
+    written: list[str] = []
+
+    def put(rel: str, content: str) -> None:
+        path = dest / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        written.append(rel)
+
+    put(
+        "package.json",
+        json.dumps(
+            {
+                "name": slugify_project(name),
+                "private": True,
+                "version": "0.1.0",
+                "type": "module",
+                "scripts": {
+                    "dev": "vite",
+                    "build": "vite build",
+                    "preview": "vite preview",
+                },
+                "devDependencies": {"vite": "^6.0.0"},
+            },
+            indent=2,
+        )
+        + "\n",
+    )
+    pal = spec["palette"]
+    bg = f"#{pal['bg']:06x}"
+    put(
+        "index.html",
+        f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{name}</title>
+  <style>
+    html, body {{ margin: 0; height: 100%; overflow: hidden; background: {bg}; }}
+    canvas {{ display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }}
+    #hud {{
+      position: fixed; left: 12px; top: 12px; color: #e8eaef;
+      font: 600 14px/1.4 system-ui, sans-serif; text-shadow: 0 1px 2px #000;
+      pointer-events: none; max-width: 70vw;
+    }}
+  </style>
+</head>
+<body>
+  <div id="hud">{name} · {spec["verb"]} · pixel</div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
+""",
+    )
+    put(
+        "src/main.js",
+        f"""import {{ createGame }} from './game.js';
+
+const game = createGame({{
+  genre: {genre!r},
+  title: {name!r},
+}});
+game.start();
+""",
+    )
+    if not PIXELART_LIB.is_dir():
+        raise FileNotFoundError(f"pixelart lib missing: {PIXELART_LIB}")
+    dest_px = dest / "src" / "pixelart"
+    if dest_px.exists():
+        shutil.rmtree(dest_px)
+    shutil.copytree(PIXELART_LIB, dest_px)
+    for p in dest_px.rglob("*"):
+        if p.is_file():
+            written.append(str(p.relative_to(dest)))
+    put("src/game.js", render_pixel_game_js(spec))
+    from gmcommon import meta_dir
+
+    meta = meta_dir(dest)
+    meta.mkdir(parents=True, exist_ok=True)
+    (meta / "slice.json").write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")
+    written.append(str((meta / "slice.json").relative_to(dest)))
+    put(
+        "WIKI.md",
+        f"""# {name}
+
+* Engine: **pixel** (Canvas2D · pixelart.js + pixelart-fx.js)
+* Genre: {spec.get("genre")}
+* Verb at t=8s: {spec.get("verb")}
+* Setting: {spec.get("setting")}
+
+## Controls
+WASD / arrows · Space jump (side) · J attack · R restart
+""",
+    )
+    put(
+        "DESIGN.md",
+        f"""# {name}
+
+## Engine
+Pixel (Canvas2D) — `src/pixelart/pixelart.js` + `pixelart-fx.js`
+
+## Core loop
+{spec.get("verb")}
+
+## Backlog
+- [ ] More baked props via layeredRect / makeBakedSprite
+- [ ] One FX (pxJelly / pxShake) on land
+- [ ] Tune CONFIG feel
+""",
+    )
+    gi = dest / ".gitignore"
+    if not gi.is_file():
+        put(".gitignore", GAME_GITIGNORE)
+    return written
+
+
 def write_web_slice(dest: Path, spec: dict) -> list[str]:
     """Write a themed Vite + Three.js slice. Does not touch node_modules."""
     dest.mkdir(parents=True, exist_ok=True)
     name = spec.get("title") or dest.name
     genre = spec["genre"]
     written: list[str] = []
+    if "engine" not in spec:
+        spec = dict(spec)
+        spec["engine"] = "three"
 
     def put(rel: str, content: str) -> None:
         path = dest / rel
@@ -676,7 +869,7 @@ game.start();
 
 Living facts for this game. One bullet + **Why:**. Loaded into every Studio/Agent turn.
 
-- Engine is Three.js (Vite, vanilla). **Why:** Gamemaster invariant.
+- Engine is Three.js (Vite, vanilla). **Why:** engine=three default.
 - Genre: {genre}. **Why:** compiled from the player prompt.
 - Setting: {spec["setting"]}. **Why:** the place the prompt asked for.
 - Verb at t=8s: {spec["verb"]}. **Why:** completeness law.

@@ -557,7 +557,7 @@ def apply_feel_tweaks(project: Path, tweaks: dict[str, float]) -> dict[str, Any]
     if not applied:
         return {"ok": True, "applied": [], "mode": "noop"}
     patchlib.save_spec(project, spec)
-    written = slicelib.write_web_slice(project, spec)
+    written = slicelib.write_slice(project, spec)
     return {"ok": True, "applied": applied, "written": written, "mode": "host_feel"}
 
 

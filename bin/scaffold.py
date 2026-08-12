@@ -46,12 +46,22 @@ def write(path: Path, content: str) -> None:
     print(f"  + {path}")
 
 
-def scaffold_web_game(dest: Path, name: str, genre: str, prompt: str | None = None) -> None:
+def scaffold_web_game(
+    dest: Path,
+    name: str,
+    genre: str,
+    prompt: str | None = None,
+    engine: str | None = None,
+) -> None:
     import slice as slicelib
 
-    spec = slicelib.compile_prompt(prompt or f"{genre} {name}", genre=None if prompt else genre)
+    spec = slicelib.compile_prompt(
+        prompt or f"{genre} {name}",
+        genre=None if prompt else genre,
+        engine=engine or "three",
+    )
     spec["title"] = name
-    for rel in slicelib.write_web_slice(dest, spec):
+    for rel in slicelib.write_slice(dest, spec):
         print(f"  + {dest / rel}")
 
 
@@ -401,53 +411,18 @@ Walk the world → talk to one NPC → change a flag → see the place react
         )
 
 
-def scaffold_pixel_game(dest: Path, name: str) -> None:
-    """Vite + Three.js with vendored Canvas2D pixel kit as textures."""
-    src = TEMPLATES / "pixel-game"
-    lib = ROOT / "lib" / "pixel"
-    if not src.is_dir() or not lib.is_dir():
-        raise SystemExit("pixel-game template or lib/pixel missing")
-    for item in src.iterdir():
-        target = dest / item.name
-        if item.is_dir():
-            shutil.copytree(item, target)
-        else:
-            shutil.copy2(item, target)
-        print(f"  + {target}")
-    pixel_dest = dest / "src" / "pixel"
-    shutil.copytree(lib, pixel_dest, dirs_exist_ok=True)
-    print(f"  + {pixel_dest}/")
-    pkg_path = dest / "package.json"
-    if pkg_path.exists():
-        pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
-        pkg["name"] = slugify(name)
-        pkg_path.write_text(json.dumps(pkg, indent=2) + "\n", encoding="utf-8")
-    for stamped in (dest / "index.html", dest / "README.md"):
-        if stamped.exists():
-            stamped.write_text(
-                stamped.read_text(encoding="utf-8").replace("Pixel Grove", name),
-                encoding="utf-8",
-            )
-    gi = dest / ".gitignore"
-    if not gi.exists():
-        write(gi, GAME_GITIGNORE)
-    if not (dest / "DESIGN.md").exists():
-        write(
-            dest / "DESIGN.md",
-            f"""# {name}
+def scaffold_pixel_game(dest: Path, name: str, prompt: str | None = None, genre: str | None = None) -> None:
+    """Pure Canvas2D pixel engine (pixelart.js + pixelart-fx.js)."""
+    import slice as slicelib
 
-## Engine
-Three.js (Vite) + lib/pixel bake (nearest quads)
-
-## Core loop
-Walk the grove — baked sprites, live camera
-
-## Backlog
-- [ ] Tune CONFIG feel
-- [ ] Bake more props with draw.js
-- [ ] One juice FX (pxJelly on land)
-""",
-        )
+    spec = slicelib.compile_prompt(
+        prompt or f"pixel art {genre or 'adventure'} {name}",
+        genre=genre,
+        engine="pixel",
+    )
+    spec["title"] = name
+    for rel in slicelib.write_pixel_slice(dest, spec):
+        print(f"  + {dest / rel}")
 
 
 def scaffold_shader_lab(dest: Path, name: str) -> None:
@@ -497,6 +472,12 @@ def main() -> int:
     ap.add_argument("--name", default=None, help="Project name")
     ap.add_argument("--genre", default="arena", choices=GENRES)
     ap.add_argument(
+        "--engine",
+        default=None,
+        choices=["three", "pixel"],
+        help="Game engine: three (WebGL) or pixel (Canvas2D pixelart.js)",
+    )
+    ap.add_argument(
         "--out",
         default=None,
         help="Output directory (default ~/Gamemaster/Projects)",
@@ -527,11 +508,11 @@ def main() -> int:
 
     print(f"🎮 Scaffold {kind} → {dest}")
     if kind == "web-game":
-        scaffold_web_game(dest, name, args.genre)
+        scaffold_web_game(dest, name, args.genre, engine=args.engine or "three")
     elif kind == "world-game":
         scaffold_world_game(dest, name)
     elif kind == "pixel-game":
-        scaffold_pixel_game(dest, name)
+        scaffold_pixel_game(dest, name, genre=args.genre)
     elif kind == "seeker-app":
         scaffold_seeker_app(dest, name, genre=None)
     elif kind == "seeker-game":
@@ -546,7 +527,7 @@ def main() -> int:
         if kind == "world-game":
             print(f'   gamemaster worlds generate -p "{dest}" "coastal village, pine ridge"')
         if kind == "pixel-game":
-            print("   # bake sprites in src/main.js — Three.js stays the engine")
+            print("   # pure Canvas2D · src/pixelart/pixelart.js + pixelart-fx.js")
     else:
         print("   npm i && npx expo start")
     print(f'   gamemaster -p "{dest}" --agent "Expand vertical slice"')
