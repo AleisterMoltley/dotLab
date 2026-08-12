@@ -213,10 +213,20 @@ class LiveSession:
             cmd = [sys.executable, "-m", "http.server", str(self.game_port), "--bind", "127.0.0.1"]
             self.game_url = f"http://127.0.0.1:{self.game_port}/"
 
-        # if already up, reuse
-        if self._wait_http(self.game_url, timeout=1.5):
-            self.emit(f"Game server already running at {self.game_url}", role="system", phase="ready")
-            return
+        # Never reuse :5173 from another project — bind a free port for *this* folder.
+        from gmcommon import free_tcp_port
+
+        if pkg.exists():
+            self.game_port = free_tcp_port(self.game_port)
+            if "dev" in scripts:
+                cmd[-2] = str(self.game_port)
+            else:
+                cmd[-1] = str(self.game_port)
+            self.game_url = f"http://127.0.0.1:{self.game_port}/"
+        else:
+            self.game_port = free_tcp_port(self.game_port)
+            cmd = [sys.executable, "-m", "http.server", str(self.game_port), "--bind", "127.0.0.1"]
+            self.game_url = f"http://127.0.0.1:{self.game_port}/"
 
         f = open(log, "w")
         env = os.environ.copy()

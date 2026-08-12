@@ -57,6 +57,20 @@ class TestHealth(unittest.TestCase):
             self.assertEqual(listed[0]["name"], "demo")
             self.assertEqual(server.projects_root(), Path(raw))
 
+    def test_extract_and_write_fenced_files(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        text = """Here you go\n```js src/game.js\nexport const X = 1;\n```\n"""
+        files = server.extract_code_files(text)
+        self.assertEqual(files[0][0], "src/game.js")
+        self.assertIn("export const X", files[0][1])
+        with tempfile.TemporaryDirectory() as raw:
+            dest = Path(raw)
+            written = server.write_reply_files(dest, text)
+            self.assertEqual(written, ["src/game.js"])
+            self.assertTrue((dest / "src" / "game.js").is_file())
+
     def test_health_does_not_call_ollama(self) -> None:
         server.remember_tags(["gamemaster:latest"], ok=True)
         with mock.patch.object(server.cloudlib, "status_dict", return_value={"enabled": False}):

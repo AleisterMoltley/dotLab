@@ -14,6 +14,11 @@ class TestGmcommon(unittest.TestCase):
         self.assertEqual(g.BIN, g.ROOT / "bin")
         self.assertEqual(g.KNOWLEDGE, g.ROOT / "knowledge")
 
+    def test_free_tcp_port(self) -> None:
+        p = g.free_tcp_port(18000)
+        self.assertGreaterEqual(p, 18000)
+        self.assertLess(p, 18040)
+
     def test_slugify_project(self) -> None:
         self.assertEqual(g.slugify_project("Wild Coast!!"), "wild-coast")
         self.assertEqual(g.slugify_project(""), "gamemaster-project")

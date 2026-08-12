@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -23,6 +24,7 @@ from gmcommon import (
     OLLAMA,
     ROOT,
     ensure_ollama,
+    free_tcp_port,
     list_game_projects,
     looks_like_game,
     projects_root,
@@ -34,6 +36,109 @@ MODEL = os.environ.get("GAMEMASTER_MODEL", DEFAULT_MODEL)
 NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "65536"))
 
 _TAGS: dict = {"ts": 0.0, "names": [], "ok": False, "error": ""}
+_PREVIEWS: dict[str, dict] = {}
+
+_FENCE = re.compile(
+    r"```(?:javascript|js|html|css|ts|mjs)?[ \t]*([a-zA-Z0-9_./-]+\.(?:js|mjs|html|css|ts))?[ \t]*\n(.*?)```",
+    re.S,
+)
+_FILE_LINE = re.compile(r"(?m)^(?://|#)\s*file:\s*(\S+)\s*$")
+
+
+def extract_code_files(text: str) -> list[tuple[str, str]]:
+    """Pull path + body out of markdown fences. Prefer an explicit path."""
+    out: list[tuple[str, str]] = []
+    for m in _FENCE.finditer(text or ""):
+        path = (m.group(1) or "").strip()
+        body = m.group(2) or ""
+        head = _FILE_LINE.search(body)
+        if head:
+            path = head.group(1).strip()
+            body = body[head.end() :].lstrip("\n")
+        if not path:
+            continue
+        path = path.lstrip("./")
+        allowed = path.startswith("src/") or path in {
+            "index.html",
+            "package.json",
+            "WIKI.md",
+            "DESIGN.md",
+        }
+        if ".." in path or path.startswith("/") or not allowed:
+            continue
+        out.append((path, body.rstrip() + "\n"))
+    return out
+
+
+def write_reply_files(project: Path, text: str) -> list[str]:
+    written: list[str] = []
+    for rel, body in extract_code_files(text):
+        dest = (project / rel).resolve()
+        try:
+            dest.relative_to(project.resolve())
+        except ValueError:
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(body, encoding="utf-8")
+        written.append(rel)
+    return written
+
+
+def http_up(url: str, timeout: float = 20.0) -> bool:
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            urllib.request.urlopen(url, timeout=1.0)
+            return True
+        except Exception:
+            time.sleep(0.25)
+    return False
+
+
+def start_preview(project: Path) -> dict:
+    """Vite (or static server) for THIS folder on a free port. Open the game, not a wrapper."""
+    key = str(project.resolve())
+    prev = _PREVIEWS.get(key)
+    if prev and prev.get("proc") and prev["proc"].poll() is None:
+        if http_up(prev["url"], timeout=1.5):
+            return {"ok": True, "url": prev["url"], "reused": True, "path": key}
+
+    pkg = project / "package.json"
+    log = project / ".gamemaster" / "play.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    port = free_tcp_port(5173)
+    if pkg.is_file():
+        if not (project / "node_modules").is_dir():
+            subprocess.run(["npm", "install"], cwd=str(project), check=False, timeout=180)
+        cmd = [
+            "npm",
+            "run",
+            "dev",
+            "--",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--strictPort",
+        ]
+    else:
+        cmd = [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"]
+    url = f"http://127.0.0.1:{port}/"
+    handle = open(log, "w", encoding="utf-8")
+    env = os.environ.copy()
+    env["BROWSER"] = "none"
+    env["CI"] = "1"
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(project),
+        stdout=handle,
+        stderr=subprocess.STDOUT,
+        env=env,
+        start_new_session=True,
+    )
+    _PREVIEWS[key] = {"proc": proc, "url": url, "port": port, "log": handle}
+    ok = http_up(url, timeout=40.0)
+    return {"ok": ok, "url": url, "path": key, "reused": False, "log": str(log)}
 
 
 def remember_tags(names: list[str], ok: bool = True, error: str = "") -> None:
@@ -300,12 +405,13 @@ class Handler(SimpleHTTPRequestHandler):
         if path.endswith("/play"):
             if not target.is_dir() or not looks_like_game(target):
                 return self._json(400, {"ok": False, "error": "not a game folder"})
-            subprocess.Popen(
-                [sys.executable, str(ROOT / "bin" / "live.py"), "-p", str(target)],
-                cwd=str(ROOT),
-                start_new_session=True,
-            )
-            return self._json(200, {"ok": True, "path": str(target)})
+            result = start_preview(target)
+            if result.get("ok") and result.get("url"):
+                if sys.platform == "darwin":
+                    subprocess.run(["open", result["url"]], check=False)
+                else:
+                    webbrowser.open(result["url"])
+            return self._json(200, result)
         if path.endswith("/new"):
             name = slugify_project(str(body.get("name") or "new-game"))
             dest = projects_root() / name
@@ -348,7 +454,22 @@ class Handler(SimpleHTTPRequestHandler):
                     temperature=float((payload.get("options") or {}).get("temperature", 0.2)),
                     num_predict=int((payload.get("options") or {}).get("num_predict", 4096)),
                 )
-                return self._json(200, {"ok": True, "text": text})
+                written: list[str] = []
+                proj = str(payload.get("project") or "").strip()
+                if proj:
+                    pdir = Path(proj).expanduser()
+                    if pdir.is_dir():
+                        written = write_reply_files(pdir, text)
+                note = ""
+                if written:
+                    note = "\n\nSaved " + ", ".join(written) + " in " + proj
+                elif proj:
+                    note = (
+                        "\n\nProject folder: "
+                        + proj
+                        + " (scaffold). Click Play to run it. Put code in fences like ```js src/game.js"
+                    )
+                return self._json(200, {"ok": True, "text": text + note, "written": written, "project": proj})
             except Exception as e:
                 return self._json(502, {"ok": False, "error": str(e)})
         if path.startswith("/api/chat"):

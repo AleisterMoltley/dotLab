@@ -62,6 +62,21 @@ GAME_MARKERS = (
 )
 
 
+def free_tcp_port(start: int = 5173, span: int = 40) -> int:
+    """First free 127.0.0.1 port at or after `start`."""
+    import socket
+
+    for port in range(int(start), int(start) + int(span)):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            return port
+    raise RuntimeError(f"no free port in {start}–{start + span}")
+
+
 def which(name: str) -> str | None:
     return shutil.which(name)
 

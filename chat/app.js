@@ -82,8 +82,9 @@
       body: JSON.stringify({
         messages: [{
           role: "system",
-          content: "You are Gamemaster. Write a playable Three.js game. Complete files. Short intro, then code. CONFIG feel numbers. fog = background.",
+          content: "You are Gamemaster. Write a playable Three.js game. Put every file in a fence that starts with the path, e.g. ```js src/game.js then the full file. CONFIG feel. fog=background. Complete files, no holes.",
         }].concat(history.slice(-8)),
+        project: path || current.path || "",
       }),
     })
       .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || r.status); return d; }); })
@@ -146,7 +147,13 @@
       }
     }
     if (act === "show") api("/api/projects/reveal", { path: path });
-    if (act === "play") api("/api/projects/play", { path: path });
+    if (act === "play") {
+      api("/api/projects/play", { path: path }).then(function (d) {
+        if (!d || !d.ok) {
+          addMsg("bot", "Play failed. " + ((d && d.error) || "Could not start the game server. Try Show folder, then npm install && npm run dev."));
+        }
+      });
+    }
   });
 
   var revealRoot = document.getElementById("btnRevealRoot");
@@ -155,7 +162,14 @@
   }
   var nowPlay = document.getElementById("nowPlay");
   var nowShow = document.getElementById("nowShow");
-  if (nowPlay) nowPlay.onclick = function () { if (current.path) api("/api/projects/play", { path: current.path }); };
+  if (nowPlay) {
+    nowPlay.onclick = function () {
+      if (!current.path) return;
+      api("/api/projects/play", { path: current.path }).then(function (d) {
+        if (!d || !d.ok) addMsg("bot", "Play failed. " + ((d && d.error) || "Start the folder with npm run dev."));
+      });
+    };
+  }
   if (nowShow) nowShow.onclick = function () { if (current.path) api("/api/projects/reveal", { path: current.path }); };
 
   loadProjects().then(function () {
