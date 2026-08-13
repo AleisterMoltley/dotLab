@@ -168,8 +168,9 @@ def fill_slots(spec: dict, director: dict | None = None) -> dict:
     """Mutate/return spec with slots filled. Host-owned."""
     director = director or {}
     novelty = pick_novelty(spec, director)
-    weapon = pick_weapon(spec, director)
-    enemy = pick_enemy(spec, director)
+    loop = str(spec.get("loop") or "")
+    weapon = pick_weapon(spec, director) if loop == "shoot" else None
+    enemy = pick_enemy(spec, director) if loop in ("shoot", "jump", "sneak", "race") else None
     # merge director feel numbers (clamped)
     feel = dict(spec.get("feel") or {})
     for k, v in (director.get("feel") or {}).items():

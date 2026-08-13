@@ -94,6 +94,7 @@ export function createGame({ genre, title }) {
   buildWorld(scene, rnd, pal, SPEC);
   const player = buildPlayer(scene, pal, CONFIG);
   const actors = buildActors(scene, rnd, pal, SPEC);
+  if (actors.start) player.pos.set(actors.start.x, actors.start.y, actors.start.z);
   const weapon = buildWeapon(camera, pal);
   const tracers = [];
 
@@ -111,15 +112,36 @@ export function createGame({ genre, title }) {
 
     if (state.dead) return;
 
-    const grounded = player.pos.y <= (CONFIG.eyeHeight || 1.62) + 0.02;
-    if (grounded) {
-      player.pos.y = CONFIG.eyeHeight || 1.62;
-      player.vy = 0;
-      state.lastGround = state.now;
-    } else {
+    const prevY = player.pos.y;
+    const eye = CONFIG.eyeHeight || 1.62;
+    let grounded = false;
+    if (SPEC.loop === 'jump') {
       player.vy -= (CONFIG.gravity || 28) * dt;
       player.pos.y += player.vy * dt;
+      const plats = actors.platforms || [];
+      let support = -Infinity;
+      for (const p of plats) {
+        if (Math.abs(player.pos.x - p.x) <= p.hw && Math.abs(player.pos.z - p.z) <= p.hd) {
+          if (p.eye > support) support = p.eye;
+        }
+      }
+      if (Number.isFinite(support) && player.vy <= 0.2 && prevY >= support - 0.15 && player.pos.y <= support + 0.12) {
+        player.pos.y = support;
+        player.vy = 0;
+        grounded = true;
+      }
+      if (player.pos.y < -4) die();
+    } else {
+      grounded = player.pos.y <= eye + 0.02;
+      if (grounded) {
+        player.pos.y = eye;
+        player.vy = 0;
+      } else {
+        player.vy -= (CONFIG.gravity || 28) * dt;
+        player.pos.y += player.vy * dt;
+      }
     }
+    if (grounded) state.lastGround = state.now;
 
     if (isFps && pointer.locked) {
       player.yaw -= pointer.mx * (CONFIG.mouseSens || 0.002);
@@ -377,8 +399,25 @@ export function createGame({ genre, title }) {
         scene.background = new THREE.Color(pal.accent);
         scene.fog.color.set(pal.accent);
         sfx('hit');
-        showBanner('FLAG SET — world moves');
+        showBanner('FLAG SET — the door opens');
+        if (actors.door) {
+          actors.door.userData.open = true;
+          if (actors.door.material) actors.door.material.emissiveIntensity = 1.3;
+        }
         updateHud();
+      }
+    }
+    if (actors.door && !actors.door.userData.used) {
+      const dd = Math.hypot(player.pos.x - actors.door.position.x, player.pos.z - actors.door.position.z);
+      if (dd < 1.6) {
+        if (actors.door.userData.open) {
+          actors.door.userData.used = true;
+          state.score += 2;
+          showBanner('THROUGH');
+          actors.door.position.y = -10;
+        } else {
+          showBanner('TALK FIRST');
+        }
       }
     }
     for (const c of actors.coins) {
@@ -507,7 +546,8 @@ export function createGame({ genre, title }) {
     state.dead = false;
     state.wave = 1;
     shake.amount = 0;
-    player.pos.set(0, CONFIG.eyeHeight || 1.62, SPEC.loop === 'run' ? 0 : 6);
+    const start = actors.start || { x: 0, y: CONFIG.eyeHeight || 1.62, z: SPEC.loop === 'run' ? 0 : 6 };
+    player.pos.set(start.x, start.y, start.z);
     player.vx = player.vz = player.vy = 0;
     player.yaw = 0;
     player.pitch = 0;
@@ -523,6 +563,11 @@ export function createGame({ genre, title }) {
       c.mesh.visible = true;
     }
     for (const n of actors.npcs) n.talked = false;
+    for (const g of actors.gates || []) {
+      g.taken = false;
+      g.visible = true;
+    }
+    if (actors.door && actors.door.userData) actors.door.userData.open = false;
     updateHud();
     pt('recordRestart');
   }
@@ -685,6 +730,34 @@ function mat(color, extra) {
 }
 
 function buildWorld(scene, rnd, pal, SPEC) {
+  if (SPEC.loop === 'jump') {
+    const pit = new THREE.Mesh(
+      new THREE.PlaneGeometry(220, 40),
+      mat(0x0a0808, { roughness: 1, metalness: 0 }),
+    );
+    pit.rotation.x = -Math.PI / 2;
+    pit.position.set(20, -6, 0);
+    scene.add(pit);
+    for (let i = 0; i < 14; i++) {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 1.6, 6), mat(0x4a3422));
+      const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.6, 7), mat(pal.accent, { roughness: 0.85 }));
+      trunk.position.set(-4 + rnd() * 48, 0.8, -7 - rnd() * 5);
+      leaves.position.set(trunk.position.x, trunk.position.y + 2.0, trunk.position.z);
+      scene.add(trunk, leaves);
+    }
+    return;
+  }
+  if (SPEC.loop === 'run') {
+    for (let lane = -1; lane <= 1; lane++) {
+      const strip = new THREE.Mesh(
+        new THREE.BoxGeometry(2.0, 0.08, 80),
+        mat(pal.ground, { roughness: 0.9 }),
+      );
+      strip.position.set(lane * 2.2, 0, -20);
+      scene.add(strip);
+    }
+    return;
+  }
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(100, 100),
     mat(pal.ground, { roughness: 0.95, metalness: 0.05 }),
@@ -764,14 +837,52 @@ function buildActors(scene, rnd, pal, SPEC) {
   let gate = null;
   const gates = [];
   const rivals = [];
+  const platforms = [];
+  let start = null;
   let hunter = null;
   let door = null;
 
   const enemyN = Math.max(0, SPEC.enemyCount | 0) || (SPEC.loop === 'shoot' ? 8 : 0);
   const coinN = Math.max(0, SPEC.coinCount | 0) || (['jump', 'talk', 'collect', 'sneak'].includes(SPEC.loop) ? 6 : 0);
   const hazardN = Math.max(0, SPEC.hazardCount | 0) || (SPEC.loop === 'run' ? 8 : 0);
+  const eye = 1.2;
 
-  if (SPEC.loop !== 'race' && enemyN > 0) {
+  if (SPEC.loop === 'jump') {
+    for (let i = 0; i < 10; i++) {
+      if (i > 0 && i % 4 === 3) continue;
+      const x = i * 4.5;
+      const y = 0.4 + (i % 3) * 0.65;
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.4, 2.4), mat(pal.building));
+      mesh.position.set(x, y, 0);
+      scene.add(mesh);
+      const top = y + 0.2;
+      const p = { x, z: 0, hw: 1.75, hd: 1.2, top, eye: top + eye, mesh };
+      platforms.push(p);
+      if (!start) start = { x, y: p.eye, z: 0 };
+    }
+    for (let i = 1; i < Math.min((coinN || 6) + 1, platforms.length); i++) {
+      const p = platforms[i];
+      const coin = new THREE.Mesh(
+        new THREE.TorusGeometry(0.28, 0.1, 8, 14),
+        mat(pal.accent, { emissive: pal.accent, emissiveIntensity: 0.95 }),
+      );
+      coin.position.set(p.x, p.top + 0.9, p.z);
+      scene.add(coin);
+      coins.push({ mesh: coin, taken: false });
+    }
+    for (let i = 0; i < hazardN && i + 2 < platforms.length; i++) {
+      const p = platforms[i + 2];
+      const h = new THREE.Mesh(
+        new THREE.ConeGeometry(0.32, 0.7, 5),
+        mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.7 }),
+      );
+      h.position.set(p.x + 0.9, p.top + 0.35, p.z);
+      scene.add(h);
+      hazards.push({ mesh: h });
+    }
+  }
+
+  if (SPEC.loop !== 'race' && SPEC.loop !== 'jump' && enemyN > 0) {
     for (let i = 0; i < enemyN; i++) {
       const mesh = new THREE.Mesh(
         new THREE.IcosahedronGeometry(0.55, 0),
@@ -790,7 +901,23 @@ function buildActors(scene, rnd, pal, SPEC) {
     }
   }
 
-  if (SPEC.loop !== 'race' && coinN > 0) {
+  if (SPEC.loop === 'jump' && enemyN > 0) {
+    for (let i = 0; i < enemyN && i < platforms.length; i++) {
+      const p = platforms[Math.min(platforms.length - 1, 3 + i * 2)];
+      const mesh = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(0.4, 0),
+        mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.7 }),
+      );
+      mesh.position.set(p.x - 0.6, p.top + 0.55, p.z);
+      scene.add(mesh);
+      enemies.push({
+        mesh, hp: 1, speed: 1.1 + i * 0.2,
+        baseY: p.top + 0.55, phase: i, sx: p.x - 0.6, sz: p.z,
+      });
+    }
+  }
+
+  if (SPEC.loop !== 'race' && SPEC.loop !== 'jump' && coinN > 0) {
     for (let i = 0; i < Math.max(coinN, 1); i++) {
       const plat = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.4, 3.2), mat(pal.building));
       plat.position.set((i - 2) * 3.4, i * 0.35, -4 - i * 2.2);
@@ -813,9 +940,16 @@ function buildActors(scene, rnd, pal, SPEC) {
     body.position.set(3.2, 1.05, -2);
     scene.add(body);
     npcs.push({ mesh: body, talked: false });
+    door = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4, 2.4, 0.3),
+      mat(pal.grid, { emissive: pal.grid, emissiveIntensity: 0.25 }),
+    );
+    door.position.set(9.5, 1.2, -2);
+    door.userData.open = false;
+    scene.add(door);
   }
 
-  if (SPEC.loop !== 'race' && hazardN > 0) {
+  if (SPEC.loop !== 'race' && SPEC.loop !== 'jump' && hazardN > 0) {
     for (let i = 0; i < hazardN; i++) {
       const h = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.4, 1.1), mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.35 }));
       h.position.set((i % 3 - 1) * 2.2, 0.7, -8 - i * 6);
@@ -867,7 +1001,7 @@ function buildActors(scene, rnd, pal, SPEC) {
     scene.add(door);
   }
 
-  return { enemies, coins, npcs, hazards, gate, gates, rivals, hunter, door };
+  return { enemies, coins, npcs, hazards, gate, gates, rivals, hunter, door, platforms, start };
 }
 
 function spawnWave(actors, scene, rnd, pal, SPEC, wave) {

@@ -126,6 +126,22 @@ export function createGame({ genre, title }) {
         hp: 1,
       });
     }
+  } else if (SPEC.loop === 'run') {
+    solids.push({ x: 0, y: 0, w: 16, h: 720 }, { x: 304, y: 0, w: 16, h: 720 });
+    for (let i = 0; i < Math.max(8, SPEC.hazardCount || 8); i++) {
+      const lane = i % 3;
+      foes.push({
+        x: 48 + lane * 88,
+        y: 40 + i * 70,
+        vx: 0,
+        vy: 70,
+        hp: 1,
+        hazard: true,
+      });
+    }
+    for (let i = 0; i < 4; i++) {
+      coins.push({ x: 80 + (i % 3) * 70, y: 90 + i * 80, got: false });
+    }
   } else if (SPEC.loop === 'race') {
     // vertical track + rivals (not a plaza)
     solids.push({ x: 0, y: 0, w: 16, h: 720 }, { x: 304, y: 0, w: 16, h: 720 });

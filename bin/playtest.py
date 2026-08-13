@@ -22,7 +22,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from gmcommon import DEFAULT_MODEL, ROOT
+from gmcommon import DEFAULT_MODEL, ROOT, free_tcp_port
 
 PLAYTEST_DIR = ROOT / "playtest"
 
@@ -45,18 +45,32 @@ def ensure_playwright() -> None:
 
 def detect_dev_command(project: Path) -> tuple[list[str], int]:
     pkg = project / "package.json"
-    port = 5173
     if not pkg.exists():
-        # static
-        return ([sys.executable, "-m", "http.server", "8080"], 8080)
+        port = free_tcp_port(8080, 20)
+        return ([sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"], port)
     data = json.loads(pkg.read_text(encoding="utf-8"))
     scripts = data.get("scripts") or {}
     if "dev" in scripts:
-        return (["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"], 5173)
+        # Never reuse a busy 5173 — that playtests someone else's game.
+        port = free_tcp_port(5190, 40)
+        return (
+            [
+                "npm",
+                "run",
+                "dev",
+                "--",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--strictPort",
+            ],
+            port,
+        )
     if "start" in scripts:
-        # expo etc — still try
         return (["npm", "run", "start"], 8081)
-    return ([sys.executable, "-m", "http.server", "8080"], 8080)
+    port = free_tcp_port(8080, 20)
+    return ([sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"], port)
 
 
 def wait_http(url: str, timeout: float = 90.0) -> bool:

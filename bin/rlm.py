@@ -270,6 +270,13 @@ def grep(project: Path, pattern: str) -> str:
     return "\n".join(hits) if hits else "(no matches)"
 
 
+def _gameplay_js(js: str) -> str:
+    """Drop SPEC/CONFIG JSON so counts in the blob cannot fake depth."""
+    js = re.sub(r"const SPEC = \{.*?\};", "", js, flags=re.S)
+    js = re.sub(r"const CONFIG = \{.*?\};", "", js, flags=re.S)
+    return js
+
+
 def _js_blob(project: Path) -> str:
     parts: list[str] = []
     for info in list_files(project):
@@ -285,7 +292,7 @@ def _js_blob(project: Path) -> str:
 def depth_report(project: Path) -> dict[str, Any]:
     """Toy vs real. Not a P0 verify — this is the 'games are simple' gate."""
     spec = _spec(project)
-    js = _js_blob(project)
+    js = _gameplay_js(_js_blob(project))
     fam = _family(spec)
     systems = (
         [p for p in (project / "src" / "systems").glob("*.js")]

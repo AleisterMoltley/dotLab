@@ -62,7 +62,10 @@ class TestDepth(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             dest = Path(raw)
             (dest / "src").mkdir()
-            (dest / "src" / "game.js").write_text("renderer.render(scene, camera)\n", encoding="utf-8")
+            (dest / "src" / "game.js").write_text(
+                "const SPEC = {\"roomCount\": 4, \"enemyCount\": 8};\nrenderer.render(scene, camera)\n",
+                encoding="utf-8",
+            )
             (dest / ".dotlab").mkdir()
             (dest / ".dotlab" / "slice.json").write_text(
                 json.dumps({"genre": "racing", "loop": "race", "enemyCount": 0, "roomCount": 1}),
@@ -114,6 +117,23 @@ class TestSliceCounts(unittest.TestCase):
             self.assertGreater(pressure, 0, prompt)
             self.assertIn("pillars", spec, prompt)
             self.assertEqual(len(spec["pillars"]), 5, prompt)
+
+    def test_platformer_slice_has_real_ledges(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            dest = Path(raw) / "g"
+            dest.mkdir()
+            spec = slicelib.compile_prompt("forest platformer coyote pits")
+            spec["title"] = "G"
+            slicelib.write_slice(dest, spec)
+            js = (dest / "src" / "game.js").read_text(encoding="utf-8")
+            self.assertIn("platforms", js)
+            self.assertIn("p.eye", js)
+            self.assertRegex(js, r"pos\.y < -")
+            vr = __import__("verify").evaluate(dest)
+            self.assertTrue(vr["ok"], vr["report"])
+            self.assertEqual(vr["p0_fail"], [])
+            dr = rlm.depth_report(dest)
+            self.assertTrue(dr["ok"], dr)
 
     def test_adventure_family(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

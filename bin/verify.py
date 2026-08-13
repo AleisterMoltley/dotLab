@@ -143,6 +143,10 @@ def genre_contract(project: Path, js: str) -> tuple[bool, str, bool]:
             missing.append("jump")
         if not re.search(r"gravity", js, re.I):
             missing.append("gravity")
+        if engine == "three" and not re.search(r"platforms|plat\.|ledge", js, re.I):
+            missing.append("platforms")
+        if engine == "three" and not re.search(r"pos\.y\s*<\s*-", js):
+            missing.append("pit death")
     elif family == "runner" or loop == "run":
         if not re.search(r"runSpeed|lane|hazard|obstacle", js, re.I):
             # vintage/pixel side runners may only use solids — soft
