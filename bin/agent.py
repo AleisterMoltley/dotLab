@@ -41,13 +41,14 @@ Tools:
 - read_file → path: src/main.js  optional start: N end: M
 - apply_patch → path: src/game.js  search: exact lines  replace: new lines
 - write_file → path: src/systems/foo.js  content: full file (NEW modules preferred; large game.js full replace is blocked)
+- game_ops → events: JSON array of host events (preferred for feel/counts/palette/flags/engine)
 - search → query: regex
 - run → cmd: short safe command
 - kit → action: todo_add|todo_done|todo_list|wiki_add|map|art_test|feel|verify|pixel
 - done → summary: what + how to test
 
-Efficiency: MAP/WIKI first · surgical apply_patch · kit feel after controller · no list_dir loops.
-Host owns feel/juice/slots — do not rewrite CONFIG wholesale.
+Efficiency: Prefer game_ops for feel/counts/palette/room/flags. MAP/WIKI first · surgical apply_patch for code.
+Host owns craft/juice — do not rewrite CONFIG wholesale; use set_feel ops.
 """
 
 
@@ -70,7 +71,7 @@ def parse_tool_body(body: str) -> dict:
     lines = body.splitlines()
     data: dict[str, str] = {}
     i = 0
-    multiline_keys = {"content", "search", "replace", "body", "patch"}
+    multiline_keys = {"content", "search", "replace", "body", "patch", "events", "ops", "json"}
     key_line = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$")
 
     def is_new_key(s: str) -> bool:
@@ -94,6 +95,9 @@ def parse_tool_body(body: str) -> dict:
             "glob",
             "body",
             "patch",
+            "events",
+            "ops",
+            "json",
         }
 
     while i < len(lines):
@@ -409,6 +413,33 @@ def tool_search(project: Path, query: str, glob_pat: str = "*.{js,ts,mjs,html,cs
     return "\n".join(hits) if hits else "(no matches)"
 
 
+def tool_game_ops(project: Path, events_raw: str) -> str:
+    """Host applies typed game ops (UPF-style)."""
+    try:
+        import game_ops as golib
+
+        result = golib.apply_ops(project, events_raw or "[]", source="agent")
+        # compact response for agent loop
+        lines = [
+            f"game_ops applied={result.get('applied')}/{result.get('total')} ok={result.get('ok')}",
+        ]
+        for r in result.get("results") or []:
+            if r.get("ok"):
+                extra = r.get("applied") or r.get("path") or r.get("id") or r.get("engine") or r.get("summary") or ""
+                lines.append(f"  OK {r.get('type')}: {extra}"[:200])
+            else:
+                lines.append(f"  NO {r.get('type')}: {r.get('error')}"[:200])
+        if result.get("locks"):
+            lines.append("locks: " + ", ".join(result["locks"][:12]))
+        if result.get("context"):
+            lines.append("CONTEXT:\n" + str(result["context"])[:4000])
+        if result.get("written"):
+            lines.append("written: " + ", ".join(result["written"][:12]))
+        return "\n".join(lines)
+    except Exception as e:
+        return f"ERROR game_ops: {e}"
+
+
 def tool_run(project: Path, cmd: str) -> str:
     import security as seclib
 
@@ -476,6 +507,15 @@ def run_tool(project: Path, name: str, args: dict) -> str:
                 args.get("path", ""),
                 args.get("search", ""),
                 args.get("replace", ""),
+            )
+        if name in ("game_ops", "ops", "events"):
+            return tool_game_ops(
+                project,
+                args.get("events")
+                or args.get("ops")
+                or args.get("content")
+                or args.get("json")
+                or "",
             )
         if name == "search":
             return tool_search(project, args.get("query", ""), args.get("glob", ""))
@@ -620,6 +660,12 @@ def main() -> int:
         if gal:
             knowledge = (knowledge + "\n\n" + gal) if knowledge else gal
         knowledge = (knowledge or "") + "\n\n" + aslib.SLOT_JSON_ONLY + "\n" + qualitylib.CODER_PATCH_INSTRUCTION
+        try:
+            import game_ops as golib
+
+            knowledge += "\n\n" + golib.OPS_INSTRUCTION
+        except Exception:
+            pass
     except Exception:
         pass
     route = {"model": model, "num_ctx": 16384, "num_predict": 6144, "temperature": 0.18, "tier": "max"}

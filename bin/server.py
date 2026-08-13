@@ -605,6 +605,20 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, eops.ship_card(target))
             except Exception as e:
                 return self._json(500, {"ok": False, "error": str(e)})
+        if path.endswith("/game-ops") or path.endswith("/ops"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            try:
+                import game_ops as golib
+
+                events = body.get("events") or body.get("ops") or body.get("text") or ""
+                if isinstance(events, list):
+                    result = golib.apply_ops(target, events, source="api")
+                else:
+                    result = golib.apply_ops(target, str(events), source="api")
+                return self._json(200, result)
+            except Exception as e:
+                return self._json(500, {"ok": False, "error": str(e)})
         if path.endswith("/new"):
             prompt = str(body.get("prompt") or body.get("name") or "new game").strip()
             name = slugify_project(str(body.get("name") or prompt[:48] or "new-game"))
@@ -773,6 +787,47 @@ class Handler(SimpleHTTPRequestHandler):
                     break
             # Instant craft path — most continues never touch the 30B
             if pdir and pdir.is_dir() and user_txt.strip():
+                # Game ops JSON array → host apply (UPF-style)
+                if "[" in user_txt and ("set_feel" in user_txt or '"type"' in user_txt):
+                    try:
+                        import game_ops as golib
+
+                        gops = golib.extract_ops(user_txt)
+                        if gops:
+                            go = golib.apply_ops(pdir, gops, source="ask")
+                            if go.get("ok") or go.get("applied"):
+                                try:
+                                    ops.session_note(
+                                        pdir, "game_ops", user_txt[:200], {"n": go.get("applied")}
+                                    )
+                                    ops.cached_verify(pdir, force=True)
+                                except Exception:
+                                    pass
+                                lines = [
+                                    f"Game ops: {go.get('applied')}/{go.get('total')} applied.",
+                                ]
+                                for r in go.get("results") or []:
+                                    if r.get("ok"):
+                                        lines.append(f"· {r.get('type')}: ok")
+                                    else:
+                                        lines.append(f"· {r.get('type')}: {r.get('error')}")
+                                if go.get("context"):
+                                    lines.append("\n" + str(go["context"])[:3000])
+                                return self._json(
+                                    200,
+                                    {
+                                        "ok": True,
+                                        "text": "\n".join(lines),
+                                        "written": go.get("written") or [],
+                                        "project": proj,
+                                        "mode": "game_ops",
+                                        "instant": True,
+                                        "iterate": True,
+                                        "game_ops": go,
+                                    },
+                                )
+                    except Exception:
+                        pass
                 try:
                     patched = patchlib.try_patch(pdir, user_txt)
                 except Exception:
