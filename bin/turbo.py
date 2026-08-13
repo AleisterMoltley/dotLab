@@ -61,8 +61,9 @@ PACKS = {
     ],
     "vintage": ["vintage.md", "pixel-kit.md"],
     "ops": ["game-ops.md", "quality-pipeline.md"],
-    "systems": ["game-systems.md", "threejs-cheatsheet.md", "grok-toolkit.md"],
-    "three": ["threejs-advanced.md", "threejs-recipes.md", "threejs-ecosystem.md"],
+    "local_llm": ["local-llm-stack.md", "speed-without-quality-loss.md"],
+    "systems": ["game-systems.md", "threejs-cheatsheet.md", "grok-toolkit.md", "live/three-api.md"],
+    "three": ["threejs-advanced.md", "threejs-recipes.md", "threejs-ecosystem.md", "live/three-api.md"],
     "shader": ["shaders-glsl-tsl.md", "multipass.md"],
     "game": ["feel-tables.md", "game-patterns.md", "game-genres.md", "threejs-recipes.md", "ship-bar.md"],
     "fps": ["feel-tables.md", "skill-fps.md", "ship-bar.md", "combat-juice.md"],
@@ -71,11 +72,11 @@ PACKS = {
     "combat": ["feel-tables.md", "combat-juice.md"],
     "dialogue": ["dialogue-narrative.md"],
     "anim": ["threejs-animation.md"],
-    "art": ["asset-core.md", "tiles-ui.md", "pixel-kit.md"],
+    "art": ["asset-core.md", "tiles-ui.md", "pixel-kit.md", "live/pixel-api.md"],
     "seeker": ["solana-seeker.md"],
     "agent": ["agent-protocol.md"],
     "playtest": ["playtest-harness.md", "prefs-and-playtest.md", "pair-partner.md"],
-    "live": ["live/LATEST.md"],
+    "live": ["live/LATEST.md", "live/three-api.md", "live/pixel-api.md"],
 }
 
 # Cache /api/tags — resolve_tier used to hit Ollama every route call
@@ -95,6 +96,7 @@ ROUTES = [
     (r"slop|capsule|purple fog|silence on hit|generic|ai style", ["antislope", "core", "game"]),
     (r"vintage|game\s*boy|\bgba\b|\bgbc\b|\bdmg\b|handheld", ["vintage", "core", "game"]),
     (r"game.?ops|set_feel|set_flag|request_context|event protocol", ["ops", "core"]),
+    (r"ollama|local.?llm|model.?tier|turbo|warmup|bench|mlx|lora|quant", ["local_llm", "core"]),
     (r"platformer|runner|fps|tps|racing|rpg|card|idle|tower|genre|arena|horror|stealth|rhythm", ["game", "combat", "core", "three", "physics"]),
     (r"r3f|drei|postprocess|instanced|shadow|webgpu", ["three", "core"]),
     (r"tool call|write_file|agent|refactor", ["agent", "core", "three", "game"]),
@@ -133,15 +135,19 @@ def resolve_tier(tier: str) -> str:
         "flash": [
             "dotlab-flash",
             "gamemaster-flash",
+            "omnicoder:9b",
+            "qwen2.5-coder:14b",
             "qwen2.5-coder:7b",
             "dotlab",
             "gamemaster",
-            "qwen2.5-coder:14b",
         ],
         "max": [
             "dotlab",
             "gamemaster",
+            "qwen3-coder-next",
             "qwen3-coder:30b",
+            "devstral-2",
+            "devstral",
             "qwen2.5-coder:14b",
             "qwen2.5-coder:7b",
         ],
@@ -160,6 +166,74 @@ def resolve_tier(tier: str) -> str:
     return want
 
 
+def _rules_route(prompt: str) -> tuple[str, str]:
+    """Keyword tier routing (default). Returns (tier, reason)."""
+    p = prompt.lower()
+    if re.search(
+        r"\b(refactor|architect|security|hard bug|race condition|review|critic|audit|dense)\b",
+        p,
+    ):
+        return "dense", "hard-reasoning"
+    if re.search(
+        r"\b(complete game|multi.?agent|studio|vertical slice|from scratch|implement|write|scaffold|build|worldclaw|ragdoll|open.?world)\b",
+        p,
+    ):
+        return "max", "coding-build"
+    if re.search(
+        r"shader|glsl|wgsl|tsl|seeker|ragdoll|dialogue|npc|physics|three\.?js|gltf|"
+        r"combat|village|jump|camera|enemy|arena|runner|platform|feel|juice|"
+        r"pixel|sprite|tileset|"
+        r"\b(fix|collision|controller|player|game|world|tps|fps)\b",
+        p,
+    ):
+        return "max", "default-coding"
+    if len(prompt) < 100 and not re.search(
+        r"shader|glsl|game|world|ragdoll|dialogue|pixel|sprite|"
+        r"\b(code|function|class|file|bug|error)\b",
+        p,
+    ):
+        return "flash", "short-qa"
+    return "max", "default-coding"
+
+
+def _llm_route_tier(prompt: str) -> tuple[str, str] | None:
+    """
+    Optional tiny router (Arch-Router-style): flash model returns one of flash|max|dense.
+    Enable: DOTLAB_ROUTER=llm  (default remains rules-only).
+    """
+    if os.environ.get("DOTLAB_ROUTER", "rules").lower() not in ("llm", "1", "true", "on"):
+        return None
+    model = resolve_tier("flash")
+    try:
+        res = http_json(
+            "/api/chat",
+            {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You route coding tasks. Reply with ONLY one word: flash, max, or dense. "
+                            "flash=short QA; max=game code; dense=hard refactor/security."
+                        ),
+                    },
+                    {"role": "user", "content": (prompt or "")[:800]},
+                ],
+                "stream": False,
+                "format": "json",
+                "options": {"temperature": 0, "num_predict": 24, "num_ctx": 1024},
+            },
+            timeout=8.0,
+        )
+        text = ((res.get("message") or {}).get("content") or "").lower()
+        for tier in ("dense", "flash", "max"):
+            if tier in text:
+                return tier, f"llm-router:{model}"
+    except Exception:
+        return None
+    return None
+
+
 def route_task(prompt: str, mode: str = "auto") -> dict:
     """
     mode: auto | flash | max | dense
@@ -171,32 +245,12 @@ def route_task(prompt: str, mode: str = "auto") -> dict:
         reason = f"forced:{tier}"
     else:
         # dense first — never demote hard work to flash
-        if re.search(
-            r"\b(refactor|architect|security|hard bug|race condition|review|critic|audit|dense)\b",
-            p,
-        ):
-            tier, reason = "dense", "hard-reasoning"
-        elif re.search(
-            r"\b(complete game|multi.?agent|studio|vertical slice|from scratch|implement|write|scaffold|build|worldclaw|ragdoll|open.?world)\b",
-            p,
-        ):
-            tier, reason = "max", "coding-build"
-        elif re.search(
-            r"shader|glsl|wgsl|tsl|seeker|ragdoll|dialogue|npc|physics|three\.?js|gltf|"
-            r"combat|village|jump|camera|enemy|arena|runner|platform|feel|juice|"
-            r"pixel|sprite|tileset|"
-            r"\b(fix|collision|controller|player|game|world|tps|fps)\b",
-            p,
-        ):
-            tier, reason = "max", "default-coding"
-        elif len(prompt) < 100 and not re.search(
-            r"shader|glsl|game|world|ragdoll|dialogue|pixel|sprite|"
-            r"\b(code|function|class|file|bug|error)\b",
-            p,
-        ):
-            tier, reason = "flash", "short-qa"
-        else:
-            tier, reason = "max", "default-coding"
+        tier, reason = _rules_route(prompt)
+        # Optional LLM router only when rules said flash (avoid demoting hard work)
+        if tier == "flash":
+            llm = _llm_route_tier(prompt)
+            if llm and llm[0] in TIERS:
+                tier, reason = llm
 
     # ctx sizing — prefill is the wall-clock killer on local 30B
     if re.search(r"\b(whole project|entire codebase|all files|multipass|large|open.?world|worldclaw|complete game)\b", p):
@@ -250,31 +304,57 @@ def select_knowledge(prompt: str, max_chars: int = 14000) -> str:
     # whole-game briefs get the full systems stack
     if re.search(r"complete game|whole world|from scratch|vertical slice|studio build", p, re.I):
         pack_ids.extend(["world", "physics", "dialogue", "anim", "shader", "systems"])
-    # always core first, then routed domain, then systems/live
+    # always core first, then high-signal packs (ops/local_llm), then routed domain, then systems/live
     ordered: list[str] = []
-    for pid in ["core"] + pack_ids + ["systems", "live"]:
+    priority = [p for p in ("ops", "local_llm", "antislope", "vintage") if p in pack_ids]
+    for pid in ["core"] + priority + pack_ids + ["systems", "live"]:
         if pid not in ordered:
             ordered.append(pid)
 
     chunks: list[str] = []
     used = 0
+    seen_files: set[str] = set()
     per = max(1200, max_chars // max(1, len(ordered) + 1))
+
+    def _add_file(name: str, hard_cap: int | None = None) -> bool:
+        nonlocal used
+        if name in seen_files:
+            return True
+        path = KNOWLEDGE / name
+        if not path.exists():
+            return True
+        # Front-load craft packs; trim the rest harder
+        cap = hard_cap if hard_cap is not None else min(
+            per, 2800 if name in ("grok-craft.md", "brain.md", "feel-tables.md") else per
+        )
+        text = path.read_text(encoding="utf-8")[:cap]
+        block = f"## {name}\n{text}"
+        if used + len(block) > max_chars:
+            remain = max_chars - used
+            if remain > 400:
+                chunks.append(block[:remain])
+                seen_files.add(name)
+            return False
+        chunks.append(block)
+        seen_files.add(name)
+        used += len(block)
+        return True
+
+    # Guaranteed early inject for small high-signal packs (before fat core fills budget)
+    early: list[tuple[str, int]] = []
+    if "local_llm" in pack_ids:
+        early.append(("local-llm-stack.md", 2200))
+    if "ops" in pack_ids:
+        early.append(("game-ops.md", 1800))
+    # always lead with identity + ship-bar
+    for name, cap in (("identity.md", 1600), ("ship-bar.md", 1600), *early):
+        if not _add_file(name, hard_cap=cap):
+            return "\n\n".join(chunks)
+
     for pid in ordered:
         for name in PACKS.get(pid, []):
-            path = KNOWLEDGE / name
-            if not path.exists():
-                continue
-            # Front-load craft packs; trim the rest harder
-            cap = min(per, 2800 if name in ("grok-craft.md", "brain.md", "feel-tables.md") else per)
-            text = path.read_text(encoding="utf-8")[:cap]
-            block = f"## {name}\n{text}"
-            if used + len(block) > max_chars:
-                remain = max_chars - used
-                if remain > 400:
-                    chunks.append(block[:remain])
+            if not _add_file(name):
                 return "\n\n".join(chunks)
-            chunks.append(block)
-            used += len(block)
     return "\n\n".join(chunks)
 
 
@@ -440,11 +520,40 @@ def status() -> None:
         print(f"  tier {t:5} → {resolve_tier(t)}")
     print("  OLLAMA_FLASH_ATTENTION=", os.environ.get("OLLAMA_FLASH_ATTENTION", "(unset)"))
     print("  OLLAMA_KEEP_ALIVE=", os.environ.get("OLLAMA_KEEP_ALIVE", "(unset)"))
+    print("  DOTLAB_ROUTER=", os.environ.get("DOTLAB_ROUTER", "rules"))
+    print("  DOTLAB_BULLSHIT=", os.environ.get("DOTLAB_BULLSHIT", "1"))
+    print("  DOTLAB_SANDBOX=", os.environ.get("DOTLAB_SANDBOX", "0"))
     try:
         http_json("/api/tags")
         print("  ollama: online")
     except Exception as e:
         print(f"  ollama: offline ({e})")
+    # llmfit-style hardware + model matrix
+    try:
+        import models_catalog as mcat
+
+        print(mcat.format_status_block())
+    except Exception as e:
+        print(f"  hardware-fit: ({e})")
+    # bench age
+    bench = ROOT / "config" / "bench-latest.json"
+    if bench.is_file():
+        try:
+            data = json.loads(bench.read_text(encoding="utf-8"))
+            age_h = (time.time() - float(data.get("ts") or 0)) / 3600
+            print(f"  bench-latest: {age_h:.1f}h ago · {bench}")
+        except Exception:
+            print(f"  bench-latest: present")
+    else:
+        print("  bench-latest: missing (run: gamemaster turbo bench)")
+    # live docs
+    try:
+        import live_docs as ld
+
+        st = ld.status()
+        print(f"  live-docs: three={st.get('three')} pixel={st.get('pixel')}")
+    except Exception:
+        pass
 
 
 def main() -> int:

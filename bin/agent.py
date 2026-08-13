@@ -448,6 +448,11 @@ def tool_run(project: Path, cmd: str) -> str:
     if not ok:
         seclib.audit(project, "run_denied", {"cmd": cmd[:200], "reason": reason})
         return f"ERROR: {reason}"
+    # Hardened sandbox path (DOTLAB_SANDBOX=1)
+    if seclib.sandbox_enabled():
+        code, out = seclib.run_in_sandbox(cmd, cwd=project.resolve(), timeout=120)
+        seclib.audit(project, "run_sandbox", {"cmd": cmd[:200], "code": code})
+        return out if out.strip() else f"(exit {code})"
     # scrub env: do not pass cloud keys into child processes
     env = os.environ.copy()
     for k in list(env.keys()):
@@ -666,6 +671,14 @@ def main() -> int:
             knowledge += "\n\n" + golib.OPS_INSTRUCTION
         except Exception:
             pass
+        try:
+            import reasoning_bank as rbank
+
+            rbk = rbank.prompt_block(project, task, k=3, max_chars=1800)
+            if rbk:
+                knowledge = (knowledge + "\n\n" + rbk) if knowledge else rbk
+        except Exception:
+            pass
     except Exception:
         pass
     route = {"model": model, "num_ctx": 16384, "num_predict": 6144, "temperature": 0.18, "tier": "max"}
@@ -766,10 +779,28 @@ def main() -> int:
 
                     vr = verifylib.evaluate(project)
                     print(vr["report"])
+                    try:
+                        import reasoning_bank as rbank
+
+                        rbank.record_verify(project, vr)
+                    except Exception:
+                        pass
                     if vr.get("p0_fail") and not verify_repair_used:
                         verify_repair_used = True
                         print("  ⚠ verify P0 — one repair pass")
-                        result_chunks.append(verifylib.repair_prompt(vr))
+                        bank_ctx = ""
+                        try:
+                            import reasoning_bank as rbank
+
+                            bank_ctx = rbank.prompt_block(
+                                project, " ".join(str(x) for x in (vr.get("p0_fail") or [])), k=4
+                            )
+                        except Exception:
+                            pass
+                        result_chunks.append(
+                            verifylib.repair_prompt(vr)
+                            + ("\n\n" + bank_ctx if bank_ctx else "")
+                        )
                         break
                 except Exception as e:
                     print(f"  ⚠ verify skipped: {e}")

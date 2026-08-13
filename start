@@ -66,6 +66,18 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/engine_ops.py" "$@" ;;
     game-ops|ops)
       shift; exec python3 "$ROOT/bin/game_ops.py" "$@" ;;
+    models|model)
+      shift; exec python3 "$ROOT/bin/models_catalog.py" "$@" ;;
+    bank|reasoning-bank)
+      shift; exec python3 "$ROOT/bin/reasoning_bank.py" "$@" ;;
+    bullshit|gate-check)
+      shift; exec python3 "$ROOT/bin/bullshit.py" "$@" ;;
+    redteam)
+      shift; exec python3 "$ROOT/bin/redteam.py" "$@" ;;
+    live-docs|livedocs)
+      shift; exec python3 "$ROOT/bin/live_docs.py" "$@" ;;
+    lora)
+      shift; exec python3 "$ROOT/bin/lora_ops.py" "$@" ;;
     ship)
       shift; exec python3 "$ROOT/bin/github.py" ship "$@" ;;
     cloud)

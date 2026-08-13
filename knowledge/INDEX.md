@@ -47,7 +47,10 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 | `vintage.md` | Vintage mode: GB ship bar, GBA ceiling |
 | `engine-kits.md` | Host kits + buttons per engine |
 | `game-ops.md` | Typed events: LLM proposes, host applies |
+| `local-llm-stack.md` | model matrix, hardware-fit, sandbox, LoRA export, mlx notes |
 | `live/LATEST.md` | auto npm versions |
+| `live/three-api.md` | compact Three.js crib (live-docs) |
+| `live/pixel-api.md` | compact pixel/Canvas crib (live-docs) |
 | `speed-without-quality-loss.md` | turbo philosophy (human + env docs; not auto-routed) |
 | `gap-analysis.md` | studio vs cloud gaps (human; not auto-routed) |
 | `market-leader-playbook.md` | product strategy (human; not auto-routed) |

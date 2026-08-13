@@ -25,6 +25,9 @@ EMBED_MODEL = (
     or os.environ.get("GAMEMASTER_EMBED")
     or "nomic-embed-text"
 )
+# Optional Ollama reranker tag (Qwen3-Reranker etc.). Empty = local lexical rerank only.
+RERANK_MODEL = (os.environ.get("DOTLAB_RERANK") or os.environ.get("GAMEMASTER_RERANK") or "").strip()
+RERANK_CANDIDATES = int(os.environ.get("DOTLAB_RERANK_CANDIDATES", "12"))
 
 SKIP = frozenset(
     {"node_modules", ".git", "dist", "build", ".vite", ".dotlab", ".gamemaster", "craft"}
@@ -204,6 +207,77 @@ def load_index() -> dict[str, Any]:
         return {"chunks": [], "count": 0}
 
 
+def _lexical_rerank(query: str, candidates: list[tuple[float, dict]]) -> list[tuple[float, dict]]:
+    """Cross-score query tokens against candidate text (cheap local rerank)."""
+    q_bow = _bow(query)
+    if not q_bow:
+        return candidates
+    out: list[tuple[float, dict]] = []
+    for base, ch in candidates:
+        text_bow = ch.get("bow") or _bow(str(ch.get("text") or "")[:1500])
+        # overlap density
+        overlap = _cos(q_bow, text_bow)
+        # exact path/name boosts
+        blob = f"{ch.get('path')} {ch.get('name')} {ch.get('genre')}".lower()
+        boost = 0.0
+        for tok in list(q_bow.keys())[:20]:
+            if tok in blob:
+                boost += 0.02
+        out.append((base * 0.55 + overlap * 0.4 + boost, ch))
+    out.sort(key=lambda x: x[0], reverse=True)
+    return out
+
+
+def _ollama_rerank(query: str, candidates: list[tuple[float, dict]], k: int) -> list[tuple[float, dict]] | None:
+    """Best-effort model rerank if DOTLAB_RERANK is set (many tags won't support it)."""
+    if not RERANK_MODEL or not candidates:
+        return None
+    # Ask model to order indices — fragile; fall back on failure
+    snippets = []
+    for i, (_, ch) in enumerate(candidates[:RERANK_CANDIDATES]):
+        snippets.append(f"[{i}] {(ch.get('text') or '')[:280]}")
+    prompt = (
+        f"Query: {query[:400]}\n\nPassages:\n"
+        + "\n".join(snippets)
+        + "\n\nReturn JSON {\"order\":[best_index,...]} with the best passages first."
+    )
+    try:
+        res = ollama_json(
+            "/api/chat",
+            {
+                "model": RERANK_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "format": "json",
+                "options": {"temperature": 0, "num_predict": 120, "num_ctx": 4096},
+            },
+            timeout=30,
+        )
+        text = (res.get("message") or {}).get("content") or "{}"
+        data = json.loads(text) if isinstance(text, str) else {}
+        order = data.get("order") if isinstance(data, dict) else None
+        if not isinstance(order, list):
+            return None
+        remapped: list[tuple[float, dict]] = []
+        seen: set[int] = set()
+        for rank, idx in enumerate(order):
+            try:
+                i = int(idx)
+            except (TypeError, ValueError):
+                continue
+            if i < 0 or i >= len(candidates) or i in seen:
+                continue
+            seen.add(i)
+            base, ch = candidates[i]
+            remapped.append((base + (len(order) - rank) * 0.01, ch))
+        for i, pair in enumerate(candidates):
+            if i not in seen:
+                remapped.append(pair)
+        return remapped[:k] if remapped else None
+    except Exception:
+        return None
+
+
 def retrieve(query: str, *, k: int = 3, genre: str = "") -> list[dict[str, Any]]:
     data = load_index()
     chunks = list(data.get("chunks") or [])
@@ -236,8 +310,15 @@ def retrieve(query: str, *, k: int = 3, genre: str = "") -> list[dict[str, Any]]
         s += min(0.1, (int(ch.get("verify_score") or 0) / 1000.0))
         scored.append((s, ch))
     scored.sort(key=lambda x: x[0], reverse=True)
+    # two-stage: take top-N then rerank
+    pool = scored[: max(k * 4, RERANK_CANDIDATES)]
+    reranked = _ollama_rerank(query, pool, k=max(k * 2, 6))
+    if reranked is None:
+        pool = _lexical_rerank(query, pool)
+    else:
+        pool = reranked
     out = []
-    for s, ch in scored[:k]:
+    for s, ch in pool[:k]:
         out.append(
             {
                 "score": round(s, 4),
@@ -245,6 +326,7 @@ def retrieve(query: str, *, k: int = 3, genre: str = "") -> list[dict[str, Any]]
                 "project": ch.get("name") or ch.get("project"),
                 "genre": ch.get("genre"),
                 "text": ch.get("text"),
+                "rerank": bool(RERANK_MODEL) or True,
             }
         )
     return out

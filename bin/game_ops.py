@@ -129,8 +129,48 @@ _JSON_ARR = re.compile(r"\[[\s\S]*\]")
 _JSON_OBJ = re.compile(r"\{[\s\S]*\}")
 
 
-def extract_ops(text: str) -> list[dict[str, Any]]:
-    """Pull ops array from model text (fenced or bare)."""
+def validate_op(op: dict[str, Any]) -> tuple[bool, str]:
+    """Strict schema gate before apply (unknown types / bad shapes rejected)."""
+    if not isinstance(op, dict):
+        return False, "op must be object"
+    otype = str(op.get("type") or "").strip().lower()
+    if otype not in OP_TYPES:
+        return False, f"unknown type:{otype or '?'}"
+    if otype == "set_feel":
+        keys = [k for k in op if k != "type"]
+        if not keys:
+            return False, "set_feel needs keys"
+        if not any(k in FEEL_KEYS for k in keys):
+            return False, "set_feel: no valid feel keys"
+    if otype == "set_counts":
+        if not any(k in op for k in ("enemyCount", "coinCount", "hazardCount", "roomCount", "juice", "density")):
+            return False, "set_counts: no count fields"
+    if otype in ("lock", "unlock"):
+        if not str(op.get("path") or op.get("field") or "").strip():
+            return False, f"{otype}: path required"
+    if otype == "set_flag":
+        if not str(op.get("flag") or op.get("id") or "").strip():
+            return False, "set_flag: flag required"
+    if otype == "set_engine":
+        eng = str(op.get("engine") or op.get("id") or "").lower()
+        if eng not in ("three", "pixel", "vintage"):
+            return False, "set_engine: three|pixel|vintage"
+    if otype == "request_context":
+        topics = op.get("topics") or op.get("topic")
+        if topics is None:
+            return False, "request_context: topics required"
+    if otype == "note" and not str(op.get("text") or "").strip():
+        return False, "note: text required"
+    # Reject dangerous extra keys that look like code-exec
+    banned = ("eval", "exec", "shell", "cmd", "__proto__", "constructor")
+    for k in op:
+        if str(k).lower() in banned:
+            return False, f"banned key:{k}"
+    return True, ""
+
+
+def extract_ops(text: str, *, strict: bool = True) -> list[dict[str, Any]]:
+    """Pull ops array from model text (fenced or bare). Strict drops invalid ops."""
     raw = (text or "").strip()
     if not raw:
         return []
@@ -140,21 +180,49 @@ def extract_ops(text: str) -> list[dict[str, Any]]:
     m = _JSON_ARR.search(text or "")
     if m:
         candidates.insert(0, m.group(0))
+    ops: list[dict[str, Any]] = []
     for c in candidates:
         try:
             data = json.loads(c)
         except Exception:
             continue
         if isinstance(data, list):
-            return [x for x in data if isinstance(x, dict)]
+            ops = [x for x in data if isinstance(x, dict)]
+            break
         if isinstance(data, dict):
             if "type" in data:
-                return [data]
+                ops = [data]
+                break
             if isinstance(data.get("ops"), list):
-                return [x for x in data["ops"] if isinstance(x, dict)]
+                ops = [x for x in data["ops"] if isinstance(x, dict)]
+                break
             if isinstance(data.get("events"), list):
-                return [x for x in data["events"] if isinstance(x, dict)]
-    return []
+                ops = [x for x in data["events"] if isinstance(x, dict)]
+                break
+    if not strict:
+        return ops
+    good: list[dict[str, Any]] = []
+    for op in ops:
+        ok, _ = validate_op(op)
+        if ok:
+            # normalize type casing
+            op = dict(op)
+            op["type"] = str(op.get("type") or "").strip().lower()
+            good.append(op)
+    return good
+
+
+# Ollama structured-output schema hint (models may ignore)
+OPS_JSON_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "type": {"type": "string", "enum": list(OP_TYPES)},
+        },
+        "required": ["type"],
+    },
+}
 
 
 # ── Locks / flags / audit ───────────────────────────────────────────────
@@ -577,6 +645,10 @@ def apply_ops(
     for op in ops[:40]:
         if not isinstance(op, dict):
             results.append({"ok": False, "error": "op not object"})
+            continue
+        ok_s, err_s = validate_op(op)
+        if not ok_s:
+            results.append({"ok": False, "type": op.get("type"), "error": err_s})
             continue
         try:
             r = apply_one(project, op, spec)

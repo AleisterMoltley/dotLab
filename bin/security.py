@@ -229,6 +229,90 @@ def run_allowed(cmd: str) -> tuple[bool, str]:
     )
 
 
+def sandbox_enabled() -> bool:
+    return os.environ.get("DOTLAB_SANDBOX", "0").lower() in ("1", "true", "on", "yes")
+
+
+def sandbox_env(base: dict[str, str] | None = None) -> dict[str, str]:
+    """
+    Hardened env for agent `run` when DOTLAB_SANDBOX=1.
+    No cloud keys, no home write hints; keep PATH for node/npm.
+    """
+    src = base if base is not None else dict(os.environ)
+    keep_prefixes = ("PATH", "HOME", "USER", "TMPDIR", "TMP", "TEMP", "LANG", "LC_", "TERM", "NODE_", "npm_", "NPM_")
+    out: dict[str, str] = {}
+    for k, v in src.items():
+        if k in ("PATH", "HOME", "USER", "TMPDIR", "TMP", "TEMP", "LANG", "TERM", "SHELL"):
+            out[k] = v
+            continue
+        if k.startswith("LC_") or k.startswith("NODE") or k.startswith("npm_") or k.startswith("NPM_"):
+            out[k] = v
+            continue
+        # strip secrets / cloud
+        low = k.lower()
+        if any(s in low for s in ("key", "token", "secret", "password", "credential", "openai", "anthropic", "xai", "gemini")):
+            continue
+        if k.startswith("DOTLAB_") or k.startswith("GAMEMASTER_") or k.startswith("OLLAMA"):
+            # allow ollama host only
+            if k in ("OLLAMA_HOST", "DOTLAB_SANDBOX"):
+                out[k] = v
+            continue
+    out.setdefault("PATH", src.get("PATH", "/usr/bin:/bin:/usr/local/bin"))
+    out["DOTLAB_SANDBOX"] = "1"
+    # block network-ish tools via env marker (agent still uses allowlist)
+    out["DOTLAB_NO_NET"] = "1"
+    return out
+
+
+def run_in_sandbox(
+    cmd: str,
+    *,
+    cwd: Path,
+    timeout: float = 60.0,
+) -> tuple[int, str]:
+    """
+    Execute allowlisted command with stripped env + cwd jail.
+    Still relies on run_allowed — sandbox is defense in depth, not a container.
+    """
+    import subprocess
+    import shlex
+
+    ok, reason = run_allowed(cmd)
+    if not ok:
+        return 1, f"ERROR security: {reason}"
+    cwd = Path(cwd).expanduser().resolve()
+    env = sandbox_env() if sandbox_enabled() else None
+    try:
+        # Prefer list form when simple; shell only for npm run scripts with &&
+        if "&&" in cmd or cmd.startswith("npm "):
+            proc = subprocess.run(
+                cmd,
+                shell=True,
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=env,
+            )
+        else:
+            parts = shlex.split(cmd)
+            proc = subprocess.run(
+                parts,
+                shell=False,
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=env,
+            )
+        out = (proc.stdout or "") + (proc.stderr or "")
+        return proc.returncode, out[-12000:]
+    except subprocess.TimeoutExpired:
+        return 1, "ERROR: command timed out (sandbox)"
+    except Exception as e:
+        return 1, f"ERROR: {e}"
+
+
 # ── Write jail ──────────────────────────────────────────────────────────
 
 BLOCKED_WRITE_NAMES = frozenset(

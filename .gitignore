@@ -39,3 +39,4 @@ config/lora-pairs/
 config/slice-rag/
 config/.warmup-ok
 config/golden-screens/
+config/reasoning-bank/

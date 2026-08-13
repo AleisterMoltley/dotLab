@@ -51,17 +51,34 @@ FLASH_MODEL = (
     or "dotlab-flash"
 )
 
-# After rebrand: prefer new tags, accept legacy weights already on disk
+# After rebrand: prefer new tags, accept legacy weights already on disk.
+# Order = resolve preference when preferred tag missing (Qwen3-Coder-Next / Devstral first).
 MODEL_FALLBACKS = (
     "dotlab",
     "gamemaster",
+    "qwen3-coder-next",
     "qwen3-coder:30b",
+    "devstral-2",
+    "devstral",
     "qwen2.5-coder:32b",
     "qwen2.5-coder:14b",
     "qwen2.5-coder:7b",
 )
-DENSE_FALLBACKS = ("dotlab-dense", "gamemaster-dense", "qwen2.5-coder:32b", "gamemaster", "dotlab")
-FLASH_FALLBACKS = ("dotlab-flash", "gamemaster-flash", "qwen2.5-coder:7b", "qwen2.5-coder:14b")
+DENSE_FALLBACKS = (
+    "dotlab-dense",
+    "gamemaster-dense",
+    "qwen2.5-coder:32b",
+    "qwen3-coder:30b",
+    "gamemaster",
+    "dotlab",
+)
+FLASH_FALLBACKS = (
+    "dotlab-flash",
+    "gamemaster-flash",
+    "omnicoder:9b",
+    "qwen2.5-coder:14b",
+    "qwen2.5-coder:7b",
+)
 
 GAME_GITIGNORE = """# dotLab game
 node_modules/

@@ -786,6 +786,39 @@ class Handler(SimpleHTTPRequestHandler):
                     user_txt = str(m.get("content") or "")
                     break
             # Instant craft path — most continues never touch the 30B
+            if user_txt.strip():
+                # Bullshit gate (host) before any model work
+                try:
+                    import bullshit as bslib
+
+                    if bslib.enabled():
+                        gate = bslib.check(user_txt, strict=False)
+                        if gate.get("action") == "block":
+                            return self._json(
+                                200,
+                                {
+                                    "ok": True,
+                                    "text": gate.get("message")
+                                    or "That request was blocked.",
+                                    "mode": "bullshit_gate",
+                                    "instant": True,
+                                    "gate": gate,
+                                },
+                            )
+                        if gate.get("action") == "challenge" and len(user_txt) < 40:
+                            return self._json(
+                                200,
+                                {
+                                    "ok": True,
+                                    "text": gate.get("message")
+                                    or "Please clarify the game change.",
+                                    "mode": "bullshit_gate",
+                                    "instant": True,
+                                    "gate": gate,
+                                },
+                            )
+                except Exception:
+                    pass
             if pdir and pdir.is_dir() and user_txt.strip():
                 # Game ops JSON array → host apply (UPF-style)
                 if "[" in user_txt and ("set_feel" in user_txt or '"type"' in user_txt):

@@ -176,6 +176,24 @@ def role_director(
     import identity as identitylib
     import quality as qualitylib
 
+    # Bullshit gate — refuse nonsense briefs early
+    try:
+        import bullshit as bslib
+
+        if bslib.enabled():
+            gate = bslib.check(brief, strict=False)
+            if gate.get("action") == "block":
+                return (
+                    f"# Director\n\n**Blocked:** {gate.get('message')}\n\n"
+                    "Provide a real game brief (genre, verb, feel).\n"
+                )
+            if gate.get("action") == "challenge":
+                return (
+                    f"# Director\n\n**Need clarity:** {gate.get('message')}\n"
+                )
+    except Exception:
+        pass
+
     knowledge = load_pack(
         "identity.md",
         "craft-taste.md",
@@ -730,11 +748,29 @@ def pipeline_build(
         vr = verifylib.evaluate(project)
         write_session(project, "03b-verify.txt", vr["report"])
         print(vr["report"])
+        try:
+            import reasoning_bank as rbank
+
+            rbank.record_verify(project, vr)
+        except Exception:
+            pass
         if vr.get("p0_fail"):
             banner("🔧 VERIFY REPAIR (P0)")
+            bank_ctx = ""
+            try:
+                import reasoning_bank as rbank
+
+                bank_ctx = rbank.prompt_block(
+                    project, " ".join(str(x) for x in (vr.get("p0_fail") or [])), k=4
+                )
+            except Exception:
+                pass
             repair_out = run_coder_agent(
                 project,
-                verifylib.repair_prompt(vr) + "\n" + qualitylib.CODER_PATCH_INSTRUCTION,
+                verifylib.repair_prompt(vr)
+                + "\n"
+                + qualitylib.CODER_PATCH_INSTRUCTION
+                + ("\n\n" + bank_ctx if bank_ctx else ""),
                 model,
                 steps=10,
             )

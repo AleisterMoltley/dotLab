@@ -36,6 +36,9 @@ dotLab — local Three.js game studio (Ollama, $0)
   gamemaster playtest -p DIR [--critic] [--duration SEC]
   gamemaster prefs show|set|forget|from-critic|prompt [-p DIR]
   gamemaster turbo status|warmup|bench
+  gamemaster models recommend|list|gate
+  gamemaster bank show|prompt|record -p DIR
+  gamemaster redteam | bullshit "…" | live-docs refresh | lora export
   gamemaster intervene [--status|--warmup|--modelfile-only]
   gamemaster update [--quick|--knowledge|--modelfile]
   gamemaster github login|status|logout|commit|push|ship -p DIR
@@ -296,6 +299,30 @@ if [[ $# -gt 0 ]]; then
     turbo)
       shift
       exec python3 "$ROOT/bin/turbo.py" "$@"
+      ;;
+    models|model)
+      shift
+      exec python3 "$ROOT/bin/models_catalog.py" "$@"
+      ;;
+    bank|reasoning-bank)
+      shift
+      exec python3 "$ROOT/bin/reasoning_bank.py" "$@"
+      ;;
+    bullshit|gate-check)
+      shift
+      exec python3 "$ROOT/bin/bullshit.py" "$@"
+      ;;
+    redteam)
+      shift
+      exec python3 "$ROOT/bin/redteam.py" "$@"
+      ;;
+    live-docs|livedocs)
+      shift
+      exec python3 "$ROOT/bin/live_docs.py" "$@"
+      ;;
+    lora)
+      shift
+      exec python3 "$ROOT/bin/lora_ops.py" "$@"
       ;;
     intervene|install-local|grok-local)
       shift

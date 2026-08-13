@@ -1277,12 +1277,13 @@ def draft_then_max(
 ) -> str:
     """
     Host speculative: flash drafts, max refines (or accepts short draft if already complete).
-    mode: code|json|text
+    mode: code|json|text — json forces Ollama format=json when local.
     """
     from cloud import chat as llm_chat
 
     flash = flash_model or draft_model_tag()
     target = max_model or DEFAULT_MODEL
+    fmt = "json" if mode == "json" else None
     if not use_speculative() or flash == target:
         return llm_chat(
             messages,
@@ -1290,6 +1291,7 @@ def draft_then_max(
             temperature=temperature,
             num_predict=num_predict,
             num_ctx=num_ctx,
+            response_format=fmt,
         )
 
     draft_msgs = list(messages)
@@ -1306,6 +1308,7 @@ def draft_then_max(
         temperature=min(0.35, temperature + 0.1),
         num_predict=min(num_predict, 2048 if mode == "json" else 3072),
         num_ctx=min(num_ctx, 8192),
+        response_format=fmt,
     )
     # Accept draft early for clean JSON
     if mode == "json":
@@ -1332,6 +1335,7 @@ def draft_then_max(
         temperature=temperature,
         num_predict=num_predict,
         num_ctx=num_ctx,
+        response_format=fmt,
     )
 
 

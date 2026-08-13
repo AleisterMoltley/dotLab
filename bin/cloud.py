@@ -293,8 +293,12 @@ def ollama_chat(
     tier: str = "max",
     speculative: bool | None = None,
     keep_alive: str | None = None,
+    response_format: str | dict | None = None,
 ) -> str:
-    """Local Ollama chat with stable keep-alive + optional draft field."""
+    """Local Ollama chat with stable keep-alive + optional draft field.
+
+    response_format: Ollama `format` — \"json\" or a JSON schema object for structured outs.
+    """
     # Strip volatile system lines so prompt-prefix can be reused by the runner
     try:
         import quality as qualitylib
@@ -334,6 +338,8 @@ def ollama_chat(
         }
     if keep_alive:
         extra["keep_alive"] = keep_alive
+    if response_format is not None:
+        extra["format"] = response_format
     payload = {
         "model": model or DEFAULT_MODEL,
         "messages": messages,
@@ -415,6 +421,7 @@ def chat(
     provider: str | None = None,
     tier: str = "max",
     speculative: bool | None = None,
+    response_format: str | dict | None = None,
 ) -> str:
     """Route to opted-in cloud provider, else Ollama."""
     name = (provider or active_provider() or "").strip().lower()
@@ -428,6 +435,7 @@ def chat(
         num_ctx,
         tier=tier,
         speculative=speculative,
+        response_format=response_format,
     )
 
 
