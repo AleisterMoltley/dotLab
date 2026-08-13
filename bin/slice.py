@@ -274,6 +274,38 @@ _FEEL_DEFAULT = dict(
 )
 
 
+def _count_enemies(loop: str, eng: str) -> int:
+    """Never ship a verb with nobody to play against."""
+    n = {
+        "shoot": 4 if eng == "vintage" else 8,
+        "race": 3,
+        "jump": 2,
+        "sneak": 1,
+        "talk": 0,  # NPC is the opposition
+        "run": 0,  # hazards
+        "collect": 2,
+    }.get(loop, 2)
+    return n
+
+
+def _count_coins(loop: str, eng: str) -> int:
+    if loop == "race":
+        return 4
+    if loop in ("jump", "talk", "collect", "sneak"):
+        return 6 if eng != "vintage" else min(8, 6)
+    return 0
+
+
+def _count_hazards(loop: str) -> int:
+    if loop == "run":
+        return 8
+    if loop == "jump":
+        return 3
+    if loop == "sneak":
+        return 2
+    return 0
+
+
 def infer_engine(prompt: str, explicit: str | None = None) -> str:
     """three | pixel | vintage (GB ship bar, GBA ceiling)."""
     if explicit in ENGINES:
@@ -511,19 +543,22 @@ def compile_prompt(
         "feel": feel,
         "seed": seed,
         "kind": kind,
-        "enemyCount": (
-            min(4, 8 if loop == "shoot" else 0)
-            if eng == "vintage"
-            else (8 if loop == "shoot" else (1 if loop == "sneak" else 0))
-        ),
-        "coinCount": min(8, 6 if loop in ("jump", "talk", "collect") else 0) if eng == "vintage" else (6 if loop in ("jump", "talk", "collect") else 0),
-        "hazardCount": 8 if loop == "run" else 0,
+        "enemyCount": _count_enemies(loop, eng),
+        "coinCount": _count_coins(loop, eng),
+        "hazardCount": _count_hazards(loop),
+        "roomCount": 4 if loop == "race" else 1,
         "density": 1.0,
         "juice": 0.85 if eng == "vintage" else 1.0,
         "shipBar": ship,
     }
     if vcfg:
         spec["vintage"] = vcfg
+    try:
+        import rlm as rlmlib
+
+        spec = rlmlib.stamp_spec(spec)
+    except Exception:
+        spec["floor"] = "v1"
     return spec
 
 
@@ -1178,6 +1213,7 @@ Living facts for this game. One bullet + **Why:**. Loaded into every Studio/Agen
 - Genre: {genre}. **Why:** compiled from the player prompt.
 - Setting: {spec["setting"]}. **Why:** the place the prompt asked for.
 - Verb at t=8s: {spec["verb"]}. **Why:** completeness law.
+- Pillars: {", ".join(p.get("pillar","") for p in (spec.get("pillars") or [])) or "place body verb opposition juice"}. **Why:** a missing pillar is a toy.
 - Loop: {spec["loop"]} · camera: {spec["camera"]}. **Why:** genre table.
 - Palette: {hexes}. **Why:** locked hexes, do not reroll.
 - Prompt: {spec["prompt"]}. **Why:** source of truth.

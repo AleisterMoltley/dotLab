@@ -126,6 +126,23 @@ export function createGame({ genre, title }) {
         hp: 1,
       });
     }
+  } else if (SPEC.loop === 'race') {
+    // vertical track + rivals (not a plaza)
+    solids.push({ x: 0, y: 0, w: 16, h: 720 }, { x: 304, y: 0, w: 16, h: 720 });
+    solids.push({ x: 0, y: 0, w: 320, h: 10 }, { x: 0, y: 700, w: 320, h: 20 });
+    for (let i = 0; i < Math.max(4, SPEC.coinCount || 4); i++) {
+      coins.push({ x: 40 + (i % 2) * 180, y: 80 + i * 90, got: false, gate: true });
+    }
+    for (let i = 0; i < Math.max(3, SPEC.enemyCount || 3); i++) {
+      foes.push({
+        x: 50 + i * 70,
+        y: 140 + i * 40,
+        vx: 0,
+        vy: -28 - i * 6,
+        hp: 1,
+        rival: true,
+      });
+    }
   } else {
     // top-down room
     solids.push({ x: 0, y: 0, w: 400, h: 16 }, { x: 0, y: 200, w: 400, h: 16 });

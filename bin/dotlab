@@ -42,6 +42,8 @@ dotLab — local Three.js game studio (Ollama, $0)
   gamemaster ship -p DIR -m "vertical slice"
   gamemaster wiki show|add|map|prompt -p DIR
   gamemaster kit todo|art-test|feel|verify|pixel -p DIR
+  gamemaster skills list|suggest|route|card|check
+  gamemaster rlm -p DIR "deepen the slice"
   gamemaster verify -p DIR
   gamemaster cloud status|on|off|set   # optional paid Grok/Claude/OpenAI/Gemini
 
@@ -328,6 +330,14 @@ if [[ $# -gt 0 ]]; then
     kit)
       shift
       exec python3 "$ROOT/bin/kit.py" "$@"
+      ;;
+    skills|skill)
+      shift
+      exec python3 "$ROOT/bin/skills.py" "$@"
+      ;;
+    rlm)
+      shift
+      exec python3 "$ROOT/bin/rlm.py" "$@"
       ;;
     verify|score)
       shift

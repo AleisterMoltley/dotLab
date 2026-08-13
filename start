@@ -48,6 +48,10 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/wiki.py" "$@" ;;
     kit)
       shift; exec python3 "$ROOT/bin/kit.py" "$@" ;;
+    skills|skill)
+      shift; exec python3 "$ROOT/bin/skills.py" "$@" ;;
+    rlm)
+      shift; exec python3 "$ROOT/bin/rlm.py" "$@" ;;
     verify|score)
       shift; exec python3 "$ROOT/bin/verify.py" "$@" ;;
     quality)

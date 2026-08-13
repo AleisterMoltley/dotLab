@@ -45,10 +45,12 @@ Tools:
 - search → query: regex
 - run → cmd: short safe command
 - kit → action: todo_add|todo_done|todo_list|wiki_add|map|art_test|feel|verify|pixel
+- skills → action: route|suggest|list|card  task: juice the jump
 - done → summary: what + how to test
 
 Efficiency: Prefer game_ops for feel/counts/palette/room/flags. MAP/WIKI first · surgical apply_patch for code.
 Host owns craft/juice — do not rewrite CONFIG wholesale; use set_feel ops.
+Unknown tools do not exist. If HOST ROUTE says abstain, do not invent a skill.
 """
 
 
@@ -98,6 +100,10 @@ def parse_tool_body(body: str) -> dict:
             "events",
             "ops",
             "json",
+            "task",
+            "k",
+            "name",
+            "files",
         }
 
     while i < len(lines):
@@ -530,9 +536,25 @@ def run_tool(project: Path, name: str, args: dict) -> str:
             import kit as kitlib
 
             return kitlib.run_kit(project, args.get("action", ""), args)
+        if name in ("skills", "skill"):
+            import skills as skillslib
+
+            return skillslib.run_skills(
+                args.get("action") or "route",
+                args,
+            )
         if name == "done":
             return args.get("summary", "done")
-        return f"ERROR: unknown tool {name}"
+        hint = ""
+        try:
+            import skills as skillslib
+
+            hits = skillslib.suggest(name, k=3)
+            if hits:
+                hint = " — try: " + ", ".join(h["name"] for h in hits)
+        except Exception:
+            pass
+        return f"ERROR: unknown tool {name}{hint}"
     except Exception as e:
         return f"ERROR: {e}"
 
@@ -669,6 +691,18 @@ def main() -> int:
             import game_ops as golib
 
             knowledge += "\n\n" + golib.OPS_INSTRUCTION
+        except Exception:
+            pass
+        try:
+            import skills as skillslib
+
+            knowledge += "\n\n" + skillslib.prompt_block(task)
+        except Exception:
+            pass
+        try:
+            import rlm as rlmlib
+
+            knowledge += "\n\n" + rlmlib.prompt_block(project, task)
         except Exception:
             pass
         try:

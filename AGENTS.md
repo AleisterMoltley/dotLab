@@ -34,6 +34,8 @@ Modelfile       baked Ollama system prompt
 | New domain facts for the LLM | `knowledge/*.md` + add to `knowledge/INDEX.md` + `turbo.PACKS` |
 | Studio roles / pipeline | `bin/studio.py` (Director/Architect/Critic/pipelines) |
 | Agent tools | `bin/agent.py` (`parse_tools`, `run_tool`) |
+| Skill catalog / route-or-abstain | `bin/skills.py` + `knowledge/skills.md` |
+| Recursive LM (peek / sub) | `bin/rlm.py` + `knowledge/rlm.md` |
 | New project starter | `bin/scaffold.py` + optional `templates/<name>/` |
 | Prompt → playable slice | `bin/slice.py` + `templates/web-slice/game.js` |
 | Instant continue (feel/counts/palette) | `bin/patch.py` — no LLM |
@@ -87,6 +89,14 @@ Need Ollama only for: studio, agent, chat, `update --modelfile`, worlds generate
 1. Implement `bin/<verb>.py` with `main() -> int`.
 2. Add a `case` in `bin/dotlab` (alias `gamemaster`) **and** `start`.
 3. One line in the `gamemaster -h` usage block.
+4. If an agent or user should be able to *find* it, add a skill in `bin/skills.py` (`catalog()`) with aliases + a runnable example. `python3 bin/skills.py check` must stay green.
+
+## How to add a skill
+
+1. One `_skill(...)` in `bin/skills.py` `catalog()`.
+2. Aliases are the phrases a user would actually type (`juice the jump`, not the identifier).
+3. If it is an agent tool, handle it in `agent.run_tool` and list it in `skills.AGENT_TOOLS`.
+4. `python3 tests/run.py` — route tests must still abstain on nonsense.
 
 ## Style
 

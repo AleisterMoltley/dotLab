@@ -357,6 +357,31 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(code, data)
         return True
 
+    def _skills(self, method: str, path: str, raw: bytes) -> None:
+        body: dict = {}
+        if method == "POST":
+            try:
+                body = json.loads((raw or b"{}").decode() or "{}")
+            except json.JSONDecodeError:
+                body = {}
+        else:
+            qs = parse_qs(urlparse(self.path).query)
+            if qs.get("q"):
+                body["q"] = qs["q"][0]
+            if qs.get("task"):
+                body["task"] = qs["task"][0]
+            if qs.get("name"):
+                body["name"] = qs["name"][0]
+            if qs.get("k"):
+                body["k"] = qs["k"][0]
+        try:
+            import skills as skillslib
+
+            code, data = skillslib.handle_http(method, path, body)
+        except Exception as e:
+            code, data = 500, {"ok": False, "error": str(e)}
+        self._json(code, data)
+
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -440,6 +465,8 @@ class Handler(SimpleHTTPRequestHandler):
             if not pdir.is_dir():
                 return self._json(400, {"ok": False, "error": "not a folder"})
             return self._json(200, ops.agent_status(pdir))
+        if path == "/api/skills" or path.startswith("/api/skills/"):
+            return self._skills("GET", path, b"")
         if path in ("/api/health", "/api/cloud"):
             if path == "/api/health":
                 return self._json(200, health_payload())
@@ -751,6 +778,8 @@ class Handler(SimpleHTTPRequestHandler):
         body = self.rfile.read(length) if length else b"{}"
         if path.startswith("/api/projects"):
             return self._projects_post(path, body)
+        if path == "/api/skills" or path.startswith("/api/skills/"):
+            return self._skills("POST", path, body)
         if path == "/api/cloud":
             try:
                 payload = json.loads(body.decode() or "{}")

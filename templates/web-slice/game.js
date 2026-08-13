@@ -245,32 +245,35 @@ export function createGame({ genre, title }) {
     else if (loop === 'race') tickRace(dt);
     else if (loop === 'sneak') tickSneak(dt);
     else tickTalk(dt);
+    if (loop !== 'shoot' && actors.enemies && actors.enemies.length) tickThreat(dt);
   }
 
-  function tickShoot(dt) {
-    let alive = 0;
+  function tickThreat(dt) {
     for (const e of actors.enemies) {
       if (e.hp <= 0) continue;
-      alive++;
       const dx = player.pos.x - e.mesh.position.x;
       const dz = player.pos.z - e.mesh.position.z;
       const d = Math.hypot(dx, dz) || 1;
       const threat = d < 5;
-      // telegraph: pulse before contact — commit does not retarget mid-frame beyond velocity
       const speed = (threat ? e.speed * 1.2 : e.speed * 0.5);
-      if (threat) {
-        e.mesh.material.emissiveIntensity = 0.75 + Math.sin(state.now * 14) * 0.55;
-        e.mesh.scale.setScalar(1 + Math.sin(state.now * 12) * 0.09);
-      } else {
-        e.mesh.material.emissiveIntensity = 0.55;
-        e.mesh.scale.setScalar(1);
+      if (e.mesh.material && e.mesh.material.emissiveIntensity != null) {
+        e.mesh.material.emissiveIntensity = threat
+          ? 0.75 + Math.sin(state.now * 14) * 0.55
+          : 0.55;
       }
+      e.mesh.scale.setScalar(threat ? 1 + Math.sin(state.now * 12) * 0.09 : 1);
       e.mesh.position.x += (dx / d) * speed * dt;
       e.mesh.position.z += (dz / d) * speed * dt;
       e.mesh.position.y = e.baseY + Math.sin(state.now * 3 + e.phase) * 0.22;
       e.mesh.rotation.y += 0.03;
       if (d < 1.2 && state.dashT <= 0) hurt(12 * dt * 8);
     }
+  }
+
+  function tickShoot(dt) {
+    tickThreat(dt);
+    let alive = 0;
+    for (const e of actors.enemies) if (e.hp > 0) alive++;
     if (alive === 0) {
       state.wave += 1;
       spawnWave(actors, scene, rnd, pal, SPEC, state.wave);
@@ -293,6 +296,9 @@ export function createGame({ genre, title }) {
       }
     }
     if (player.pos.y < -4) die();
+    for (const o of actors.hazards || []) {
+      if (Math.hypot(player.pos.x - o.mesh.position.x, player.pos.z - o.mesh.position.z) < 1.05) die();
+    }
   }
 
   function tickRun(dt) {
@@ -307,17 +313,43 @@ export function createGame({ genre, title }) {
     state.score = Math.floor(-player.pos.z);
   }
 
-  function tickRace() {
-    const gate = actors.gate;
-    if (!gate) return;
-    if (Math.hypot(player.pos.x - gate.position.x, player.pos.z - gate.position.z) < 2.4) {
-      state.score += 1;
-      gate.position.x = (rnd() - 0.5) * 16;
-      gate.position.z -= 18;
-      sfx('hit');
-      updateHud();
+  function tickRace(dt) {
+    const gates = actors.gates || (actors.gate ? [actors.gate] : []);
+    for (const gate of gates) {
+      if (!gate || gate.taken) continue;
+      if (Math.hypot(player.pos.x - gate.position.x, player.pos.z - gate.position.z) < 2.4) {
+        gate.taken = true;
+        gate.visible = false;
+        state.score += 1;
+        sfx('hit');
+        pulseShake(shake, CONFIG.shakeHit || 0.12);
+        timeJuice.hit(0.55, (CONFIG.hitstopMs || 40) / 1000);
+        updateHud();
+      }
     }
+    const rivals = actors.rivals || [];
+    for (let i = 0; i < rivals.length; i++) {
+      const r = rivals[i];
+      const lead = (player.pos.z - r.mesh.position.z);
+      const rubber = lead > 4 ? 1.25 : lead < -6 ? 0.72 : 1;
+      r.mesh.position.z -= r.speed * rubber * dt;
+      r.mesh.position.x += Math.sin(state.now * r.wobble + r.phase) * r.sway * dt;
+      r.mesh.rotation.y = Math.PI;
+      if (Math.hypot(player.pos.x - r.mesh.position.x, player.pos.z - r.mesh.position.z) < 1.15) {
+        hurt(8);
+        pulseShake(shake, 0.18);
+      }
+    }
+    if (Math.abs(player.pos.x) > 9.5) die();
     if (player.pos.y < -2) die();
+    if (gates.length && gates.every((g) => g.taken)) {
+      showBanner('LAP');
+      for (const g of gates) {
+        g.taken = false;
+        g.visible = true;
+        g.position.z -= 48;
+      }
+    }
   }
 
   function tickSneak(dt) {
@@ -730,14 +762,16 @@ function buildActors(scene, rnd, pal, SPEC) {
   const npcs = [];
   const hazards = [];
   let gate = null;
+  const gates = [];
+  const rivals = [];
   let hunter = null;
   let door = null;
 
   const enemyN = Math.max(0, SPEC.enemyCount | 0) || (SPEC.loop === 'shoot' ? 8 : 0);
-  const coinN = Math.max(0, SPEC.coinCount | 0) || (['jump', 'talk', 'collect'].includes(SPEC.loop) ? 6 : 0);
+  const coinN = Math.max(0, SPEC.coinCount | 0) || (['jump', 'talk', 'collect', 'sneak'].includes(SPEC.loop) ? 6 : 0);
   const hazardN = Math.max(0, SPEC.hazardCount | 0) || (SPEC.loop === 'run' ? 8 : 0);
 
-  if (SPEC.loop === 'shoot') {
+  if (SPEC.loop !== 'race' && enemyN > 0) {
     for (let i = 0; i < enemyN; i++) {
       const mesh = new THREE.Mesh(
         new THREE.IcosahedronGeometry(0.55, 0),
@@ -756,7 +790,7 @@ function buildActors(scene, rnd, pal, SPEC) {
     }
   }
 
-  if (SPEC.loop === 'jump' || SPEC.loop === 'talk' || SPEC.loop === 'collect') {
+  if (SPEC.loop !== 'race' && coinN > 0) {
     for (let i = 0; i < Math.max(coinN, 1); i++) {
       const plat = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.4, 3.2), mat(pal.building));
       plat.position.set((i - 2) * 3.4, i * 0.35, -4 - i * 2.2);
@@ -781,7 +815,7 @@ function buildActors(scene, rnd, pal, SPEC) {
     npcs.push({ mesh: body, talked: false });
   }
 
-  if (SPEC.loop === 'run') {
+  if (SPEC.loop !== 'race' && hazardN > 0) {
     for (let i = 0; i < hazardN; i++) {
       const h = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.4, 1.1), mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.35 }));
       h.position.set((i % 3 - 1) * 2.2, 0.7, -8 - i * 6);
@@ -791,12 +825,37 @@ function buildActors(scene, rnd, pal, SPEC) {
   }
 
   if (SPEC.loop === 'race') {
-    gate = new THREE.Mesh(
-      new THREE.TorusGeometry(1.6, 0.12, 8, 20),
-      mat(pal.accent, { emissive: pal.accent, emissiveIntensity: 1 }),
-    );
-    gate.position.set(0, 1.6, -12);
-    scene.add(gate);
+    const nGates = Math.max(4, SPEC.coinCount | 0, SPEC.roomCount | 0);
+    for (let i = 0; i < nGates; i++) {
+      const g = new THREE.Mesh(
+        new THREE.TorusGeometry(1.6, 0.12, 8, 20),
+        mat(pal.accent, { emissive: pal.accent, emissiveIntensity: 1 }),
+      );
+      g.position.set((i % 2 === 0 ? -1.6 : 1.6), 1.6, -10 - i * 14);
+      g.taken = false;
+      scene.add(g);
+      gates.push(g);
+    }
+    gate = gates[0] || null;
+    const nRivals = Math.max(3, SPEC.enemyCount | 0);
+    const names = ['VIN', 'REA', 'KAI', 'NYX', 'SOL'];
+    for (let i = 0; i < nRivals; i++) {
+      const body = new THREE.Mesh(
+        new THREE.ConeGeometry(0.45, 1.1, 5),
+        mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.55 }),
+      );
+      body.rotation.x = Math.PI / 2;
+      body.position.set((i - (nRivals - 1) / 2) * 2.1, 0.7, -4 - i * 3);
+      scene.add(body);
+      rivals.push({
+        mesh: body,
+        name: names[i % names.length],
+        speed: 9 + i * 1.4,
+        wobble: 1.4 + i * 0.35,
+        sway: 1.8,
+        phase: i * 1.7,
+      });
+    }
   }
 
   if (SPEC.loop === 'sneak') {
@@ -808,7 +867,7 @@ function buildActors(scene, rnd, pal, SPEC) {
     scene.add(door);
   }
 
-  return { enemies, coins, npcs, hazards, gate, hunter, door };
+  return { enemies, coins, npcs, hazards, gate, gates, rivals, hunter, door };
 }
 
 function spawnWave(actors, scene, rnd, pal, SPEC, wave) {

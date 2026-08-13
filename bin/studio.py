@@ -711,16 +711,33 @@ def pipeline_build(
         f"{rag_block}\n\n"
         f"{qualitylib.CODER_PATCH_INSTRUCTION}\n\n"
         "ENGINE: Vite + three.js always. Host already shipped craft/slots/feel — extend, don't destroy. "
-        "Ship place · body · challenge · juice. "
+        "Ship place · body · verb · opposition · juice. A missing pillar is a toy. "
         "No Vector3 allocs in the loop. End with done."
     )
+    try:
+        import rlm as rlmlib
+
+        task = task + "\n\n" + rlmlib.prompt_block(project, brief)
+    except Exception:
+        pass
 
     # Patch-level best-of (cheap flash patches) when DOTLAB_BEST_OF>=2
     best_n = int(os.environ.get("DOTLAB_BEST_OF", os.environ.get("GAMEMASTER_BEST_OF", "1")))
     game_js = project / "src" / "game.js"
     has_game = game_js.is_file() and game_js.stat().st_size > 500
     code_out = ""
-    if best_n >= 2 and has_game:
+    use_rlm = os.environ.get("DOTLAB_RLM", "1").lower() not in ("0", "false", "off")
+    if use_rlm:
+        banner("🔁 RLM CODER")
+        try:
+            import rlm as rlmlib
+
+            rr = rlmlib.run(project, brief, model=model)
+            code_out = (rr.get("summary") or "") + "\n" + json.dumps(rr.get("depth") or {})
+        except Exception as e:
+            print(f"  ⚠ rlm failed ({e}) — falling back to agent")
+            code_out = run_coder_agent(project, task, model, steps=12)
+    elif best_n >= 2 and has_game:
         banner("⚖️ PATCH BEST-OF-N (flash drafts · verify pick)")
         bo = qualitylib.patch_level_best_of(project, brief + "\n" + design[:800], n=best_n, model=model)
         write_session(project, "03-best-of-n.json", json.dumps(bo, indent=2)[:12000] + "\n")
@@ -1038,6 +1055,16 @@ def main() -> int:
         action="store_true",
         help="Do not open the Play window",
     )
+    ap.add_argument(
+        "--rlm",
+        action="store_true",
+        help="Coder phase uses RLM (peek/sub) instead of one-shot dump",
+    )
+    ap.add_argument(
+        "--flat",
+        action="store_true",
+        help="Force the old one-shot coder (overrides --rlm / default)",
+    )
     args = ap.parse_args()
 
     project = Path(args.project).expanduser().resolve()
@@ -1076,6 +1103,10 @@ def main() -> int:
                 print(f"  ⚠ live: {e}")
         pipeline_plan(project, brief, model)
     elif args.mode == "build":
+        if args.flat:
+            os.environ["DOTLAB_RLM"] = "0"
+        elif args.rlm:
+            os.environ["DOTLAB_RLM"] = "1"
         pipeline_build(project, brief, model, do_playtest=pt, do_live=live)
     elif args.mode == "council":
         pipeline_council(

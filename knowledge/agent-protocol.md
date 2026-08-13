@@ -49,6 +49,12 @@ action: feel
 ```
 
 ```
+tool call skills
+action: route
+task: juice the jump
+```
+
+```
 tool call kit
 action: art_test
 ```
@@ -69,4 +75,5 @@ Rules:
 - One tool block per step, then wait for the result
 - write_file = complete file (not partial patch unless tiny)
 - run only safe non-interactive commands (npm, node, ls) — no sudo
+- Unknown tools do not exist. `skills route` abstains instead of guessing.
 - Always finish with `done`

@@ -99,6 +99,12 @@ def genre_contract(project: Path, js: str) -> tuple[bool, str, bool]:
         family = "platformer"
     if loop == "run":
         family = "runner"
+    if loop == "race" or genre == "racing":
+        family = "racing"
+    if loop == "talk" or genre in ("adventure", "rpg", "open-world", "tps"):
+        family = "adventure"
+    if loop == "sneak" or genre == "horror":
+        family = "horror"
 
     # Vintage: handheld contracts (no three craft / pointer lock)
     if engine == "vintage":
@@ -142,6 +148,17 @@ def genre_contract(project: Path, js: str) -> tuple[bool, str, bool]:
             # vintage/pixel side runners may only use solids — soft
             if engine == "three":
                 missing.append("runner loop keys")
+    elif family == "racing" or loop == "race":
+        if not re.search(r"gate|lap|rival", js, re.I):
+            missing.append("gates/rivals/laps")
+        if engine == "three" and not re.search(r"rivals", js, re.I):
+            missing.append("rival field")
+    elif family == "adventure" or loop == "talk":
+        if not re.search(r"npc|talk|interact|KeyE", js, re.I):
+            missing.append("talk/npc")
+    elif family == "horror" or loop == "sneak":
+        if not re.search(r"hunter|sneak|door", js, re.I):
+            missing.append("hunter/door")
     else:
         return True, f"genre={genre or 'generic'} (no hard contract)", False
 
