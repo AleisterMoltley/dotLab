@@ -223,9 +223,19 @@ def try_patch(project: Path, text: str) -> dict[str, Any] | None:
         base_prompt = t
         if spec and spec.get("prompt") and not rebuild and len(t) < 140:
             base_prompt = f"{spec.get('prompt')} · {t}"
-        new_spec = slicelib.compile_prompt(base_prompt, genre=genre_hit)
+        eng = (spec or {}).get("engine")
+        vprof = None
+        if isinstance((spec or {}).get("vintage"), dict):
+            vprof = (spec or {}).get("vintage", {}).get("profile")
+        new_spec = slicelib.compile_prompt(
+            base_prompt, genre=genre_hit, engine=eng, vintage_profile=vprof
+        )
         if spec and spec.get("title"):
             new_spec["title"] = spec["title"]
+        if spec and spec.get("engine"):
+            new_spec["engine"] = spec["engine"]
+            if spec.get("vintage"):
+                new_spec["vintage"] = spec["vintage"]
         _ensure_counts(new_spec)
         written = slicelib.write_slice(project, new_spec)
         return {
@@ -265,17 +275,55 @@ def try_patch(project: Path, text: str) -> dict[str, Any] | None:
         changed = True
 
     if genre_hit and genre_hit != spec.get("genre"):
-        # light genre swap keeping title/prompt memory
-        merged = slicelib.compile_prompt(f"{spec.get('prompt', '')} {t}", genre=genre_hit)
+        # light genre swap keeping title/prompt memory + engine
+        vprof = None
+        if isinstance(spec.get("vintage"), dict):
+            vprof = spec["vintage"].get("profile")
+        merged = slicelib.compile_prompt(
+            f"{spec.get('prompt', '')} {t}",
+            genre=genre_hit,
+            engine=spec.get("engine"),
+            vintage_profile=vprof,
+        )
         for k in ("genre", "loop", "camera", "verb", "feel"):
             spec[k] = merged[k]
-        if not palette_hit:
+        if not palette_hit and spec.get("engine") != "vintage":
             spec["setting"] = merged["setting"]
             spec["props"] = merged["props"]
             spec["palette"] = merged["palette"]
         notes.append(f"genre → {genre_hit}")
         changed = True
         _ensure_counts(spec)
+
+    # Vintage: refuse modern neon palette force — map to gbc packs
+    if palette_hit and spec.get("engine") == "vintage":
+        _, props = palette_hit
+        try:
+            import engine_ops as eops
+
+            map_id = {
+                "neon": "gbc-candy",
+                "forest": "gbc-forest",
+                "desert": "gbc-fire",
+                "ice": "gbc-ocean",
+                "dungeon": "dmg-gray",
+                "village": "gbc-forest",
+            }.get(props, "dmg")
+            r = eops.set_vintage_palette(project, map_id)
+            if r.get("ok"):
+                return {
+                    "ok": True,
+                    "mode": "patch",
+                    "summary": f"Instant craft (vintage palette):\n- {r.get('summary')}",
+                    "written": r.get("written") or [],
+                    "spec": load_spec(project),
+                    "notes": [r.get("summary") or map_id],
+                }
+        except Exception:
+            pass
+        notes.append(f"palette mood → {props} (vintage-safe)")
+        changed = True
+        palette_hit = None  # don't apply three palettes below
 
     for rx, op, amount in _FEEL_OPS:
         if re.search(rx, t, re.I):
@@ -289,6 +337,7 @@ def try_patch(project: Path, text: str) -> dict[str, Any] | None:
     if "palette" in "".join(notes) or "genre" in "".join(notes):
         spec["verb"] = slicelib._verb(spec.get("genre") or "adventure", spec.get("setting") or "place")
 
+    # Always preserve engine on rewrite
     written = slicelib.write_slice(project, spec)
     summary = (
         "Instant craft (no model wait):\n- "

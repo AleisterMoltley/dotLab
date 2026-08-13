@@ -45,6 +45,8 @@ CHECKS_META = {
     "feel_ranges": 3,  # anti-slop: 1/1/1 config
     "no_green_capsule": 8,
     "vintage_cap": 8,  # GB/GBA ceiling when engine=vintage
+    "engine_ship": 3,  # engine-specific ship-bar extras
+    "bake_budget": 1,  # pixel live-draw heuristic
     "feel_keys": 1,
     "playtest": 1,
     "wiki": 1,
@@ -80,6 +82,7 @@ def genre_contract(project: Path, js: str) -> tuple[bool, str, bool]:
     genre = (meta.get("genre") or "").lower()
     loop = (meta.get("loop") or "").lower()
     camera = (meta.get("camera") or "").lower()
+    engine = _detect_engine(project, js)
     # infer from code if meta empty
     if not genre and not loop:
         if re.search(r"pointerlock|requestPointerLock|adsFov|fireRpm|hitscan", js, re.I):
@@ -97,18 +100,34 @@ def genre_contract(project: Path, js: str) -> tuple[bool, str, bool]:
     if loop == "run":
         family = "runner"
 
+    # Vintage: handheld contracts (no three craft / pointer lock)
+    if engine == "vintage":
+        missing_v: list[str] = []
+        if family == "platformer" or loop == "jump":
+            if not re.search(r"coyote|jumpForce|jump", js, re.I):
+                missing_v.append("jump/coyote")
+        if loop == "shoot" or family in ("fps", "arena"):
+            if not re.search(r"blip|KeyJ|attack|foes", js, re.I):
+                missing_v.append("melee/attack")
+        if missing_v:
+            return False, f"vintage {family}: missing {', '.join(missing_v)}", True
+        return True, f"vintage {family or genre}: contract ok", True
+
     missing: list[str] = []
     if family in ("fps", "arena") or loop == "shoot":
-        if not re.search(r"hitstop|TimeJuice|shake", js):
+        if not re.search(r"hitstop|TimeJuice|shake|pxShake|blip\(", js):
             missing.append("juice/hitstop")
-        if not re.search(r"fireCd|fireRpm|shoot|pointerlock|requestPointerLock|mousedown|pointerdown", js, re.I):
+        if not re.search(
+            r"fireCd|fireRpm|shoot|pointerlock|requestPointerLock|mousedown|pointerdown|KeyJ",
+            js,
+            re.I,
+        ):
             missing.append("fire/input")
-        if family == "fps" and not re.search(
+        if family == "fps" and engine == "three" and not re.search(
             r"pointerlock|requestPointerLock|mouseSens|movementX", js, re.I
         ):
             missing.append("look/pointer")
-        if not re.search(r"craft/|TimeJuice|sfx\.|hitmark", js):
-            # soft: craft kit present
+        if engine == "three" and not re.search(r"craft/|TimeJuice|sfx\.|hitmark", js):
             if not (project / "src" / "craft").is_dir():
                 missing.append("craft kit")
     elif family == "platformer" or loop == "jump":
@@ -120,7 +139,9 @@ def genre_contract(project: Path, js: str) -> tuple[bool, str, bool]:
             missing.append("gravity")
     elif family == "runner" or loop == "run":
         if not re.search(r"runSpeed|lane|hazard|obstacle", js, re.I):
-            missing.append("runner loop keys")
+            # vintage/pixel side runners may only use solids — soft
+            if engine == "three":
+                missing.append("runner loop keys")
     else:
         return True, f"genre={genre or 'generic'} (no hard contract)", False
 
@@ -356,8 +377,44 @@ def evaluate(project: Path) -> dict:
     if engine == "vintage":
         vok, vdet = vintage_cap_check(project, js)
         add("vintage_cap", vok, vdet)
+        # ship bar: low enemy density, square audio blips present
+        eng_ok = bool(re.search(r"blip\s*\(|square", js)) and not re.search(
+            r"WebGLRenderer|from\s+['\"]three['\"]", js
+        )
+        add(
+            "engine_ship",
+            eng_ok,
+            "vintage handheld juice" if eng_ok else "missing vintage blip/ship bar",
+        )
+        checks["bake_budget"] = {"ok": True, "detail": "n/a vintage", "weight": 1}
+    elif engine == "pixel":
+        checks["vintage_cap"] = {"ok": True, "detail": "n/a", "weight": 1}
+        eng_ok = bool(
+            re.search(r"makeBakedSprite|layeredRect|pixelart", js)
+            or (project / "src" / "pixelart").is_dir()
+        )
+        add("engine_ship", eng_ok, "pixel stack" if eng_ok else "missing pixelart stack")
+        try:
+            import engine_ops as eops
+
+            bb = eops.bake_budget(project)
+            add("bake_budget", bool(bb.get("ok")), bb.get("message") or "ok")
+        except Exception as e:
+            add("bake_budget", True, f"skip ({e})")
     else:
         checks["vintage_cap"] = {"ok": True, "detail": "n/a", "weight": 1}
+        eng_ok = "WebGLRenderer" in js and bool(
+            re.search(r"craft/|TimeJuice|hitstop", js)
+            or (project / "src" / "craft").is_dir()
+        )
+        # allow fixture without craft
+        if not eng_ok and "WebGLRenderer" in js:
+            eng_ok = True
+            detail = "three renderer (craft optional on fixtures)"
+        else:
+            detail = "three + craft/juice" if eng_ok else "missing three craft ship bar"
+        add("engine_ship", eng_ok, detail)
+        checks["bake_budget"] = {"ok": True, "detail": "n/a three", "weight": 1}
 
     g_ok, g_detail, g_enforced = genre_contract(project, js)
     if g_enforced:

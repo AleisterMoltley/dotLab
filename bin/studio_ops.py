@@ -397,15 +397,34 @@ def export_zip(project: Path) -> dict[str, Any]:
         return {"ok": False, "error": "not under projects root"}
     meta = meta_dir(project)
     meta.mkdir(parents=True, exist_ok=True)
-    out = meta / f"{project.name}-export.zip"
+    eng = "three"
+    try:
+        import engine_ops as eops
+
+        eng = eops.project_engine(project)
+    except Exception:
+        pass
+    out = meta / f"{project.name}-{eng}-export.zip"
     skip_dirs = {"node_modules", ".git", "dist", "build", ".vite"}
+    # Engine-specific skips: don't ship wrong stacks
+    skip_path_parts = set()
+    if eng == "three":
+        skip_path_parts |= {"pixelart", "vintage"}
+    elif eng == "pixel":
+        skip_path_parts |= {"craft", "vintage"}
+    elif eng == "vintage":
+        skip_path_parts |= {"craft", "pixelart", "pixel"}
     try:
         import security as seclib
     except Exception:
         seclib = None  # type: ignore
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for dirpath, dirnames, filenames in os.walk(project):
-            dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in skip_dirs and d not in skip_path_parts
+            ]
             root = Path(dirpath)
             for name in filenames:
                 if name.endswith(".zip") and root == meta:
@@ -415,9 +434,10 @@ def export_zip(project: Path) -> dict[str, Any]:
                     rel = fp.relative_to(project).as_posix()
                 except ValueError:
                     continue
+                if any(part in rel.split("/") for part in skip_path_parts):
+                    continue
                 if seclib is not None and not seclib.should_export_file(rel):
                     continue
-                # skip secrets in content for small text files
                 if seclib is not None and fp.suffix in (".js", ".ts", ".json", ".md", ".env", ".txt"):
                     try:
                         if seclib.scan_file_secrets(fp):
@@ -428,7 +448,7 @@ def export_zip(project: Path) -> dict[str, Any]:
                     zf.write(fp, rel)
                 except OSError:
                     continue
-    return {"ok": True, "path": str(out), "bytes": out.stat().st_size}
+    return {"ok": True, "path": str(out), "bytes": out.stat().st_size, "engine": eng}
 
 
 def open_editor(project: Path) -> dict[str, Any]:

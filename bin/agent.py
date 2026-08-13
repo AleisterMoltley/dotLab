@@ -244,6 +244,15 @@ def tool_write(project: Path, path: str, content: str) -> str:
     if not ok:
         seclib.audit(project, "write_denied", {"path": rel, "error": err})
         return f"ERROR: {err}"
+    try:
+        import engine_ops as eops
+
+        eok, eerr = eops.engine_write_allowed(project, rel)
+        if not eok:
+            seclib.audit(project, "engine_write_denied", {"path": rel, "error": eerr})
+            return f"ERROR: {eerr}"
+    except Exception:
+        pass
     # Secrets + package allowlist
     hits = seclib.scan_secrets(content or "", path=rel)
     if hits:
@@ -253,6 +262,20 @@ def tool_write(project: Path, path: str, content: str) -> str:
         pok, perr = seclib.validate_package_write(content or "")
         if not pok:
             return f"ERROR: {perr}"
+        try:
+            import engine_ops as eops
+            import json as _json
+
+            eng = eops.project_engine(project)
+            data = _json.loads(content or "{}")
+            deps = {
+                **(data.get("dependencies") or {}),
+                **(data.get("devDependencies") or {}),
+            }
+            if eng in ("pixel", "vintage") and "three" in deps:
+                return f"ERROR: engine={eng} forbids three dependency"
+        except Exception:
+            pass
     # Patch-only gate: block full replace of large protected files
     try:
         import quality as qualitylib

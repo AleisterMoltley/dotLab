@@ -45,6 +45,7 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 | `anti-slop/fail-config-ones.md` | FAIL gallery: CONFIG 1/1/1 |
 | `anti-slop/fail-alert-dialogue.md` | FAIL gallery: alert() dialogue |
 | `vintage.md` | Vintage mode: GB ship bar, GBA ceiling |
+| `engine-kits.md` | Host kits + buttons per engine |
 | `live/LATEST.md` | auto npm versions |
 | `speed-without-quality-loss.md` | turbo philosophy (human + env docs; not auto-routed) |
 | `gap-analysis.md` | studio vs cloud gaps (human; not auto-routed) |

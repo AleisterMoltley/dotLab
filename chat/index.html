@@ -191,6 +191,13 @@
       background: #000;
     }
     .play-embed.show { display: block; }
+    .play-embed.eng-vintage {
+      max-width: 480px;
+      box-shadow: inset 0 0 0 6px #1a2a1a, 0 0 0 1px #306230;
+      background: #0f380f;
+    }
+    .play-embed.eng-pixel { image-rendering: pixelated; }
+    .play-embed.eng-three { max-width: 720px; }
     .play-embed .bar {
       display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between;
       padding: 6px 8px; background: var(--elev); border-bottom: 1px solid var(--line);
@@ -253,6 +260,46 @@
     }
     .session.show { display: block; }
     .session b { color: var(--text); font-weight: 600; }
+    .shipcard {
+      display: none; max-width: 720px; margin: 0 auto 12px;
+      border: 1px solid var(--line); border-radius: var(--r);
+      background: var(--panel); padding: 10px 12px;
+      font: 11px/1.45 var(--mono); color: var(--muted);
+    }
+    .shipcard.show { display: block; }
+    .shipcard .title { color: var(--text); font-weight: 650; font-size: 12px; margin-bottom: 4px; }
+    .shipcard .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+    .shipcard .hint { color: var(--faint); margin-top: 6px; }
+    .router {
+      display: none; font: 10px/1.3 var(--mono); color: var(--faint);
+      margin: 0 0 6px; min-height: 1.3em;
+    }
+    .router.show { display: block; }
+    .router b { color: var(--muted); font-weight: 600; }
+    .compare {
+      display: none; max-width: 960px; margin: 0 auto 12px;
+      grid-template-columns: 1fr 1fr; gap: 8px;
+    }
+    .compare.show { display: grid; }
+    .compare .pane {
+      border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: #000;
+    }
+    .compare .pane .lab {
+      padding: 4px 8px; font: 10px var(--mono); color: var(--muted);
+      background: var(--elev); border-bottom: 1px solid var(--line);
+    }
+    .compare iframe { width: 100%; height: 220px; border: 0; display: block; background: #000; }
+    .side-stats {
+      padding: 6px 12px 8px; font: 10px/1.4 var(--mono); color: var(--faint);
+      border-bottom: 1px solid var(--line);
+    }
+    .side-stats b { color: var(--muted); font-weight: 600; }
+    .pal-swatches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .pal-swatches button {
+      width: 22px; height: 22px; border: 1px solid var(--line2); border-radius: 2px; padding: 0;
+      cursor: pointer;
+    }
+    .pal-swatches button.on { outline: 1px solid var(--text); outline-offset: 1px; }
     .iterate {
       display: none; max-width: 720px; margin: 0 auto 10px;
       padding: 8px 0 0;
@@ -447,6 +494,7 @@
       <button type="button" data-ef="pixel">Pixel</button>
       <button type="button" data-ef="vintage">GB</button>
     </div>
+    <div class="side-stats" id="sideStats">—</div>
     <div class="sec">Projects <span id="projectCount"></span></div>
     <div class="plist" id="projectList">
       <div class="empty-list">No projects yet.</div>
@@ -501,6 +549,7 @@
           </ol>
         </div>
         <div class="session" id="sessionBar"></div>
+        <div class="shipcard" id="shipCard"></div>
         <div class="play-embed" id="playEmbed">
           <div class="bar">
             <span id="playEmbedStatus">play</span>
@@ -512,6 +561,16 @@
           </div>
           <div class="err" id="playEmbedErr" hidden></div>
           <iframe id="playFrame" title="Game preview" sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-forms"></iframe>
+        </div>
+        <div class="compare" id="comparePane">
+          <div class="pane">
+            <div class="lab" id="compareLabA">A</div>
+            <iframe id="compareFrameA" title="Compare A" sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-forms"></iframe>
+          </div>
+          <div class="pane">
+            <div class="lab" id="compareLabB">B</div>
+            <iframe id="compareFrameB" title="Compare B" sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-forms"></iframe>
+          </div>
         </div>
         <div class="playbar" id="playBar"></div>
         <div class="iterate" id="iterateBar">
@@ -627,13 +686,29 @@
           <button type="button" class="chip craft" data-craft="more enemies">+enemies</button>
           <button type="button" class="chip craft" data-craft="harder">harder</button>
           <button type="button" class="chip craft" data-craft="easier">easier</button>
-          <button type="button" class="chip craft" data-craft="make it neon">neon</button>
+          <button type="button" class="chip craft modern-only" data-craft="make it neon">neon</button>
           <button type="button" class="chip craft" data-craft="make it a forest">forest</button>
           <button type="button" class="chip craft" data-craft="more juice">juice</button>
           <button type="button" class="chip craft taste" data-taste="keep" title="Accept feel">Keep</button>
           <button type="button" class="chip craft taste" data-taste="tighter" title="Snappier">Tighter</button>
           <button type="button" class="chip craft taste" data-taste="juice" title="More feedback">+Juice</button>
+          <button type="button" class="chip craft" id="btnOneRoom" title="Host: extend level">+Room</button>
+          <button type="button" class="chip craft" id="btnSwitchThree" title="Rebuild as Three.js">→3D</button>
+          <button type="button" class="chip craft" id="btnSwitchPixel" title="Rebuild as Pixel">→Pixel</button>
+          <button type="button" class="chip craft" id="btnSwitchVintage" title="Rebuild as Vintage GB">→GB</button>
         </div>
+        <div id="vintagePaletteBar" hidden style="margin-bottom:8px">
+          <div class="field"><label>Vintage palette (host lock)</label></div>
+          <div class="pal-swatches" id="palSwatches">
+            <button type="button" data-pal="dmg" title="DMG green" style="background:#8bac0f"></button>
+            <button type="button" data-pal="dmg-gray" title="DMG gray" style="background:#a2a0a8"></button>
+            <button type="button" data-pal="gbc-forest" title="GBC forest" style="background:#8fbf6a"></button>
+            <button type="button" data-pal="gbc-ocean" title="GBC ocean" style="background:#5aa9d6"></button>
+            <button type="button" data-pal="gbc-fire" title="GBC fire" style="background:#d06020"></button>
+            <button type="button" data-pal="gbc-candy" title="GBC candy" style="background:#e080b0"></button>
+          </div>
+        </div>
+        <div class="router" id="promptRouter"></div>
         <form id="composer" onsubmit="return window.DL.bootSend(event)">
           <textarea id="input" name="q" required placeholder="Player verb + place…"></textarea>
           <div class="cbar">

@@ -148,6 +148,11 @@
       var elab = ENGINE_LABEL[current.engine] || current.engine || "game";
       pes.textContent = "play · " + elab.toLowerCase();
     }
+    var vBar = $("vintagePaletteBar");
+    if (vBar) vBar.hidden = !(current.path && current.engine === "vintage");
+    document.body.classList.toggle("project-vintage", current.engine === "vintage");
+    document.body.classList.toggle("project-pixel", current.engine === "pixel");
+    document.body.classList.toggle("project-three", current.engine === "three" || (!current.engine && current.path));
     if (!current.path) {
       hidePlayBar();
       hideSession();
@@ -156,9 +161,20 @@
       stopPlayPoll();
       stopAgentPoll();
       if (pes) pes.textContent = "play";
+      showShipCard(null);
+      var emb = $("playEmbed");
+      if (emb) {
+        emb.classList.remove("eng-three", "eng-pixel", "eng-vintage");
+      }
     } else {
       loadSession();
       refreshPlayStatus();
+      refreshShipCard(current.path);
+      var emb2 = $("playEmbed");
+      if (emb2) {
+        emb2.classList.remove("eng-three", "eng-pixel", "eng-vintage");
+        emb2.classList.add("eng-" + (current.engine || "three"));
+      }
     }
     renderProjects();
   }
@@ -205,11 +221,166 @@
     });
   }
 
+  function renderStats(stats) {
+    var el = $("sideStats");
+    if (!el || !stats || !stats.ok) {
+      if (el) el.textContent = "—";
+      return;
+    }
+    var e = stats.engines || {};
+    el.innerHTML =
+      "<b>" + (stats.total || 0) + "</b> games · " +
+      "3D " + (e.three || 0) + " · Pixel " + (e.pixel || 0) + " · GB " + (e.vintage || 0) +
+      "<br>ship-rate <b>" + (stats.ship_rate || 0) + "%</b> · avg " + (stats.avg_score || 0);
+  }
+
+  function showShipCard(card) {
+    var el = $("shipCard");
+    if (!el) return;
+    if (!card || !card.ok) {
+      el.classList.remove("show");
+      el.innerHTML = "";
+      return;
+    }
+    var eng = card.engine || "three";
+    var bits = [
+      engineBadgeHtml(eng, card.profile),
+      esc(card.genre || ""),
+      esc(card.resolution || ""),
+    ];
+    if (card.colors) bits.push(card.colors + " col");
+    if (card.verify_score != null) {
+      bits.push(
+        card.verify_ok
+          ? "P0 " + card.verify_score
+          : "P0 fail " + ((card.p0_fail || []).join(",") || "")
+      );
+    }
+    el.innerHTML =
+      '<div class="title">' + esc(card.name || "slice") + "</div>" +
+      '<div>' + bits.filter(Boolean).join(" · ") + "</div>" +
+      (card.verb ? '<div class="hint">' + esc(card.verb) + "</div>" : "") +
+      '<div class="row">' +
+      '<button type="button" class="btn sm" id="shipPlay">Play</button>' +
+      '<button type="button" class="btn sm" id="shipRoom">+Room</button>' +
+      (eng === "vintage"
+        ? '<button type="button" class="btn sm" id="shipPal">Palette</button>'
+        : "") +
+      "</div>";
+    el.classList.add("show");
+    var sp = $("shipPlay");
+    if (sp) sp.onclick = function () { if (current.path) playPath(current.path); };
+    var sr = $("shipRoom");
+    if (sr) sr.onclick = function () { oneMoreRoom(); };
+    var spal = $("shipPal");
+    if (spal) {
+      spal.onclick = function () {
+        var bar = $("vintagePaletteBar");
+        if (bar) bar.hidden = !bar.hidden;
+      };
+    }
+  }
+
+  function refreshShipCard(path) {
+    if (!path) {
+      showShipCard(null);
+      return;
+    }
+    api("/api/projects/ship-card?path=" + encodeURIComponent(path)).then(function (d) {
+      showShipCard(d);
+    }).catch(function () {});
+  }
+
+  function switchEngine(engine) {
+    if (!current.path) {
+      toast("Select a project");
+      return;
+    }
+    var body = { path: current.path, engine: engine };
+    if (engine === "vintage") {
+      body.vintageProfile = ($("optVintage") && $("optVintage").value) || "gb";
+    }
+    addMsg("bot", "Switching engine → " + (ENGINE_LABEL[engine] || engine) + "…");
+    api("/api/projects/engine-switch", body).then(function (d) {
+      if (!d || !d.ok) {
+        addMsg("bot", "Switch failed: " + ((d && d.error) || "?"));
+        return;
+      }
+      addMsg("bot", d.summary || ("Now " + engine));
+      if (d.ship_card) showShipCard(d.ship_card);
+      loadProjects().then(function () {
+        setCurrent(current.path, current.name, {
+          engine: engine,
+          genre: current.genre,
+          vintage_profile: body.vintageProfile || "",
+        });
+        playPath(current.path);
+      });
+      toast("Engine → " + engine);
+    });
+  }
+
+  function oneMoreRoom() {
+    if (!current.path) return;
+    api("/api/projects/one-more-room", { path: current.path }).then(function (d) {
+      if (!d || !d.ok) {
+        toast((d && d.error) || "room failed");
+        return;
+      }
+      addMsg("bot", d.summary || "+room");
+      if (d.ship_card) showShipCard(d.ship_card);
+      var frame = $("playFrame");
+      if (frame && frame.getAttribute("src")) frame.src = frame.getAttribute("src");
+      toast("Room " + (d.roomCount || ""));
+    });
+  }
+
+  function setVintagePalette(id) {
+    if (!current.path) return;
+    api("/api/projects/vintage-palette", { path: current.path, palette: id }).then(function (d) {
+      if (!d || !d.ok) {
+        toast((d && d.error) || "palette failed");
+        return;
+      }
+      toast(d.summary || id);
+      if (d.ship_card) showShipCard(d.ship_card);
+      var frame = $("playFrame");
+      if (frame && frame.getAttribute("src")) frame.src = frame.getAttribute("src");
+      document.querySelectorAll("#palSwatches button").forEach(function (b) {
+        b.classList.toggle("on", b.getAttribute("data-pal") === id);
+      });
+    });
+  }
+
+  function updatePromptRouter() {
+    var el = $("promptRouter");
+    var ta = $("input");
+    if (!el || !ta || current.path) {
+      if (el) el.classList.remove("show");
+      return;
+    }
+    var t = (ta.value || "").toLowerCase();
+    var forced = ($("optEngine") && $("optEngine").value) || "auto";
+    var guess = "three";
+    if (/vintage|game\s*boy|\bgba\b|\bgbc\b|\bdmg\b/.test(t)) guess = "vintage";
+    else if (/pixel|pixelart|sprite|tileset|canvas2d/.test(t)) guess = "pixel";
+    else if (/three|webgl|fps|first.?person|3d/.test(t)) guess = "three";
+    var show = forced === "auto" ? guess : forced;
+    el.innerHTML =
+      "Router → <b>" +
+      esc(ENGINE_LABEL[show] || show) +
+      "</b>" +
+      (forced === "auto" ? " (from prompt)" : " (locked)") +
+      (show === "vintage" ? " · GBA ceiling" : "");
+    el.classList.add("show");
+  }
+
   function loadProjects() {
     return api("/api/projects").then(function (d) {
       var rootEl = $("projectsRoot");
       if (rootEl && d.root) rootEl.textContent = d.root;
       projectsCache = d.projects || [];
+      renderStats(d.stats);
       renderProjects();
       return d;
     });
@@ -589,6 +760,13 @@
       { id: "keep", label: "Taste: Keep feel", key: "", need: true, run: function () { runTaste("keep"); } },
       { id: "tighter", label: "Taste: Tighter", key: "", need: true, run: function () { runTaste("tighter"); } },
       { id: "juice", label: "Taste: More juice", key: "", need: true, run: function () { runTaste("juice"); } },
+      { id: "room", label: "+ One more room", key: "", need: true, run: function () { oneMoreRoom(); } },
+      { id: "to-three", label: "Switch engine → Three.js", key: "", need: true, run: function () { switchEngine("three"); } },
+      { id: "to-pixel", label: "Switch engine → Pixel", key: "", need: true, run: function () { switchEngine("pixel"); } },
+      { id: "to-vintage", label: "Switch engine → Vintage GB", key: "", need: true, run: function () { switchEngine("vintage"); } },
+      { id: "new-three-fps", label: "New · Three FPS", key: "", need: false, run: function () { presetNew("three", "Skill FPS. Neon megacity. Dash, ADS, wave drones."); } },
+      { id: "new-pixel-arena", label: "New · Pixel Arena", key: "", need: false, run: function () { presetNew("pixel", "Pixel arena. Twin stick waves. Hitstop juice."); } },
+      { id: "new-gb", label: "New · GB Platformer", key: "", need: false, run: function () { presetNew("vintage", "Game Boy platformer. Tight jumps. Four shades. One screen."); } },
       { id: "deep", label: "Deep agent…", key: "", need: true, run: function () { openSheet("agentSheet"); } },
       { id: "zip", label: "Export zip", key: "", need: true, run: function () { exportZip(current.path); } },
       { id: "ship", label: "Ship GitHub", key: "", need: false, run: function () {
@@ -715,6 +893,16 @@
     }).catch(function () {});
   }
 
+  function presetNew(engine, fill) {
+    newGameMode();
+    setEngineSelection(engine || "auto");
+    if (input && fill) {
+      input.value = fill;
+      updatePromptRouter();
+      input.focus();
+    }
+  }
+
   function newGameMode() {
     setCurrent("", "");
     history = [];
@@ -723,9 +911,9 @@
       input.focus();
     }
     document.body.classList.remove("has-chat");
-    // re-apply placeholder from engine pills
     var eng = ($("optEngine") && $("optEngine").value) || "auto";
     setEngineSelection(eng);
+    updatePromptRouter();
   }
 
   // Engine pills + selects
@@ -811,9 +999,12 @@
         history.push({ role: "assistant", content: summary });
         showIterate(true);
         if (created.path) {
+          refreshShipCard(created.path);
           runVerify(created.path, true).then(function () {
+            refreshShipCard(created.path);
             toast("Slice ready · Verify done · Play");
           });
+          playPath(created.path);
         }
         return;
       }
@@ -966,6 +1157,19 @@
   bind("nowKeep", function () { runTaste("keep"); });
   bind("nowTighter", function () { runTaste("tighter"); });
   bind("nowJuice", function () { runTaste("juice"); });
+  bind("btnOneRoom", oneMoreRoom);
+  bind("btnSwitchThree", function () { switchEngine("three"); });
+  bind("btnSwitchPixel", function () { switchEngine("pixel"); });
+  bind("btnSwitchVintage", function () { switchEngine("vintage"); });
+  document.querySelectorAll("#palSwatches button").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      setVintagePalette(btn.getAttribute("data-pal") || "dmg");
+    });
+  });
+  if (input) {
+    input.addEventListener("input", updatePromptRouter);
+    input.addEventListener("focus", updatePromptRouter);
+  }
   bind("toolTrash", function () { closeSheets(); showTrash(); });
   bind("trashClose", closeSheets);
   bind("btnPalette", openPalette);

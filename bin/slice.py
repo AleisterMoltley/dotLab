@@ -724,6 +724,7 @@ def _slim_spec(spec: dict) -> dict:
         "hazardCount": int(spec.get("hazardCount") or 0),
         "density": float(spec.get("density") or 1.0),
         "juice": float(spec.get("juice") or 1.0),
+        "roomCount": int(spec.get("roomCount") or 1),
     }
 
 

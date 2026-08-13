@@ -93,13 +93,17 @@ Output ONLY a single JSON object (no markdown fences, no prose outside JSON) wit
   "pillars": ["p1","p2","p3"],
   "slice": "vertical slice scope in one session",
   "genre": "fps|arena|platformer|runner|racing|horror|adventure|rpg|…",
-  "palette_id": "neon|forest|desert|ice|dungeon|village|dusk",
+  "engine": "three|pixel|vintage",
+  "vintage_profile": "gb|gbc|gba",
+  "palette_id": "neon|forest|desert|ice|dungeon|village|dusk|dmg|gbc-forest",
   "feel": {"gravity":24,"moveSpeed":6.2,"jumpForce":8.2,"coyoteMs":100},
   "non_goals": ["thing we will not build"],
   "novelty": "ONE unique hook for this slice",
   "first_death": "fair first death + teach beat",
   "metric": "one more run? test"
 }
+engine required when user implies stack. vintage_profile only if engine=vintage (never above gba).
+If vintage: palette_id must be dmg|dmg-gray|gbc-* — no neon cyber bloom.
 Real numbers only in feel. English keys. Match user language inside string values.
 """.strip()
 
@@ -290,6 +294,21 @@ def validate_director_json(data: dict | None) -> tuple[bool, list[str], dict]:
     out["palette_id"] = str(data.get("palette_id") or "dusk")[:40]
     out["first_death"] = str(data.get("first_death") or "")[:400]
     out["metric"] = str(data.get("metric") or "one more run?")[:200]
+    eng = str(data.get("engine") or "").lower().strip()
+    if eng and eng not in ("three", "pixel", "vintage"):
+        errs.append("engine must be three|pixel|vintage")
+    out["engine"] = eng if eng in ("three", "pixel", "vintage") else ""
+    vprof = str(data.get("vintage_profile") or "").lower().strip()
+    if out["engine"] == "vintage":
+        if vprof and vprof not in ("gb", "gbc", "gba"):
+            errs.append("vintage_profile must be gb|gbc|gba")
+        out["vintage_profile"] = vprof if vprof in ("gb", "gbc", "gba") else "gb"
+        # force safe palette ids
+        pid = out["palette_id"]
+        if pid in ("neon", "dusk") or not pid.startswith(("dmg", "gbc")):
+            out["palette_id"] = "dmg"
+    else:
+        out["vintage_profile"] = ""
     return (len(errs) == 0, errs, out)
 
 
@@ -299,10 +318,14 @@ def director_json_to_markdown(d: dict) -> str:
     non = "\n".join(f"- {n}" for n in (d.get("non_goals") or [])) or "- (none)"
     feel = d.get("feel") or {}
     feel_lines = ", ".join(f"{k}={v}" for k, v in list(feel.items())[:12]) or "(host defaults)"
+    eng = d.get("engine") or "auto"
+    vp = d.get("vintage_profile") or ""
+    eng_line = f"**Engine:** {eng}" + (f" · profile {vp}" if vp else "")
     return (
         f"**Pitch:** {d.get('pitch','')}\n\n"
         f"**Verb:** {d.get('verb','')}\n\n"
         f"**t=8s:** {d.get('t8s','')}\n\n"
+        f"{eng_line}\n\n"
         f"**Genre:** {d.get('genre','')} · **Palette:** {d.get('palette_id','')}\n\n"
         f"**Pillars:**\n{pillars}\n\n"
         f"**Vertical slice:** {d.get('slice','')}\n\n"
@@ -1183,14 +1206,22 @@ def log_accept_pair(
     # also global corpus under product config (not secrets)
     global_root = ROOT / "config" / "lora-pairs"
     global_root.mkdir(parents=True, exist_ok=True)
+    eng = "three"
+    try:
+        import engine_ops as eops
+
+        eng = eops.project_engine(project)
+    except Exception:
+        pass
     entry = {
         "t": time.time(),
         "project": str(project),
         "kind": kind,
+        "engine": eng,
         "instruction": (instruction or "")[:2000],
         "before": (before or "")[:80_000],
         "after": (after or "")[:80_000],
-        "meta": meta or {},
+        "meta": {**(meta or {}), "engine": eng},
     }
     name = f"pair-{int(time.time() * 1000)}.json"
     path = root / name
@@ -1208,11 +1239,16 @@ def log_accept_pair(
                     "file": name,
                     "t": entry["t"],
                     "kind": kind,
+                    "engine": eng,
                     "instruction": entry["instruction"][:200],
                 }
             )
             + "\n"
         )
+    # per-engine index for future LoRA splits
+    eng_idx = global_root / f"index-{eng}.jsonl"
+    with eng_idx.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"file": name, "t": entry["t"], "kind": kind}) + "\n")
     return path
 
 

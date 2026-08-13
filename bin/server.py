@@ -374,14 +374,41 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if path == "/api/projects":
             projects = ops.enrich_projects(list_game_projects(), with_verify=True)
+            stats = {}
+            try:
+                import engine_ops as eops
+
+                stats = eops.dashboard_stats()
+            except Exception:
+                stats = {}
             return self._json(
                 200,
                 {
                     "root": str(projects_root()),
                     "projects": projects,
                     "trash": ops.list_trash(),
+                    "stats": stats,
                 },
             )
+        if path == "/api/stats" or path == "/api/projects/stats":
+            try:
+                import engine_ops as eops
+
+                return self._json(200, eops.dashboard_stats())
+            except Exception as e:
+                return self._json(500, {"ok": False, "error": str(e)})
+        if path == "/api/projects/ship-card":
+            qs = parse_qs(urlparse(self.path).query)
+            raw_p = (qs.get("path") or [""])[0]
+            pdir = Path(raw_p).expanduser()
+            if not pdir.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            try:
+                import engine_ops as eops
+
+                return self._json(200, eops.ship_card(pdir))
+            except Exception as e:
+                return self._json(500, {"ok": False, "error": str(e)})
         if path == "/api/projects/trash":
             return self._json(200, {"ok": True, "trash": ops.list_trash()})
         if path == "/api/projects/session":
@@ -528,6 +555,56 @@ class Handler(SimpleHTTPRequestHandler):
             if action not in ("keep", "tighter", "juice", "accept", "tight", "more-juice"):
                 return self._json(400, {"ok": False, "error": "action keep|tighter|juice"})
             return self._json(200, ops.taste(target, action))
+        if path.endswith("/engine-switch") or path.endswith("/switch-engine"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            eng = str(body.get("engine") or "").strip().lower()
+            try:
+                import engine_ops as eops
+
+                return self._json(
+                    200,
+                    eops.switch_engine(
+                        target,
+                        eng,
+                        vintage_profile=str(body.get("vintageProfile") or body.get("profile") or "")
+                        or None,
+                    ),
+                )
+            except Exception as e:
+                return self._json(500, {"ok": False, "error": str(e)})
+        if path.endswith("/room") or path.endswith("/one-more-room"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            try:
+                import engine_ops as eops
+
+                return self._json(200, eops.one_more_room(target))
+            except Exception as e:
+                return self._json(500, {"ok": False, "error": str(e)})
+        if path.endswith("/palette") or path.endswith("/vintage-palette"):
+            if not target.is_dir() or not looks_like_game(target):
+                return self._json(400, {"ok": False, "error": "not a game folder"})
+            try:
+                import engine_ops as eops
+
+                return self._json(
+                    200,
+                    eops.set_vintage_palette(
+                        target, str(body.get("palette") or body.get("id") or "dmg")
+                    ),
+                )
+            except Exception as e:
+                return self._json(500, {"ok": False, "error": str(e)})
+        if path.endswith("/ship-card"):
+            if not target.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            try:
+                import engine_ops as eops
+
+                return self._json(200, eops.ship_card(target))
+            except Exception as e:
+                return self._json(500, {"ok": False, "error": str(e)})
         if path.endswith("/new"):
             prompt = str(body.get("prompt") or body.get("name") or "new game").strip()
             name = slugify_project(str(body.get("name") or prompt[:48] or "new-game"))

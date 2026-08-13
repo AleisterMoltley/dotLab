@@ -226,6 +226,28 @@ def role_director(
                 slotslib.apply_director_to_project(project, norm)
             except Exception as e:
                 print(f"  ⚠ slots: {e}")
+            # Apply engine from director JSON if project exists
+            try:
+                eng = (norm.get("engine") or "").lower()
+                if eng in ("three", "pixel", "vintage"):
+                    import engine_ops as eops
+
+                    cur = eops.project_engine(project)
+                    if cur != eng:
+                        r = eops.switch_engine(
+                            project,
+                            eng,
+                            vintage_profile=norm.get("vintage_profile") or "gb",
+                        )
+                        print(f"  ⚙ engine → {eng} ({r.get('ok')})")
+                    elif eng == "vintage" and norm.get("palette_id"):
+                        import engine_ops as eops
+
+                        pid = str(norm.get("palette_id") or "dmg")
+                        if pid.startswith("gbc") or pid.startswith("dmg"):
+                            eops.set_vintage_palette(project, pid)
+            except Exception as e:
+                print(f"  ⚠ engine apply: {e}")
         return md + "\n\n<!-- director_json_ok -->\n"
 
     # One repair pass: ask model to fix JSON only

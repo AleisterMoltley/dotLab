@@ -62,6 +62,8 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/antislope.py" "$@" ;;
     eval-briefs|eval)
       shift; exec python3 "$ROOT/bin/eval_briefs.py" "$@" ;;
+    engine)
+      shift; exec python3 "$ROOT/bin/engine_ops.py" "$@" ;;
     ship)
       shift; exec python3 "$ROOT/bin/github.py" ship "$@" ;;
     cloud)

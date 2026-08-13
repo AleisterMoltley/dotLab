@@ -132,10 +132,13 @@ export function createGame({ genre, title }) {
   const coins = [];
   const foes = [];
 
+  const ROOM_N = Math.min(Number(SPEC.roomCount) || 1, 6);
+  const worldW = isSide ? VW * (1 + ROOM_N) : VW;
+
   if (isSide) {
-    // One screen-ish + a bit of scroll — handheld density
-    solids.push({ x: 0, y: VH - 16, w: VW * 3, h: 16 });
-    for (let i = 0; i < 6; i++) {
+    // Multi-screen scroll — handheld density (one more room = wider world)
+    solids.push({ x: 0, y: VH - 16, w: worldW, h: 16 });
+    for (let i = 0; i < 5 + ROOM_N * 2; i++) {
       solids.push({
         x: 24 + i * 40,
         y: VH - 40 - Math.floor(rnd(i) * 24),
@@ -143,10 +146,10 @@ export function createGame({ genre, title }) {
         h: 8,
       });
     }
-    for (let i = 0; i < Math.min(SPEC.coinCount || 5, 8); i++) {
+    for (let i = 0; i < Math.min(SPEC.coinCount || 5, 8 + ROOM_N); i++) {
       coins.push({ x: 32 + i * 36, y: 40 + rnd(i + 2) * 40, got: false });
     }
-    for (let i = 0; i < Math.min(SPEC.enemyCount || 2, 4); i++) {
+    for (let i = 0; i < Math.min(SPEC.enemyCount || 2, 4 + Math.min(ROOM_N, 2)); i++) {
       foes.push({
         x: 60 + i * 50,
         y: VH - 28,
