@@ -1,291 +1,259 @@
 # dotLab
 
-> Formerly *Gamemaster* — same stack, new name.
+**A local AI game studio that ships playable games — not chat logs.**
 
-
-Local Three.js game studio. One prompt → a playable slice. Worlds, physics, dialogue, shaders, Solana Seeker. **$0** on [Ollama](https://ollama.com). Paid cloud models are optional and off until you turn them on.
+You describe a game. DotLab scaffolds a real project, fills a vertical slice you can run, and iterates with you while the game stays open. The models run on your machine. The quality bar is enforced by the host, not left to the model’s good intentions.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 
-dotLab is not a generic chatbot. It is a toolchain that **ships games**: a game-tuned local model, a four-role studio, file agents, a world generator, scaffolds, playtest, and `ship` to GitHub.
+---
 
-## What you get
+## Why this exists
 
-| Piece | What it does |
-|-------|----------------|
-| **Models** | `dotlab` (Qwen3-Coder 30B MoE) and `gamemaster-dense` (32B), plus a 7B flash tier |
-| **Studio** | Director → Architect → Coder → Critic. Council votes on pitches |
-| **Agent** | Reads and writes files in your game (`list` / `read` / `write` / `search` / `run`) |
-| **Worlds** | Prompt → regions → height field → editable instances you can walk |
-| **Pixel** | Bake sprites on Canvas2D, stamp them as nearest-filter quads in Three.js |
-| **Shaders** | Multipass GLSL lab, Shadertoy import |
-| **Seeker** | Same Three.js game + Mobile Wallet Adapter |
-| **Playtest** | Playwright headless run, screenshots, metrics |
-| **Kit** | Todos, feel audit, art-test, wiki, verify |
-| **Verify** | Deterministic slice grade. P0 fail blocks `done` |
-| **GitHub** | Login, commit, private repo, push (`gamemaster ship`) |
-| **Cloud** | Grok / Claude / OpenAI / Gemini — **opt-in only** |
+Most AI coding tools optimize for *looking busy*: more files, more tokens, more confidence. Games punish that. A green capsule on a plane is not a game. A plaza with one hoop is not a race. A jump that never lands on a ledge is not a platformer.
+
+DotLab is built around a different bet:
+
+1. **The host owns the floor.** Feel numbers, opposition counts, ledges, gates, doors, and death rules are applied by the studio — not invented in prose.
+2. **The model works in a tight loop.** It peeks at the project, patches one system at a time, and stops when the slice passes a real grade.
+3. **Local is the default.** [Ollama](https://ollama.com) runs the stack. Paid cloud models exist only if you turn them on.
+
+One prompt can still open a world. The difference is what “done” means: a project you can play, measure, and ship.
+
+---
+
+## Strengths
+
+| Strength | What you feel |
+|----------|----------------|
+| **Playable first** | Scaffold → `npm run dev` → controls work. No empty repo ceremony. |
+| **Host quality floor** | Place, body, verb, opposition, juice. Missing a pillar fails the slice. |
+| **Studio that builds** | Director → Architect → recursive coder → Critic. Not a single dump into `game.js`. |
+| **Live iteration** | The Play window stays open while files change. Test while the agent works. |
+| **Deterministic verify** | `verify` grades structure and genre contracts without calling a model. P0 fail blocks “done”. |
+| **Skill routing** | The agent asks the catalog what exists. Unknown tools do not invent themselves. |
+| **Worlds from a sentence** | Regions, height field, instances — walkable Three.js you can keep editing. |
+| **$0 local path** | Game-tuned models on Ollama. Cloud is opt-in, never ambient. |
+| **Ship path** | Private GitHub repo in one command when you are ready. |
+
+---
+
+## What you can make
+
+- **Web games** — Three.js vertical slices (FPS, platformer, runner, race, adventure, more)
+- **Pixel games** — Canvas2D bake path with nearest-filter feel
+- **Vintage** — Game Boy ship bar, hard GBA ceiling
+- **Open worlds** — prompt → regions → terrain → instances
+- **Shader lab** — multipass GLSL, Shadertoy import
+- **Solana Seeker** — same game loop + Mobile Wallet Adapter
+
+Engine rule: the game is always a real project (Vite, files, a loop). Seeker adds wallet; it does not replace the game.
+
+---
 
 ## Requirements
 
 - macOS or Linux (Apple Silicon recommended)
-- **32 GB RAM** for the 30B + 32B pair. 16 GB can run `--14b` or `--7b`
-- [Ollama](https://ollama.com) (install the app, leave it running)
-- [Node.js](https://nodejs.org) 18+ (scaffolds and playtest)
-- Python 3.10+ (stdlib only — no `pip install`)
-- Disk: ~40 GB for `--dual`, ~20 GB for `--max`, much less for `--14b` / `--7b`
-- Optional: [GitHub CLI](https://cli.github.com) (`brew install gh`) to ship games
+- **32 GB RAM** for the full model pair · 16 GB can run `--14b` or `--7b`
+- [Ollama](https://ollama.com) running
+- [Node.js](https://nodejs.org) 18+
+- Python 3.10+ (stdlib only in the studio)
+- Disk: ~40 GB for `--dual`, less for smaller profiles
+- Optional: [GitHub CLI](https://cli.github.com) to ship
+
+---
 
 ## Install
 
 ```bash
-git clone https://github.com/AleisterMoltley/gamemaster.git
-cd gamemaster
+git clone https://github.com/AleisterMoltley/dotLab.git
+cd dotLab
 chmod +x install.sh start bin/*
 ./install.sh --dual
 ```
 
-`install.sh` pulls the Ollama models, builds the `dotlab` / `gamemaster-dense` tags from `Modelfile`, and puts `dotlab` on `~/.local/bin`.
+`install.sh` pulls models, builds the `dotlab` tags from `Modelfile`, and puts `dotlab` on your PATH (`gamemaster` remains a CLI alias).
 
-### Profiles
-
-| Flag | Models | When |
-|------|--------|------|
-| `--dual` | 30B MoE + 32B dense + 7B flash | Best quality. 48 GB unified memory is comfortable |
-| `--max` | 30B MoE + 7B | Default coding, no dense critic |
+| Profile | Models | When |
+|---------|--------|------|
+| `--dual` | 30B MoE + 32B dense + 7B flash | Best quality |
+| `--max` | 30B MoE + 7B | Strong coding, lighter critic |
 | `--14b` | qwen2.5-coder:14b | 16–24 GB machines |
-| `--7b` | qwen2.5-coder:7b | Laptops, flash-only |
-
-If `~/.local/bin` is not on your PATH:
+| `--7b` | qwen2.5-coder:7b | Laptops |
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
-# or:
-alias gamemaster="$PWD/bin/gamemaster"
+dotlab -h
+python3 tests/run.py    # cheap suite, no Ollama
+./start                 # browser studio (Ollama must be running)
 ```
 
-Check:
+Open **Ollama.app** before the first session. Games land in **`~/dotLab/Projects`**.
 
-```bash
-gamemaster -h
-python3 tests/run.py      # ~2s, no Ollama
-./start                   # browser chat (needs Ollama running)
-```
-
-Open **Ollama.app** before the first chat. On Apple Silicon, `install.sh` already writes Metal-friendly env into `config/ollama-env.sh`. You can `source` it in a long session:
-
-```bash
-source ./config/ollama-env.sh
-gamemaster turbo warmup
-```
-
-Games you scaffold or start from the chat live in **`~/dotLab/Projects`**. Open that folder in Finder, or use **Your games** on the start screen.
+---
 
 ## First game (five minutes)
 
 ```bash
-# 1. Empty Three.js world you can walk
-gamemaster scaffold world-game --name Wilds
+# Walkable world from a sentence
+dotlab scaffold world-game --name Wilds
 cd Wilds
-
-# 2. Fill it from a sentence (no LLM: add --offline)
-gamemaster worlds generate -p . "coastal village, pine ridge, desert canyon"
-
-# 3. Play
-npm install
-npm run dev
+dotlab worlds generate -p . "coastal village, pine ridge, desert canyon"
+npm install && npm run dev
 ```
 
-WASD to walk, click to look, Space to jump. `1` / `2` toggle appearance vs instance colors.
-
-Then iterate:
+WASD to walk · click to look · Space to jump.
 
 ```bash
-gamemaster -p . --agent "Add an NPC with a three-node dialogue tree"
-gamemaster studio build -p . "one quest: talk, flip a flag, the dock lights up" --live
+# Or a genre slice you can tighten immediately
+dotlab scaffold web-game --genre platformer --name Skyjump
+cd Skyjump && npm i && npm run dev
+
+dotlab -p . --agent "Add a flag at the last ledge and a restart on death"
+dotlab studio build -p . "one fair first death and clearer juice" --live
+dotlab verify -p .
 ```
 
-`--live` opens the Play window. The game stays up while files change.
+`--live` keeps the Play window open while the studio works.
+
+---
+
+## How a build works
+
+1. **Compile the brief** into genre, loop, feel, palette, and opposition counts  
+2. **Scaffold a real project** — not a chat attachment  
+3. **Studio roles** design and structure the slice  
+4. **Deep coder** peeks the tree, patches one pillar at a time, does not dump the whole game into context  
+5. **Verify** grades the result; P0 fails block “done”  
+6. **Playtest** (optional) runs headless metrics and screenshots  
+7. **Ship** (optional) pushes a private GitHub repo  
+
+The host applies feel, locks, and events. The model proposes. Invalid ops do not crash the game.
+
+---
 
 ## Commands
 
 ```bash
-# Chat (one shot)
-gamemaster "Third-person village: walk, talk, ragdoll on death"
+# Chat
+dotlab "Third-person village: walk, talk, fair first death"
 
 # Studio
-gamemaster studio plan    -p DIR "brief"
-gamemaster studio build   -p DIR "brief" --live
-gamemaster studio council -p DIR "brief" --build --live
-gamemaster studio review  -p DIR "what is weak"
-gamemaster studio parallel -p DIR "brief"
+dotlab studio plan    -p DIR "brief"
+dotlab studio build   -p DIR "brief" --live
+dotlab studio council -p DIR "brief" --build --live
+dotlab studio review  -p DIR "what is weak"
 
 # Worlds
-gamemaster worlds generate -p DIR "biomes…"
-gamemaster worlds generate --offline -p DIR "snow village"
-gamemaster worlds plan "canyon settlement" -o spec.json
+dotlab worlds generate -p DIR "biomes…"
+dotlab worlds generate --offline -p DIR "snow village"
 
 # Scaffolds
-gamemaster scaffold web-game --genre platformer --name Skyjump
-gamemaster scaffold world-game --name Wilds
-gamemaster scaffold pixel-game --name Grove
-gamemaster scaffold seeker-game --genre idle --name ClaimQuest
-gamemaster scaffold shader-lab --name NeonFrag
+dotlab scaffold web-game --genre platformer --name Skyjump
+dotlab scaffold world-game --name Wilds
+dotlab scaffold pixel-game --name Grove
+dotlab scaffold seeker-game --genre idle --name ClaimQuest
+dotlab scaffold shader-lab --name NeonFrag
 
-# Agent (needs -p)
-gamemaster -p ./Skyjump --agent "Add collectibles and a score HUD"
+# Agent
+dotlab -p ./Skyjump --agent "Add collectibles and a score HUD"
 
-# Play / measure
-gamemaster live -p DIR
-gamemaster playtest -p DIR --critic
-gamemaster verify -p DIR
+# Measure
+dotlab live -p DIR
+dotlab playtest -p DIR
+dotlab verify -p DIR
+dotlab skills route "juice the jump"
+dotlab rlm -p DIR "deepen opposition and juice"
 
-# Memory
-gamemaster prefs set like "tight jumps"
-gamemaster wiki add -p DIR "Gravity 28" --why "user said floaty"
-gamemaster kit todo -p DIR --add "first fair death"
-gamemaster kit feel -p DIR
-gamemaster kit pixel -p DIR      # copy lib/pixel into src/pixel
+# Memory & ship
+dotlab prefs set like "tight jumps"
+dotlab wiki add -p DIR "Gravity 28" --why "user said floaty"
+dotlab github login
+dotlab ship -p ./Wilds -m "vertical slice"
 
-# GitHub
-gamemaster github login
-gamemaster ship -p ./Wilds -m "vertical slice"
+# Local speed
+dotlab turbo warmup
+dotlab update --modelfile
 
-# Speed / updates
-gamemaster turbo warmup
-gamemaster turbo bench
-gamemaster update --modelfile
-
-# Optional paid model (does nothing until you opt in)
-gamemaster cloud status
-gamemaster cloud on grok
-gamemaster --cloud claude "Tighten coyote time"
-gamemaster cloud off
+# Optional paid model (off until you opt in)
+dotlab cloud on grok
+dotlab --cloud claude "Tighten coyote time"
+dotlab cloud off
 ```
 
-`./start` is the same CLI plus a browser chat UI. `./start studio build -p DIR "brief"` works.
+`./start` is the same CLI with a browser UI.
 
-## Studio
+---
+
+## Studio modes
 
 | Mode | Use when |
 |------|----------|
 | **plan** | Design + architecture only |
-| **build** | Full Director → Architect → Coder → Critic → fix |
+| **build** | Full production loop with deep coder (default) |
 | **council** | Three pitches, vote, optional build |
 | **parallel** | Player / world / UI streams, then merge |
 | **review** | Roast an existing project |
 
-Build and parallel open the Play window by default (`--no-live` to skip). `--playtest` adds a headless Playwright pass after the build.
+Use `--flat` on build only if you want a single-pass coder. Prefer the default.
 
-## Worlds
+---
 
-`gamemaster worlds generate` turns a sentence into a walkable Three.js scene.
+## Quality bar
 
-1. **Intent** — only what you said (no invented biomes)
-2. **Plan** — 3–6 regions, landforms, materials, object lists
-3. **Terrain** — layout map, composite height field, rock/tree scatter
-4. **Populate** — houses, docks, animals; seat them on the ground
-5. **Compose** — writes `public/world/{spec,layout,heightfield,instances,meta}.json`
+A cube on a plane is a fail.
 
-`--offline` skips the LLM and uses the built-in planner. Output is always the same file layout, so `npm run dev` just works.
+A slice needs:
 
-## Pixel games
+- a **place** you can read in one second  
+- a **body** with real feel (accel, friction, coyote — not `pos += speed`)  
+- a **verb** obvious by t=8s  
+- **opposition** that pushes back  
+- **juice** on every meaningful hit  
+- a **fair first death** and a restart under three seconds  
 
-Three.js stays the engine. Sprites are baked on Canvas2D, then uploaded as nearest-filter quads.
+Feel lives in `CONFIG` numbers. `dotlab verify -p DIR` grades without an LLM. Skill routing refuses tools the catalog cannot name.
 
-```bash
-gamemaster scaffold pixel-game --name Grove
-cd Grove && npm i && npm run dev
-```
-
-Vocab lives in `lib/pixel/` (`bake.js`, `draw.js`, `fx.js`, `three-bridge.js`). `gamemaster kit pixel -p DIR` copies that kit into an existing game.
-
-## Shader lab
-
-```bash
-gamemaster scaffold shader-lab --name NeonFrag
-cd NeonFrag && npm i && npm run dev
-```
-
-Multipass fragment buffers, Shadertoy import, no cloud.
-
-## Solana Seeker
-
-A Seeker game is the **same Three.js loop** plus Mobile Wallet Adapter. Scaffold `seeker-app` (wallet shell) or `seeker-game` (wallet + game slot). The loop must work with the wallet disconnected.
-
-## GitHub
-
-```bash
-brew install gh
-gamemaster github login
-gamemaster ship -p ./Wilds -m "vertical slice"
-```
-
-New repos are **private** unless you pass `--public`. Tokens stay in the `gh` keyring. `config/github.json` is gitignored.
-
-## Optional paid models
-
-Default is local Ollama. A key in your environment does **not** switch you over.
-
-```bash
-export XAI_API_KEY=…          # or ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
-gamemaster cloud on grok      # persist until cloud off
-gamemaster --cloud grok "…"   # one shot, no persist
-gamemaster cloud off
-```
-
-Keys prefer the env var. `cloud set grok --key …` writes `config/cloud.json` (gitignored, mode 0600). Custom OpenAI-compatible endpoints are supported (`--base`).
+---
 
 ## Layout
 
 ```
-gamemaster/
-  AGENTS.md              How to patch this repo (humans + AIs)
-  install.sh             Models + PATH
-  Modelfile              Game-tuned system prompt
-  start                  Browser chat / command dispatcher
-  bin/gamemaster         CLI
-  bin/gmcommon.py        Shared paths, Ollama helpers
-  bin/studio.py          Multi-agent production
-  bin/agent.py           File agent
-  bin/worlds.py          Open-world generator
-  bin/scaffold.py        Starters
-  bin/cloud.py           Optional paid providers
-  bin/github.py          Login / commit / ship
-  bin/kit.py             Todos, feel, art-test, pixel
-  bin/verify.py          Deterministic slice grade
-  knowledge/             Domain packs the model sees
-  lib/pixel/             Canvas2D → Three.js textures
-  templates/             world-game, pixel-game, shader-lab
-  tests/                 Cheap suite (no Ollama, no network)
-  chat/  live/           Browser UIs
+dotLab/
+  AGENTS.md           How to patch this repo
+  install.sh          Models + PATH
+  Modelfile           Game-tuned system prompt
+  start               Browser studio launcher
+  bin/                CLI and host logic
+  knowledge/          Domain packs injected by route
+  lib/                Pixel, craft, shared runtime
+  templates/          Scaffolds and slices
+  tests/              Cheap suite (no Ollama)
+  chat/  live/        Browser UIs
+  playtest/           Headless runner
 ```
 
-Working on the repo itself: read **[AGENTS.md](AGENTS.md)**, then `python3 tests/run.py`.
+Working on the repo: read [AGENTS.md](AGENTS.md), then `python3 tests/run.py`.
 
-## Model tiers
+---
+
+## Models
 
 | Tier | Default | Role |
 |------|---------|------|
-| **flash** | `qwen2.5-coder:7b` | Short Q&A |
+| **flash** | 7B | Short Q&A |
 | **max** | `dotlab` | Coding |
-| **dense** | `gamemaster-dense` | Hard refactors / critique |
+| **dense** | dense critic | Hard refactors / review |
 
-```bash
-gamemaster --tier dense "refactor the entity system"
-```
+Editor endpoint: `http://127.0.0.1:11434/v1` · key `ollama` · model `dotlab`. See `config/README-editor.md`.
 
-Editor (Continue, etc.): `http://127.0.0.1:11434/v1` · key `ollama` · model `dotlab`. See `config/README-editor.md`.
-
-## Feel and completeness
-
-A cube on a plane is a fail. A slice needs a place (light, fog = background), a body (accel/friction + spring camera), a verb at t=8s, and a fair first death. Feel lives in `CONFIG` numbers, not in comments. `gamemaster verify -p DIR` grades the slice without an LLM.
+---
 
 ## License
 
 MIT — [LICENSE](LICENSE). Copyright 2026 AleisterMoltley.
 
-Runtime: [Ollama](https://ollama.com) + Qwen coder weights, [Three.js](https://threejs.org). Optional cloud APIs are yours to enable.
+Runtime: [Ollama](https://ollama.com), Qwen coder weights, [Three.js](https://threejs.org). Optional cloud APIs are yours to enable.
 
 ---
 

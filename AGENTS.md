@@ -35,7 +35,7 @@ Modelfile       baked Ollama system prompt
 | Studio roles / pipeline | `bin/studio.py` (Director/Architect/Critic/pipelines) |
 | Agent tools | `bin/agent.py` (`parse_tools`, `run_tool`) |
 | Skill catalog / route-or-abstain | `bin/skills.py` + `knowledge/skills.md` |
-| Recursive LM (peek / sub) | `bin/rlm.py` + `knowledge/rlm.md` |
+| Deep build (peek / sub) | `bin/rlm.py` + `knowledge/rlm.md` |
 | New project starter | `bin/scaffold.py` + optional `templates/<name>/` |
 | Prompt → playable slice | `bin/slice.py` + `templates/web-slice/game.js` |
 | Instant continue (feel/counts/palette) | `bin/patch.py` — no LLM |

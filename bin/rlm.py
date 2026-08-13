@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Recursive Language Model loop for games (Zhang/Khattab 2025, adapted).
+Deep build — recursive coding loop for games.
 
-Vanilla LLM: dump the whole game + knowledge into one prompt → toy slice.
-RLM: the project is an *environment*. The root model never sees the full
-files. It peeks, greps, and recursively `sub()`s a *narrow* query over a
-*narrow* snippet. Host applies tools. Depth bar refuses a one-file plaza.
+A one-shot dump of the whole project into the model produces toys.
+Here the project is an environment: the root peeks and greps, then
+recursively `sub()`s a narrow task over a narrow snippet. Host applies
+tools. Depth bar refuses a plaza with no opposition.
 
   gamemaster rlm -p DIR "deepen the slice"
-  gamemaster studio build -p DIR "…"          # RLM coder is the default
-  gamemaster studio build -p DIR "…" --flat   # old one-shot dump
+  gamemaster studio build -p DIR "…"          # deep coder is the default
+  gamemaster studio build -p DIR "…" --flat   # single-pass coder
 
 No free Python eval. REPL verbs are host-parsed (stdlib only).
 """
@@ -664,7 +664,7 @@ def run(
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="dotLab RLM — recursive game builder")
+    ap = argparse.ArgumentParser(description="dotLab deep build — recursive game coder")
     ap.add_argument("-p", "--project", required=True)
     ap.add_argument("query", nargs="+")
     ap.add_argument("-m", "--model", default="")

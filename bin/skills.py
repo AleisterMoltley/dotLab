@@ -344,9 +344,9 @@ def catalog() -> list[dict[str, Any]]:
         _skill(
             "rlm",
             "cli",
-            "Recursive builder: peek/grep/sub over the project. No context dump.",
+            "Deep build: peek/grep/sub over the project. No context dump.",
             'gamemaster rlm -p DIR "deepen the slice"',
-            ("recursive lm", "rlm", "deepen the game", "not a toy", "context as environment"),
+            ("deep build", "rlm", "deepen the game", "not a toy", "recursive coder"),
             {"cli": "rlm"},
         ),
         _skill(
