@@ -39,6 +39,7 @@ knowledge/live/*
 
 # quality pipeline local data
 config/lora-pairs/
+config/teacher/
 config/slice-rag/
 config/.warmup-ok
 config/golden-screens/

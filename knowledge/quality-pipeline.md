@@ -11,7 +11,10 @@ Host-side ship-rate system. Goal: **faster wall-clock** and **higher P0 pass rat
 | P0 Stable prefix | Strip volatile system lines; keep_alive 24h | `cloud.ollama_chat`, `quality.strip_volatile_system` |
 | P0 Dual warm | flash + max resident | `turbo.warmup`, `start`, `quality.ensure_dual_warmup` |
 | P0 Draft→max | Host speculative: flash drafts, max refines | `quality.draft_then_max` (+ optional Ollama `draft` field) |
-| P1 Best-of-N | N coder runs, verify score picks winner | `studio.pipeline_build` when `DOTLAB_BEST_OF≥2` |
+| P1 Best-of-N | Verify-rescue flash patches if P0 still fails | `studio.pipeline_build` when `DOTLAB_BEST_OF≥2` (default 2) |
+| P1 Host floor | Genre CONFIG + pit death, no LLM | `host_floor.apply` after coder |
+| P1 Few-shots | Golden @@ patches instead of 4k law | `host_floor.fewshot_block` |
+| P0 Fuzzy patch | Whitespace / line-stripped search rescue | `quality.find_search_span` |
 | P1 Auto-critic | One critic + one repair max | `quality.auto_critic_and_repair` |
 | P1 Genre slots | Host novelty/weapon/enemy modules | `slots.py` → `src/slots/runtime.js` |
 | P2 Stream-apply | Apply patches as `@@ end` closes | `quality.stream_extract_and_apply` |
@@ -24,7 +27,7 @@ Host-side ship-rate system. Goal: **faster wall-clock** and **higher P0 pass rat
 
 ```bash
 export DOTLAB_SPECULATIVE=1      # host draft→max (default on)
-export DOTLAB_BEST_OF=1          # set 2 for dual coder + verify pick
+export DOTLAB_BEST_OF=2          # verify-rescue flash patches if P0 still fails
 export DOTLAB_DRAFT=dotlab-flash # draft model tag
 export DOTLAB_EMBED=nomic-embed-text
 export OLLAMA_KEEP_ALIVE=24h

@@ -132,16 +132,17 @@ def index_project(project: Path) -> list[dict[str, Any]]:
                 score = int((v or {}).get("score") or 0)
             except Exception:
                 pass
-    if score < 50:
-        # live verify once
-        try:
-            import verify as verifylib
+    p0_ok = False
+    try:
+        import verify as verifylib
 
-            score = int(verifylib.evaluate(project).get("score") or 0)
-        except Exception:
-            score = 0
-    if score < 55:
-        return []  # only index ships that mostly pass
+        vr = verifylib.evaluate(project)
+        score = int(vr.get("score") or score or 0)
+        p0_ok = bool(vr.get("ok"))
+    except Exception:
+        p0_ok = score >= 80
+    if not p0_ok:
+        return []  # only index P0-pass slices
 
     chunks: list[dict[str, Any]] = []
     for rel in ("src/game.js", "src/main.js", "src/systems", "src/player", "src/fx"):

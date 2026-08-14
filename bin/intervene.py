@@ -78,10 +78,12 @@ def detect_base() -> dict:
         max_base = "qwen2.5-coder:14b"
     if "qwen2.5-coder:32b" not in lines:
         dense_base = max_base
-    if "qwen2.5-coder:7b" not in lines and "qwen2.5-coder:14b" in lines:
-        flash_base = "qwen2.5-coder:14b"
     # RAM gate
     m = mem_gb()
+    if m >= 16 and "qwen2.5-coder:14b" in lines:
+        flash_base = "qwen2.5-coder:14b"
+    elif "qwen2.5-coder:7b" not in lines and "qwen2.5-coder:14b" in lines:
+        flash_base = "qwen2.5-coder:14b"
     ctx = 16384
     if m < 24:
         ctx = 12288

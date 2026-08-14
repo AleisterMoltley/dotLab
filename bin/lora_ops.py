@@ -19,6 +19,7 @@ from gmcommon import CONFIG
 
 PAIRS = CONFIG / "lora-pairs"
 DEFAULT_OUT = CONFIG / "lora-pairs" / "export-sft.jsonl"
+MIN_TRAIN_PAIRS = 200
 
 
 def iter_pairs(limit: int = 500) -> list[dict[str, Any]]:
@@ -85,7 +86,22 @@ def export_sft(out_path: Path | None = None, limit: int = 500) -> dict[str, Any]
         "  4) gamemaster models gate --approve <tag> after turbo bench\n",
         encoding="utf-8",
     )
-    return {"ok": True, "path": str(dest), "rows": len(rows)}
+    ready = len(rows) >= MIN_TRAIN_PAIRS
+    msg = None
+    if not ready:
+        msg = (
+            f"Need {MIN_TRAIN_PAIRS}+ clean pairs before a LoRA (have {len(rows)}). "
+            "Collect verify-green accept pairs first — training now would make flash worse."
+        )
+        print(f"  ⚠ {msg}")
+    return {
+        "ok": True,
+        "path": str(dest),
+        "rows": len(rows),
+        "ready": ready,
+        "min_pairs": MIN_TRAIN_PAIRS,
+        "message": msg,
+    }
 
 
 def stats() -> dict[str, Any]:
@@ -94,7 +110,14 @@ def stats() -> dict[str, Any]:
     for p in pairs:
         k = str(p.get("kind") or "unknown")
         kinds[k] = kinds.get(k, 0) + 1
-    return {"count": len(pairs), "kinds": kinds, "dir": str(PAIRS)}
+    n = len(pairs)
+    return {
+        "count": n,
+        "kinds": kinds,
+        "dir": str(PAIRS),
+        "ready": n >= MIN_TRAIN_PAIRS,
+        "min_pairs": MIN_TRAIN_PAIRS,
+    }
 
 
 def main() -> int:

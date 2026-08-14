@@ -107,11 +107,10 @@ def system_for(role: str = "core", extra_packs: bool = True) -> str:
         parts.append(DIRECTOR)
     if role in ("architect", "studio"):
         parts.append(ARCHITECT)
-    if role in ("coder", "agent", "studio"):
-        parts.append(CODER if role != "agent" else AGENT)
-        if role == "coder":
-            parts.append(AGENT)
-    if role == "agent":
+    if role in ("coder", "studio"):
+        parts.append(CODER)
+        parts.append(AGENT)
+    elif role == "agent":
         parts.append(AGENT)
     if role in ("critic", "studio"):
         parts.append(CRITIC)

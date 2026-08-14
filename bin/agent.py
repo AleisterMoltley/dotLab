@@ -585,12 +585,22 @@ def load_knowledge(project: Path | None = None, task: str = "") -> str:
         sys.path.insert(0, str(ROOT / "bin"))
         import turbo as turbolib  # type: ignore
 
-        k = turbolib.select_knowledge(task or "three.js game agent", max_chars=12000)
+        k = turbolib.select_knowledge(
+            task or "three.js game agent", max_chars=7000, skip_core=True
+        )
         if k:
             chunks.append(k)
-        ap = ROOT / "knowledge" / "agent-protocol.md"
-        if ap.exists():
-            chunks.append(ap.read_text(encoding="utf-8")[:2500])
+        try:
+            import host_floor as floor
+
+            fs = floor.fewshot_block(task)
+            if fs:
+                chunks.insert(0, fs)
+            tb = floor.teacher_block(task, k=2, max_chars=1400)
+            if tb:
+                chunks.append(tb)
+        except Exception:
+            pass
     except Exception:
         for name in (
             "identity.md",
@@ -843,6 +853,12 @@ def main() -> int:
             if name == "done":
                 summary = targs.get("summary") or reply
                 try:
+                    import host_floor as floor
+
+                    floor.apply(project)
+                except Exception:
+                    pass
+                try:
                     import verify as verifylib
 
                     vr = verifylib.evaluate(project)
@@ -865,10 +881,13 @@ def main() -> int:
                             )
                         except Exception:
                             pass
-                        result_chunks.append(
-                            verifylib.repair_prompt(vr)
-                            + ("\n\n" + bank_ctx if bank_ctx else "")
-                        )
+                        try:
+                            import host_floor as floor
+
+                            rp = floor.repair_task(vr)
+                        except Exception:
+                            rp = verifylib.repair_prompt(vr)
+                        result_chunks.append(rp + ("\n\n" + bank_ctx if bank_ctx else ""))
                         break
                 except Exception as e:
                     print(f"  ⚠ verify skipped: {e}")

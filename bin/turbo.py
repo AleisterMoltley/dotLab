@@ -128,6 +128,44 @@ def models_available(force: bool = False) -> set[str]:
         return set(_TAGS_CACHE["names"] or set())
 
 
+ROLE_CTX = {
+    "director": 8192,
+    "architect": 12288,
+    "critic": 8192,
+    "coder": 16384,
+    "agent": 16384,
+    "flash": 4096,
+    "rlm": 32768,
+}
+
+
+def ctx_for_role(role: str) -> int:
+    env = os.environ.get("GAMEMASTER_NUM_CTX")
+    if env:
+        try:
+            return int(env)
+        except ValueError:
+            pass
+    return int(ROLE_CTX.get((role or "").lower(), 16384))
+
+
+def _flash_candidates() -> list[str]:
+    """On ≥16 GB prefer 14B/OmniCoder drafts over baked 7B flash."""
+    ram = 16.0
+    try:
+        import models_catalog as mc
+
+        ram = float(mc.total_ram_gb())
+    except Exception:
+        pass
+    strong = ["qwen2.5-coder:14b", "omnicoder:9b"]
+    baked = ["dotlab-flash", "gamemaster-flash"]
+    weak = ["qwen2.5-coder:7b", "dotlab", "gamemaster"]
+    if ram >= 16:
+        return strong + baked + weak
+    return baked + weak + strong
+
+
 def resolve_tier(tier: str) -> str:
     """Pick best available model for tier. Never blocks long on tags."""
     want = TIERS.get(tier, TIERS["max"])
@@ -135,18 +173,15 @@ def resolve_tier(tier: str) -> str:
     if not avail:
         # Offline / cold — return configured tag; Ollama will load it
         return want
+    if tier == "flash":
+        for cand in _flash_candidates():
+            if any(n == cand or n.startswith(cand + ":") for n in avail):
+                return cand
+        return want
     if any(n == want or n.startswith(want + ":") for n in avail):
         return want
     fallbacks = {
-        "flash": [
-            "dotlab-flash",
-            "gamemaster-flash",
-            "omnicoder:9b",
-            "qwen2.5-coder:14b",
-            "qwen2.5-coder:7b",
-            "dotlab",
-            "gamemaster",
-        ],
+        "flash": _flash_candidates(),
         "max": [
             "dotlab",
             "gamemaster",
@@ -292,8 +327,11 @@ def route_task(prompt: str, mode: str = "auto") -> dict:
     }
 
 
-def select_knowledge(prompt: str, max_chars: int = 14000) -> str:
-    """Pick only relevant knowledge packs — biggest free speedup for agents."""
+def select_knowledge(prompt: str, max_chars: int = 14000, skip_core: bool = False) -> str:
+    """Pick only relevant knowledge packs — biggest free speedup for agents.
+
+    skip_core: omit identity/brain/ship-bar when the system prompt already has CORE.
+    """
     p = prompt.lower()
     # Only slim knowledge for true chit-chat (flash tier)
     if route_task(prompt).get("tier") == "flash":
@@ -313,7 +351,10 @@ def select_knowledge(prompt: str, max_chars: int = 14000) -> str:
     # always core first, then high-signal packs (ops/local_llm), then routed domain, then systems/live
     ordered: list[str] = []
     priority = [p for p in ("ops", "local_llm", "antislope", "vintage", "zoo") if p in pack_ids]
-    for pid in ["core"] + priority + pack_ids + ["systems", "live"]:
+    head = [] if skip_core else ["core"]
+    for pid in head + priority + pack_ids + ["systems", "live"]:
+        if pid == "core" and skip_core:
+            continue
         if pid not in ordered:
             ordered.append(pid)
 
@@ -354,8 +395,9 @@ def select_knowledge(prompt: str, max_chars: int = 14000) -> str:
         early.append(("game-ops.md", 1800))
     if "zoo" in pack_ids:
         early.append(("openzoo.md", 1800))
-    # always lead with identity + ship-bar
-    for name, cap in (("identity.md", 1600), ("ship-bar.md", 1600), *early):
+    # Lead with identity + ship-bar unless the system prompt already has CORE
+    lead = [] if skip_core else [("identity.md", 1600), ("ship-bar.md", 1600)]
+    for name, cap in (*lead, *early):
         if not _add_file(name, hard_cap=cap):
             return "\n\n".join(chunks)
 
@@ -380,8 +422,8 @@ export OLLAMA_NUM_BATCH=512
 export OLLAMA_SCHED_SPREAD=false
 # Quality pipeline defaults
 export DOTLAB_SPECULATIVE=1
-# Set DOTLAB_BEST_OF=2 for verify-scored dual coder (slower, higher ship-rate)
-export DOTLAB_BEST_OF=1
+# Verify-rescue: cheap flash patches if P0 still fails after the coder
+export DOTLAB_BEST_OF=2
 """.strip()
 
 

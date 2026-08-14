@@ -9,5 +9,5 @@ export OLLAMA_NUM_BATCH=512
 export OLLAMA_SCHED_SPREAD=false
 # Quality pipeline defaults
 export DOTLAB_SPECULATIVE=1
-# Set DOTLAB_BEST_OF=2 for verify-scored dual coder (slower, higher ship-rate)
-export DOTLAB_BEST_OF=1
+# Verify-rescue: cheap flash patches if P0 still fails after the coder
+export DOTLAB_BEST_OF=2

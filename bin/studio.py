@@ -43,7 +43,7 @@ import wiki as wikilib  # noqa: E402
 from cloud import chat as llm_chat, require_backend
 from gmcommon import DEFAULT_MODEL, DENSE_MODEL, KNOWLEDGE, OLLAMA, ROOT
 
-NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "65536"))
+NUM_CTX = int(os.environ.get("GAMEMASTER_NUM_CTX", "16384"))
 
 
 def pref_block(project: Path | None) -> str:
@@ -93,7 +93,7 @@ def run_playtest(project: Path, model: str, with_critic: bool = True) -> None:
         "-p",
         str(project),
         "--duration",
-        "15",
+        "8",
     ]
     if with_critic:
         cmd += ["--critic", "-m", model]
@@ -103,6 +103,18 @@ def run_playtest(project: Path, model: str, with_critic: bool = True) -> None:
         print(f"  ⚠ playtest exit {r.returncode} (report may still exist)")
     else:
         print("  ✓ playtest finished")
+    try:
+        from gmcommon import meta_dir
+        import quality as qualitylib
+
+        log = meta_dir(project) / "play.log"
+        text = log.read_text(encoding="utf-8") if log.is_file() else ""
+        if text.strip():
+            rep = qualitylib.play_error_auto_repair(project, text, model=model)
+            if rep.get("actions"):
+                print(f"  ✓ play-error repair: {rep.get('actions')}")
+    except Exception as e:
+        print(f"  ⚠ play-error repair: {e}")
 
 
 def chat(
@@ -113,7 +125,7 @@ def chat(
     num_ctx: int | None = None,
     tier: str = "max",
 ) -> str:
-    ctx = num_ctx if num_ctx is not None else min(NUM_CTX, 32768)
+    ctx = num_ctx if num_ctx is not None else min(NUM_CTX, 16384)
     return llm_chat(
         messages,
         model=model,
@@ -194,15 +206,7 @@ def role_director(
     except Exception:
         pass
 
-    knowledge = load_pack(
-        "identity.md",
-        "craft-taste.md",
-        "pair-partner.md",
-        "feel-tables.md",
-        "game-genres.md",
-        "readable-spaces.md",
-        limit=2800,
-    )
+    knowledge = load_pack("feel-tables.md", "game-genres.md", limit=1800)
     prefs = prefs or pref_block(project)
     sys_p = (
         identitylib.system_for("director", extra_packs=False)
@@ -222,7 +226,7 @@ def role_director(
             max_model=model,
             temperature=0.45,
             num_predict=2200,
-            num_ctx=12288,
+            num_ctx=8192,
             mode="json",
         )
     except Exception:
@@ -321,17 +325,7 @@ def role_architect(
 ) -> str:
     import identity as identitylib
 
-    knowledge = load_pack(
-        "identity.md",
-        "game-systems.md",
-        "feel-tables.md",
-        "threejs-cheatsheet.md",
-        "threejs-recipes.md",
-        "physics-ragdoll.md",
-        "readable-spaces.md",
-        "solana-seeker.md",
-        limit=2600,
-    )
+    knowledge = load_pack("game-systems.md", "threejs-cheatsheet.md", limit=1800)
     prefs = prefs or pref_block(project)
     sys_p = (
         identitylib.system_for("architect", extra_packs=False)
@@ -351,12 +345,14 @@ def role_architect(
         f"Brief:\n{brief}\n\nDesign (Director):\n{design}\n\n"
         f"Existing project tree:\n{project_tree or '(empty)'}\n\n{prefs}\n\n{knowledge}"
     )
-    # Architect is structure-only (non-code body) — flash is enough when available
+    # File trees from 7B are sloppy — architect stays on max.
     arch_model = model
+    arch_ctx = 12288
     try:
         import turbo as turbolib
 
-        arch_model = turbolib.resolve_tier("flash")
+        arch_model = turbolib.resolve_tier("max")
+        arch_ctx = turbolib.ctx_for_role("architect")
     except Exception:
         pass
     return chat(
@@ -364,7 +360,8 @@ def role_architect(
         model=arch_model,
         temperature=0.25,
         num_predict=3000,
-        tier="flash",
+        num_ctx=arch_ctx,
+        tier="max",
     )
 
 
@@ -379,14 +376,7 @@ def role_critic(
 ) -> str:
     import identity as identitylib
 
-    knowledge = load_pack(
-        "identity.md",
-        "craft-taste.md",
-        "pair-partner.md",
-        "playtest-harness.md",
-        "game-systems.md",
-        limit=3000,
-    )
+    knowledge = load_pack("craft-taste.md", "playtest-harness.md", limit=1600)
     prefs = prefs or pref_block(project)
     sys_p = (
         identitylib.system_for("critic", extra_packs=False)
@@ -405,12 +395,22 @@ def role_critic(
         f"Brief:\n{brief}\n\nDesign:\n{design}\n\nArchitecture:\n{architecture}\n\n"
         f"Code/Implementation/Playtest summary:\n{code_summary}\n\n{prefs}\n\n{knowledge}"
     )
+    critic_model = model
+    critic_ctx = 8192
+    try:
+        import turbo as turbolib
+
+        critic_model = turbolib.resolve_tier("dense")
+        critic_ctx = turbolib.ctx_for_role("critic")
+    except Exception:
+        pass
     return chat(
         [{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
-        model=model,
+        model=critic_model,
         temperature=0.35,
         num_predict=2200,
-        tier="flash",
+        num_ctx=critic_ctx,
+        tier="dense",
     )
 
 
@@ -721,8 +721,8 @@ def pipeline_build(
     except Exception:
         pass
 
-    # Patch-level best-of (cheap flash patches) when DOTLAB_BEST_OF>=2
-    best_n = int(os.environ.get("DOTLAB_BEST_OF", os.environ.get("GAMEMASTER_BEST_OF", "1")))
+    # Patch-level best-of used as verify rescue (default 2)
+    best_n = int(os.environ.get("DOTLAB_BEST_OF", os.environ.get("GAMEMASTER_BEST_OF", "2")))
     game_js = project / "src" / "game.js"
     has_game = game_js.is_file() and game_js.stat().st_size > 500
     code_out = ""
@@ -760,6 +760,16 @@ def pipeline_build(
     print(code_out[-2000:])
 
     try:
+        import host_floor as floor
+
+        fr = floor.apply(project)
+        if fr.get("applied"):
+            print("  ✓ host floor: " + ", ".join(fr["applied"][:8]))
+            write_session(project, "03a-host-floor.json", json.dumps(fr, indent=2) + "\n")
+    except Exception as e:
+        print(f"  ⚠ host floor: {e}")
+
+    try:
         import verify as verifylib
 
         vr = verifylib.evaluate(project)
@@ -773,25 +783,52 @@ def pipeline_build(
             pass
         if vr.get("p0_fail"):
             banner("🔧 VERIFY REPAIR (P0)")
-            bank_ctx = ""
-            try:
-                import reasoning_bank as rbank
+            if best_n >= 2 and has_game:
+                try:
+                    bo = qualitylib.patch_level_best_of(
+                        project, " ".join(str(x) for x in vr.get("p0_fail") or []), n=best_n, model=model
+                    )
+                    write_session(
+                        project, "03b-best-of-rescue.json", json.dumps(bo, indent=2)[:8000] + "\n"
+                    )
+                    print(f"  ✓ best-of rescue winner={bo.get('winner')} p0={(bo.get('score') or {}).get('p0_ok')}")
+                    vr = verifylib.evaluate(project)
+                    write_session(project, "03b-verify.txt", vr["report"])
+                except Exception as e:
+                    print(f"  ⚠ best-of rescue: {e}")
+            if vr.get("p0_fail"):
+                bank_ctx = ""
+                try:
+                    import reasoning_bank as rbank
 
-                bank_ctx = rbank.prompt_block(
-                    project, " ".join(str(x) for x in (vr.get("p0_fail") or [])), k=4
+                    bank_ctx = rbank.prompt_block(
+                        project, " ".join(str(x) for x in (vr.get("p0_fail") or [])), k=4
+                    )
+                except Exception:
+                    pass
+                try:
+                    import host_floor as floor
+
+                    task = floor.repair_task(vr)
+                except Exception:
+                    task = verifylib.repair_prompt(vr)
+                repair_out = run_coder_agent(
+                    project,
+                    task
+                    + "\n"
+                    + qualitylib.CODER_PATCH_INSTRUCTION
+                    + ("\n\n" + bank_ctx if bank_ctx else ""),
+                    model,
+                    steps=8,
                 )
+                write_session(project, "03c-verify-repair.txt", repair_out)
+        else:
+            try:
+                import host_floor as floor
+
+                floor.record_teacher(project, vr)
             except Exception:
                 pass
-            repair_out = run_coder_agent(
-                project,
-                verifylib.repair_prompt(vr)
-                + "\n"
-                + qualitylib.CODER_PATCH_INSTRUCTION
-                + ("\n\n" + bank_ctx if bank_ctx else ""),
-                model,
-                steps=10,
-            )
-            write_session(project, "03c-verify-repair.txt", repair_out)
     except Exception as e:
         print(f"  ⚠ verify: {e}")
 
@@ -828,7 +865,7 @@ def pipeline_build(
         import rag as raglib
         import quality as q2
 
-        if q2.score_project(project).get("score", 0) >= 60:
+        if q2.score_project(project).get("p0_ok"):
             raglib.index_project(project)
             # merge into global index opportunistically
             raglib.rebuild_index(limit_projects=25)

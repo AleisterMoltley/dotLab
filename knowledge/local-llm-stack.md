@@ -5,7 +5,7 @@ Host-owned guidance from the awesome-local-llm survey. **Ollama remains default.
 ## Tiers
 | Tier | Role | Typical tags |
 |------|------|----------------|
-| flash | route, draft JSON, short QA | `dotlab-flash`, `qwen2.5-coder:7b`, `omnicoder:9b` |
+| flash | route, draft JSON, short QA | `qwen2.5-coder:14b` (≥16 GB), else `dotlab-flash` / 7B |
 | max | agent / game code | `dotlab`, `qwen3-coder:30b`, `qwen3-coder-next`, `devstral-2` |
 | dense | critic / hard refactor | `dotlab-dense`, `qwen2.5-coder:32b` |
 | embed | slice RAG | `nomic-embed-text`, optional `qwen3-embedding` |

@@ -15,7 +15,7 @@ Kimi K3 cloud wins with speculative decoding on huge MoE clusters — we cannot 
 
 ## Rules we enforce
 1. Never drop to a weak model for final game code (max/dense only).
-2. Flash only for routing, short QA, cheap drafts.
+2. Flash only for routing, short QA, cheap drafts. Architect + critic use max/dense.
 3. Critic may use dense; implementer uses max MoE (fast active params).
 4. Knowledge: route packs (shader vs seeker vs genre) — often **2–4× less prefill**.
 5. Flash Attention + KV q8_0 + keep-alive always on.

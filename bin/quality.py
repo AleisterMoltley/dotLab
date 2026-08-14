@@ -401,6 +401,38 @@ def _allowed_write_path(rel: str, *, is_new: bool) -> tuple[bool, str]:
     return False, f"path not allowed: {rel}"
 
 
+def find_search_span(text: str, search: str) -> tuple[int, int, str] | None:
+    """Locate search in text. Exact, whitespace-relaxed, then line-stripped. Unique only."""
+    if not search or not text:
+        return None
+    if search in text:
+        i = text.find(search)
+        return i, i + len(search), "exact"
+    rx = re.escape(search)
+    rx = re.sub(r"(\\ )+", r"\\s+", rx)
+    m = re.search(rx, text)
+    if m:
+        return m.start(), m.end(), "ws"
+    s_lines = [ln.strip() for ln in search.splitlines() if ln.strip()]
+    if len(s_lines) < 1:
+        return None
+    t_lines = text.splitlines(keepends=True)
+    t_stripped = [ln.strip() for ln in t_lines]
+    n = len(s_lines)
+    hits: list[tuple[int, int]] = []
+    for i in range(0, len(t_stripped) - n + 1):
+        if t_stripped[i : i + n] != s_lines:
+            continue
+        start = sum(len(t_lines[j]) for j in range(i))
+        end = start + sum(len(t_lines[j]) for j in range(i, i + n))
+        hits.append((start, end))
+        if len(hits) > 1:
+            return None
+    if hits:
+        return hits[0][0], hits[0][1], "fuzzy"
+    return None
+
+
 def apply_search_replace(project: Path, path: str, search: str, replace: str) -> dict[str, Any]:
     rel = path.strip().lstrip("./")
     while rel.startswith("./"):
@@ -432,16 +464,11 @@ def apply_search_replace(project: Path, path: str, search: str, replace: str) ->
     if not dest.is_file():
         return {"ok": False, "path": rel, "error": "file missing"}
     text = dest.read_text(encoding="utf-8")
-    if search not in text:
-        # try relaxed whitespace
-        rx = re.escape(search)
-        rx = re.sub(r"(\\ )+", r"\\s+", rx)
-        m = re.search(rx, text)
-        if not m:
-            return {"ok": False, "path": rel, "error": "search block not found"}
-        text = text[: m.start()] + replace + text[m.end() :]
-    else:
-        text = text.replace(search, replace, 1)
+    span = find_search_span(text, search or "")
+    if not span:
+        return {"ok": False, "path": rel, "error": "search block not found"}
+    start, end, how = span
+    text = text[:start] + replace + text[end:]
     dest.write_text(text, encoding="utf-8")
     try:
         import antislope as aslib
@@ -449,7 +476,7 @@ def apply_search_replace(project: Path, path: str, search: str, replace: str) ->
         aslib.format_file(dest)
     except Exception:
         pass
-    return {"ok": True, "path": rel, "mode": "search_replace"}
+    return {"ok": True, "path": rel, "mode": how if how != "exact" else "search_replace"}
 
 
 def _node_syntax_ok(project: Path, rel: str) -> tuple[bool, str]:
@@ -1032,19 +1059,17 @@ def auto_critic_and_repair(
     run_coder: Callable[[Path, str, str, int], str] | None = None,
 ) -> dict[str, Any]:
     """
-    Critic (prefer flash for speed) → host feel_tweaks → at most one code repair if P0.
+    Critic (dense/max — not 7B) → host feel_tweaks → at most one verify-anchored repair.
     """
     import studio as studiolib
 
-    # Flash for critic prose when possible; dense only if forced
     critic_model = model
     try:
         import turbo as turbolib
 
-        # Non-code: flash first
-        critic_model = turbolib.resolve_tier("flash")
+        critic_model = turbolib.resolve_tier("dense")
     except Exception:
-        critic_model = FLASH_MODEL or model
+        critic_model = DENSE_MODEL or model
 
     critique = studiolib.role_critic(
         brief, design, architecture, code_summary, critic_model, project=project
@@ -1061,32 +1086,49 @@ def auto_critic_and_repair(
             json.dumps(feel_result, indent=2) + "\n", encoding="utf-8"
         )
 
-    must = []
+    raw_must = []
     for m in re.finditer(
         r"(?im)^(?:\d+\.|[-*]|P0[:\s]|Must[- ]fix[:\s]+)(.+)$", critique
     ):
         line = m.group(1).strip()
         if len(line) > 12 and not re.search(r"\b(gravity|jumpForce|moveSpeed|coyote)\b", line, re.I):
-            must.append(line[:200])
-        if len(must) >= 3:
+            raw_must.append(line[:200])
+        if len(raw_must) >= 8:
             break
 
     sc_before = score_project(project)
+    vr = {
+        "ok": sc_before.get("p0_ok"),
+        "p0_fail": sc_before.get("p0_fail") or [],
+        "failed": sc_before.get("p0_fail") or [],
+        "report": sc_before.get("report") or "",
+    }
+    try:
+        import host_floor as floor
+
+        must = floor.filter_must_fix(raw_must, vr)
+    except Exception:
+        must = raw_must[:3]
     repair_out = ""
     if run_coder is None:
         run_coder = studiolib.run_coder_agent
 
-    # Code repair only on P0 or explicit broken/unfair (feel already host-applied)
+    # Code repair only on P0 or explicit broken (feel already host-applied)
     needs_code = (not sc_before["p0_ok"]) or bool(
         re.search(r"\bP0\b|crash|syntax|broken import|black screen", critique, re.I)
     )
     if needs_code and must:
-        fix_task = (
-            "Apply ONLY these must-fix items. Patch-only. Feel numbers already applied by host.\n\n"
-            + "\n".join(f"- {x}" for x in must)
-            + f"\n\nCRITIC (full):\n{critique[:3500]}\n\n"
-            + CODER_PATCH_INSTRUCTION
-        )
+        try:
+            import host_floor as floor
+
+            fix_task = floor.repair_task(vr) + "\n\n" + CODER_PATCH_INSTRUCTION
+        except Exception:
+            fix_task = (
+                "Apply ONLY these must-fix items. Patch-only. Feel numbers already applied by host.\n\n"
+                + "\n".join(f"- {x}" for x in must)
+                + f"\n\nCRITIC (full):\n{critique[:2000]}\n\n"
+                + CODER_PATCH_INSTRUCTION
+            )
         repair_out = run_coder(project, fix_task, model, 6)
         (meta / "05-repair-auto.txt").write_text(repair_out[-20000:], encoding="utf-8")
 
@@ -1148,10 +1190,15 @@ def play_error_auto_repair(
 
             run_coder = studiolib.run_coder_agent
         model = model or DEFAULT_MODEL
-        snippet = (log_text or "")[-2500:]
+        try:
+            import host_floor as floor
+
+            snippet = floor.slim_console(log_text or "", n=20)
+        except Exception:
+            snippet = (log_text or "")[-1200:]
         task = (
             "Runtime/dev error repair ONLY. Fix the syntax/import error. Patch-only.\n\n"
-            f"LOG:\n{snippet}\n\n"
+            f"LOG (last errors only):\n{snippet}\n\n"
             f"Likely files: {', '.join(t[0] for t in targets) or 'src/game.js'}\n"
             + CODER_PATCH_INSTRUCTION
             + "\nAfter fix, game must parse (node --check)."

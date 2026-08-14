@@ -54,6 +54,7 @@ Modelfile       baked Ollama system prompt
 | Game wiki + file map (auto-loaded) | `bin/wiki.py` (`WIKI.md`, `MAP.md`) |
 | Game kit (todos, feel audit, art-test, pixel vendor) | `bin/kit.py` — also agent tool `kit` |
 | Slice verify (P0 gate, no Ollama) | `bin/verify.py` — agent `done` + studio after coder |
+| Host feel / few-shots / verify repair | `bin/host_floor.py` |
 | Optional paid LLMs (off by default) | `bin/cloud.py` — grok / claude / openai / gemini / zoo |
 | OpenZoo x402 floor (leCore) | `bin/zoo.py` (`handle_http`) + `knowledge/openzoo.md` + `chat/` + `live/dashboard.html` |
 | Install / PATH | `install.sh` |
