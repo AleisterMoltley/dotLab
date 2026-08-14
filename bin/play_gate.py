@@ -28,6 +28,7 @@ P0 = frozenset(
         "stutter",
         "slow_restart",
         "slop_frame",
+        "gpu_budget",
     }
 )
 P1 = frozenset({"no_jump", "no_flag", "low_fps"})
@@ -172,8 +173,17 @@ def evaluate_report(
             p0.append("slow_restart")
     except (TypeError, ValueError):
         pass
-    if any(h in ("near_black_frame", "green_dominant") for h in slop):
+    if any(h in ("near_black_frame", "green_dominant", "flat_frame", "few_hues") for h in slop):
         p0.append("slop_frame")
+    gpu = metrics.get("gpu") if isinstance(metrics.get("gpu"), dict) else {}
+    try:
+        calls = int(gpu.get("calls") or 0)
+        if calls > 180:
+            p0.append("gpu_budget")
+        elif calls > 90:
+            p1.append("gpu_budget")
+    except (TypeError, ValueError):
+        pass
 
     if fam == "platformer" and hooked and jumps == 0:
         p1.append("no_jump")

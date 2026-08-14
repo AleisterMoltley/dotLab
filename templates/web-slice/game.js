@@ -5,6 +5,18 @@
 import * as THREE from 'three';
 import { TimeJuice, calloutForStreak, makeShake, pulseShake, decayShake } from './craft/juice.js';
 import { sfx } from './craft/audio.js';
+import { applyLook } from './look/index.js';
+import { SCALE } from './craft/scale.js';
+import { springTo, fpsLook, chaseIdeal, applyShake, kickFov } from './craft/camera.js';
+import { spinY, bobY, squashLand, unsquash, popOut } from './craft/motion.js';
+import { makeTracerPool } from './craft/pool.js';
+import { punch } from './craft/punch.js';
+import { attachBlob } from './craft/blob.js';
+import { PHASE, armBrain, tickBrain, striking } from './craft/brain.js';
+import { makeRecoil, kickRecoil, springRecoil } from './craft/recoil.js';
+import { makeImpactPool } from './craft/impact.js';
+import { makeMarkPool } from './craft/mark.js';
+import { attachVignette } from './craft/vignette.js';
 
 const SPEC = __SPEC__;
 const CONFIG = __CONFIG__;
@@ -24,7 +36,7 @@ export function createGame({ genre, title }) {
     0.05,
     280,
   );
-  camera.position.set(0, CONFIG.eyeHeight || 1.62, 8);
+  camera.position.set(0, CONFIG.eyeHeight || SCALE.eye, 8);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -34,27 +46,8 @@ export function createGame({ genre, title }) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   document.body.appendChild(renderer.domElement);
   scene.add(camera);
-
-  // Night neon lighting (NEON INK fingerprint) when shooting; softer hemi otherwise
-  if (isFps) {
-    scene.add(new THREE.AmbientLight(0x140a28, 0.32));
-    const moon = new THREE.DirectionalLight(0xa8b8ff, 0.45);
-    moon.position.set(35, 90, 15);
-    const fill = new THREE.DirectionalLight(pal.accent || 0xff2bd6, 0.55);
-    fill.position.set(-30, 18, -40);
-    const rim = new THREE.DirectionalLight(pal.grid || 0x00f0ff, 0.5);
-    rim.position.set(10, 12, -50);
-    scene.add(moon, fill, rim);
-  } else {
-    const hemi = new THREE.HemisphereLight(pal.hemiSky, pal.hemiGround, 0.7);
-    const sun = new THREE.DirectionalLight(pal.sun, 1.05);
-    sun.position.set(18, 34, 12);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    scene.add(hemi, sun);
-    scene.add(new THREE.PointLight(pal.accent, 1.3, 28, 2).translateX(-6).translateY(5));
-    scene.add(new THREE.PointLight(pal.grid, 1.0, 26, 2).translateX(7).translateY(4));
-  }
+  const look = applyLook({ scene, renderer, camera, pal, spec: SPEC });
+  try { window.__GF_RENDERER__ = renderer; } catch { /* */ }
 
   const hud = ensureHud();
   const cross = ensureCrosshair(isFps);
@@ -78,6 +71,7 @@ export function createGame({ genre, title }) {
     wave: 1,
     callout: '',
     calloutT: 0,
+    fovPunch: 0,
   };
 
   const _fwd = new THREE.Vector3();
@@ -95,8 +89,30 @@ export function createGame({ genre, title }) {
   const player = buildPlayer(scene, pal, CONFIG);
   const actors = buildActors(scene, rnd, pal, SPEC);
   if (actors.start) player.pos.set(actors.start.x, actors.start.y, actors.start.z);
+  for (const e of actors.enemies) armBrain(e);
+  if (actors.hunter) {
+    actors.hunterEnt = armBrain({
+      mesh: actors.hunter,
+      hp: 1,
+      speed: 1.6,
+      baseY: actors.hunter.position.y,
+    });
+  }
   const weapon = buildWeapon(camera, pal);
-  const tracers = [];
+  const tracers = makeTracerPool(scene, 28);
+  const impacts = makeImpactPool(scene, 24);
+  const marks = makeMarkPool(scene, 12);
+  const playerBlob = attachBlob(scene, { radius: SCALE.capsuleR });
+  const vignette = attachVignette();
+  const recoil = makeRecoil();
+  const stack = {
+    timeJuice,
+    shake,
+    sfx,
+    juiceMul: SPEC.juice || 1,
+    hitmark: () => flashHitmark(),
+  };
+  let wasGrounded = true;
 
   bindInput();
   updateHud();
@@ -105,15 +121,20 @@ export function createGame({ genre, title }) {
 
   function update(rawDt) {
     const dt = rawDt * timeJuice.update(rawDt);
+    if (look && look.tick) look.tick(dt);
     if (state.calloutT > 0) state.calloutT -= rawDt;
     if (state.fireCd > 0) state.fireCd -= dt;
     if (state.dashCd > 0) state.dashCd -= dt;
     if (state.dashT > 0) state.dashT -= dt;
 
-    if (state.dead) return;
+    if (state.dead) {
+      camera.position.y += rawDt * 0.55;
+      vignette.tick(rawDt);
+      return;
+    }
 
     const prevY = player.pos.y;
-    const eye = CONFIG.eyeHeight || 1.62;
+    const eye = CONFIG.eyeHeight || SCALE.eye;
     let grounded = false;
     if (SPEC.loop === 'jump') {
       player.vy -= (CONFIG.gravity || 28) * dt;
@@ -142,6 +163,12 @@ export function createGame({ genre, title }) {
       }
     }
     if (grounded) state.lastGround = state.now;
+    if (grounded && !wasGrounded) {
+      if (!isFps) squashLand(player.mesh, 0.16);
+      punch(stack, 'land');
+    }
+    wasGrounded = grounded;
+    if (!isFps) unsquash(player.mesh, dt);
     try {
       window.__GF_PLAYTEST__?.recordSample?.({
         x: player.pos.x, y: player.pos.y, z: player.pos.z, grounded,
@@ -197,22 +224,26 @@ export function createGame({ genre, title }) {
 
     // ADS
     state.ads = !!(keys['MouseRight'] || keys['KeyE']);
-    const targetFov = state.ads ? (CONFIG.adsFov || 62) : (CONFIG.fov || (isFps ? 78 : 58));
-    camera.fov += (targetFov - camera.fov) * Math.min(1, 10 * dt);
-    camera.updateProjectionMatrix();
+    if (state.fovPunch > 0) state.fovPunch = Math.max(0, state.fovPunch - dt * 18);
+    const targetFov = (state.ads ? (CONFIG.adsFov || 62) : (CONFIG.fov || (isFps ? 78 : 58))) + state.fovPunch;
+    kickFov(camera, targetFov, dt, 10);
 
-    player.mesh.position.set(player.pos.x, player.pos.y - (CONFIG.eyeHeight || 1.62) + 0.9, player.pos.z);
+    player.mesh.position.set(player.pos.x, player.pos.y - (CONFIG.eyeHeight || SCALE.eye) + 0.9, player.pos.z);
     player.mesh.rotation.y = player.yaw;
+    playerBlob.follow(player.pos.x, player.pos.z);
+    if (!grounded && SPEC.loop === 'jump') playerBlob.hide();
+    else playerBlob.show();
 
     placeCamera(dt);
-    const sh = decayShake(shake, dt);
-    if (sh > 0) {
-      camera.position.x += Math.sin(state.now * 58) * sh * 0.12;
-      camera.position.y += Math.cos(state.now * 47) * sh * 0.08;
-    }
+    applyShake(camera, decayShake(shake, dt), state.now);
+    springRecoil(recoil, dt);
+    weapon.applyRecoil(recoil);
+    vignette.tick(dt);
 
     tickLoop(dt);
-    tickTracers(dt);
+    tracers.tick(dt);
+    impacts.tick(dt);
+    marks.tick(dt, state.now);
     if (isFps && (keys['MouseLeft'] || keys['KeyF'])) tryFire();
   }
 
@@ -243,24 +274,15 @@ export function createGame({ genre, title }) {
 
   function placeCamera(dt) {
     if (isFps) {
-      camera.position.set(player.pos.x, player.pos.y, player.pos.z);
-      _look.set(
-        player.pos.x - Math.sin(player.yaw) * Math.cos(player.pitch),
-        player.pos.y + Math.sin(player.pitch),
-        player.pos.z - Math.cos(player.yaw) * Math.cos(player.pitch),
-      );
-      camera.lookAt(_look);
+      fpsLook(camera, player.pos, player.yaw, player.pitch, _look);
       player.mesh.visible = false;
       weapon.visible = true;
       return;
     }
     player.mesh.visible = true;
     weapon.visible = false;
-    if (SPEC.camera === 'top') _ideal.set(player.pos.x, CONFIG.camDist || 16, player.pos.z + 0.1);
-    else if (SPEC.camera === 'side') _ideal.set(player.pos.x, player.pos.y + 2.2, player.pos.z + (CONFIG.camDist || 11));
-    else _ideal.set(player.pos.x, player.pos.y + (CONFIG.camHeight || 2.4), player.pos.z + (CONFIG.camDist || 6.5));
-    const k = 1 - Math.exp(-(CONFIG.camLag || 8) * dt);
-    camera.position.lerp(_ideal, k);
+    chaseIdeal(_ideal, player.pos, CONFIG, SPEC.camera);
+    springTo(camera, _ideal, dt, CONFIG.camLag || 8);
     camera.lookAt(player.pos.x, player.pos.y - 0.2, player.pos.z);
   }
 
@@ -277,23 +299,24 @@ export function createGame({ genre, title }) {
 
   function tickThreat(dt) {
     for (const e of actors.enemies) {
-      if (e.hp <= 0) continue;
-      const dx = player.pos.x - e.mesh.position.x;
-      const dz = player.pos.z - e.mesh.position.z;
-      const d = Math.hypot(dx, dz) || 1;
-      const threat = d < 5;
-      const speed = (threat ? e.speed * 1.2 : e.speed * 0.5);
-      if (e.mesh.material && e.mesh.material.emissiveIntensity != null) {
-        e.mesh.material.emissiveIntensity = threat
-          ? 0.75 + Math.sin(state.now * 14) * 0.55
-          : 0.55;
+      if (e.hp <= 0) {
+        if (e.popT != null) {
+          e.popT += dt;
+          popOut(e.mesh, e.popT);
+        }
+        marks.hide(e.mesh.id);
+        continue;
       }
-      e.mesh.scale.setScalar(threat ? 1 + Math.sin(state.now * 12) * 0.09 : 1);
-      e.mesh.position.x += (dx / d) * speed * dt;
-      e.mesh.position.z += (dz / d) * speed * dt;
-      e.mesh.position.y = e.baseY + Math.sin(state.now * 3 + e.phase) * 0.22;
-      e.mesh.rotation.y += 0.03;
-      if (d < 1.2 && state.dashT <= 0) hurt(12 * dt * 8);
+      tickBrain(e, player.pos.x, player.pos.z, dt, state.now, { aggro: 7 });
+      if (e.phase === PHASE.windup) {
+        marks.show(e.lockX, e.lockZ, e.mesh.id, pal.accent);
+      } else {
+        marks.hide(e.mesh.id);
+      }
+      if (striking(e) && state.dashT <= 0) {
+        const d = Math.hypot(player.pos.x - e.mesh.position.x, player.pos.z - e.mesh.position.z);
+        if (d < 1.2) hurt(12 * dt * 8);
+      }
     }
   }
 
@@ -309,16 +332,17 @@ export function createGame({ genre, title }) {
     }
   }
 
-  function tickJump() {
+  function tickJump(dt) {
     for (const c of actors.coins) {
       if (c.taken) continue;
-      c.mesh.rotation.y += 0.04;
+      spinY(c.mesh, dt, 0.55);
+      if (c.baseY != null) bobY(c.mesh, c.baseY, state.now, 0, 0.12, 1.4);
       const d = Math.hypot(player.pos.x - c.mesh.position.x, player.pos.z - c.mesh.position.z);
       if (d < 1.1) {
         c.taken = true;
         c.mesh.visible = false;
         state.score += 1;
-        sfx('hit');
+        punch(stack, 'hit');
         updateHud();
       }
     }
@@ -348,9 +372,7 @@ export function createGame({ genre, title }) {
         gate.taken = true;
         gate.visible = false;
         state.score += 1;
-        sfx('hit');
-        pulseShake(shake, CONFIG.shakeHit || 0.12);
-        timeJuice.hit(0.55, (CONFIG.hitstopMs || 40) / 1000);
+        punch(stack, 'hit');
         updateHud();
       }
     }
@@ -381,13 +403,24 @@ export function createGame({ genre, title }) {
 
   function tickSneak(dt) {
     const hunter = actors.hunter;
+    const h = actors.hunterEnt;
     if (!hunter) return;
-    const dx = player.pos.x - hunter.position.x;
-    const dz = player.pos.z - hunter.position.z;
-    const d = Math.hypot(dx, dz) || 1;
-    hunter.position.x += (dx / d) * 1.6 * dt;
-    hunter.position.z += (dz / d) * 1.6 * dt;
-    if (d < 1.3) die();
+    if (h) {
+      tickBrain(h, player.pos.x, player.pos.z, dt, state.now, { aggro: 11, windup: 0.4, strike: 0.14 });
+      if (h.phase === PHASE.windup) marks.show(h.lockX, h.lockZ, hunter.id, pal.enemy);
+      else marks.hide(hunter.id);
+      if (striking(h)) {
+        const d = Math.hypot(player.pos.x - hunter.position.x, player.pos.z - hunter.position.z);
+        if (d < 1.3) die();
+      }
+    } else {
+      const dx = player.pos.x - hunter.position.x;
+      const dz = player.pos.z - hunter.position.z;
+      const d = Math.hypot(dx, dz) || 1;
+      hunter.position.x += (dx / d) * 1.6 * dt;
+      hunter.position.z += (dz / d) * 1.6 * dt;
+      if (d < 1.3) die();
+    }
     const door = actors.door;
     if (door && Math.hypot(player.pos.x - door.position.x, player.pos.z - door.position.z) < 1.6) {
       state.score = 1;
@@ -395,7 +428,7 @@ export function createGame({ genre, title }) {
     }
   }
 
-  function tickTalk() {
+  function tickTalk(dt) {
     for (const n of actors.npcs) {
       const d = Math.hypot(player.pos.x - n.mesh.position.x, player.pos.z - n.mesh.position.z);
       if (d < 2.2 && keys['KeyE'] && !n.talked) {
@@ -427,12 +460,13 @@ export function createGame({ genre, title }) {
     }
     for (const c of actors.coins) {
       if (c.taken) continue;
-      c.mesh.rotation.y += 0.03;
+      spinY(c.mesh, dt || 0.016, 0.4);
+      if (c.baseY != null) bobY(c.mesh, c.baseY, state.now, 0, 0.1, 1.3);
       if (Math.hypot(player.pos.x - c.mesh.position.x, player.pos.z - c.mesh.position.z) < 1.1) {
         c.taken = true;
         c.mesh.visible = false;
         state.score += 1;
-        sfx('hit');
+        punch(stack, 'hit');
         updateHud();
       }
     }
@@ -444,13 +478,14 @@ export function createGame({ genre, title }) {
     const rpm = CONFIG.fireRpm || 480;
     state.fireCd = 60 / rpm;
     weapon.flash();
-    pulseShake(shake, 0.18 * (SPEC.juice || 1));
-    sfx('shoot');
+    punch(stack, 'shoot');
+    kickRecoil(recoil, state.ads);
+    state.fovPunch = Math.min(10, state.fovPunch + (state.ads ? 2 : 4));
 
     const spread = state.ads ? (CONFIG.adsSpread ?? 0.004) : (CONFIG.spread ?? 0.014);
     _ndc.set((Math.random() - 0.5) * spread * 40, (Math.random() - 0.5) * spread * 40);
     _ray.setFromCamera(_ndc, camera);
-    spawnTracer(_ray.ray.origin, _ray.ray.direction, pal.grid || 0x00f0ff);
+    tracers.spawn(_ray.ray.origin, _ray.ray.direction, pal.grid || 0x00f0ff);
 
     const live = actors.enemies.filter((e) => e.hp > 0).map((e) => e.mesh);
     const hits = _ray.intersectObjects(live, false);
@@ -460,16 +495,17 @@ export function createGame({ genre, title }) {
         const dmg = CONFIG.damage || 18;
         e.hp -= dmg;
         e.mesh.material.emissiveIntensity = 2.4;
-        timeJuice.body();
-        pulseShake(shake, 0.25 * (SPEC.juice || 1));
-        flashHitmark();
-        sfx('hit');
+        impacts.spawn(hits[0].point, pal.accent);
+        const nx = e.mesh.position.x - player.pos.x;
+        const nz = e.mesh.position.z - player.pos.z;
+        const nd = Math.hypot(nx, nz) || 1;
+        e.mesh.position.x += (nx / nd) * 0.42;
+        e.mesh.position.z += (nz / nd) * 0.42;
         if (e.hp <= 0) {
-          e.mesh.visible = false;
+          e.popT = 0;
+          punch(stack, 'kill');
           state.streak += 1;
           state.score += 10 * Math.min(state.streak, 5);
-          timeJuice.kill();
-          sfx('kill');
           const co = calloutForStreak(state.streak);
           state.callout = co;
           state.calloutT = 1.1;
@@ -477,12 +513,16 @@ export function createGame({ genre, title }) {
           setTimeout(() => {
             if (state.dead) return;
             e.hp = 1 + Math.floor(state.wave / 2);
+            e.popT = null;
             e.mesh.visible = true;
             e.mesh.scale.setScalar(1);
+            armBrain(e);
             const a = Math.random() * Math.PI * 2;
             const r = 8 + Math.random() * 12;
             e.mesh.position.set(Math.cos(a) * r, e.baseY, Math.sin(a) * r - 4);
           }, 1600);
+        } else {
+          punch(stack, 'hit');
         }
         updateHud();
       }
@@ -491,36 +531,11 @@ export function createGame({ genre, title }) {
     }
   }
 
-  function spawnTracer(origin, dir, color) {
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.04, 0.04, 2.2),
-      new THREE.MeshBasicMaterial({ color, toneMapped: false, transparent: true, opacity: 0.9 }),
-    );
-    mesh.position.copy(origin).addScaledVector(dir, 1.4);
-    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone().normalize());
-    scene.add(mesh);
-    tracers.push({ mesh, life: 0.08 });
-  }
-
-  function tickTracers(dt) {
-    for (let i = tracers.length - 1; i >= 0; i--) {
-      const t = tracers[i];
-      t.life -= dt;
-      t.mesh.material.opacity = Math.max(0, t.life * 10);
-      if (t.life <= 0) {
-        scene.remove(t.mesh);
-        t.mesh.geometry.dispose();
-        t.mesh.material.dispose();
-        tracers.splice(i, 1);
-      }
-    }
-  }
-
   function hurt(n) {
     if (state.dead || state.dashT > 0) return;
     state.hp -= n;
-    pulseShake(shake, 0.55);
-    sfx('hurt');
+    punch(stack, 'hurt');
+    vignette.flash(0.7);
     updateHud();
     if (state.hp <= 0) die();
   }
@@ -529,10 +544,10 @@ export function createGame({ genre, title }) {
     if (state.dead) return;
     state.dead = true;
     state.streak = 0;
-    pulseShake(shake, 1.1);
+    punch(stack, 'death');
+    vignette.flash(0.95);
     pt('recordDeath');
     updateHud();
-    sfx('death');
     showBanner('Dead — R for one more run');
   }
 
@@ -551,7 +566,10 @@ export function createGame({ genre, title }) {
     state.dead = false;
     state.wave = 1;
     shake.amount = 0;
-    const start = actors.start || { x: 0, y: CONFIG.eyeHeight || 1.62, z: SPEC.loop === 'run' ? 0 : 6 };
+    state.fovPunch = 0;
+    vignette.clear();
+    wasGrounded = true;
+    const start = actors.start || { x: 0, y: CONFIG.eyeHeight || SCALE.eye, z: SPEC.loop === 'run' ? 0 : 6 };
     player.pos.set(start.x, start.y, start.z);
     player.vx = player.vz = player.vy = 0;
     player.yaw = 0;
@@ -560,9 +578,14 @@ export function createGame({ genre, title }) {
     scene.fog.color.set(bg);
     for (const e of actors.enemies) {
       e.hp = 1;
+      e.popT = null;
       e.mesh.visible = true;
+      e.mesh.scale.setScalar(1);
       e.mesh.position.set(e.sx, e.baseY, e.sz);
+      armBrain(e);
+      marks.hide(e.mesh.id);
     }
+    if (actors.hunterEnt) armBrain(actors.hunterEnt);
     for (const c of actors.coins) {
       c.taken = false;
       c.mesh.visible = true;
@@ -735,6 +758,7 @@ function mat(color, extra) {
 }
 
 function buildWorld(scene, rnd, pal, SPEC) {
+  // Place / scatter / lights live in src/look (applyLook). Only gameplay volume here.
   if (SPEC.loop === 'jump') {
     const pit = new THREE.Mesh(
       new THREE.PlaneGeometry(220, 40),
@@ -743,13 +767,6 @@ function buildWorld(scene, rnd, pal, SPEC) {
     pit.rotation.x = -Math.PI / 2;
     pit.position.set(20, -6, 0);
     scene.add(pit);
-    for (let i = 0; i < 14; i++) {
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 1.6, 6), mat(0x4a3422));
-      const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.6, 7), mat(pal.accent, { roughness: 0.85 }));
-      trunk.position.set(-4 + rnd() * 48, 0.8, -7 - rnd() * 5);
-      leaves.position.set(trunk.position.x, trunk.position.y + 2.0, trunk.position.z);
-      scene.add(trunk, leaves);
-    }
     return;
   }
   if (SPEC.loop === 'run') {
@@ -763,64 +780,11 @@ function buildWorld(scene, rnd, pal, SPEC) {
     }
     return;
   }
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(100, 100),
-    mat(pal.ground, { roughness: 0.95, metalness: 0.05 }),
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  const grid = new THREE.GridHelper(90, 45, pal.grid, pal.ground);
-  grid.position.y = 0.02;
-  scene.add(grid);
-
-  const dens = Math.max(0.5, Math.min(2, SPEC.density || 1));
-  const kind = SPEC.props;
-  const group = new THREE.Group();
-  scene.add(group);
-
-  if (kind === 'neon' || SPEC.loop === 'shoot') {
-    for (let i = 0; i < Math.floor(16 * dens); i++) {
-      const h = 5 + rnd() * 16;
-      const box = new THREE.Mesh(
-        new THREE.BoxGeometry(2.4 + rnd() * 1.6, h, 2.4 + rnd() * 1.4),
-        mat(pal.building, { metalness: 0.55, roughness: 0.3, emissive: pal.grid, emissiveIntensity: 0.06 }),
-      );
-      const a = rnd() * Math.PI * 2;
-      const r = 10 + rnd() * 28;
-      box.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r);
-      box.castShadow = true;
-      group.add(box);
-      const band = new THREE.Mesh(
-        new THREE.BoxGeometry(box.geometry.parameters.width + 0.06, 0.14, box.geometry.parameters.depth + 0.06),
-        mat(pal.accent, { emissive: pal.accent, emissiveIntensity: 1.4, roughness: 0.2 }),
-      );
-      band.position.set(box.position.x, 1.6 + rnd() * (h - 2.5), box.position.z);
-      group.add(band);
-    }
-  } else if (kind === 'forest') {
-    for (let i = 0; i < 22; i++) {
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 1.6, 6), mat(0x4a3422));
-      const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.6, 7), mat(pal.accent, { roughness: 0.85 }));
-      const a = rnd() * Math.PI * 2;
-      const r = 5 + rnd() * 24;
-      trunk.position.set(Math.cos(a) * r, 0.8, Math.sin(a) * r);
-      leaves.position.set(trunk.position.x, 2.6, trunk.position.z);
-      group.add(trunk, leaves);
-    }
-  } else {
-    for (let i = 0; i < 12; i++) {
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), mat(pal.building));
-      crate.position.set((rnd() - 0.5) * 24, 0.6, (rnd() - 0.5) * 24);
-      group.add(crate);
-    }
-  }
 }
 
 function buildPlayer(scene, pal, CONFIG) {
   const mesh = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.38, 0.9, 4, 8),
+    new THREE.CapsuleGeometry(SCALE.capsuleR, SCALE.capsuleH, 4, 8),
     mat(pal.player, { emissive: pal.player, emissiveIntensity: 0.22 }),
   );
   mesh.position.set(0, 1.2, 6);
@@ -828,7 +792,7 @@ function buildPlayer(scene, pal, CONFIG) {
   scene.add(mesh);
   return {
     mesh,
-    pos: new THREE.Vector3(0, CONFIG.eyeHeight || 1.62, 6),
+    pos: new THREE.Vector3(0, CONFIG.eyeHeight || SCALE.eye, 6),
     vx: 0, vy: 0, vz: 0,
     yaw: 0, pitch: 0,
   };
@@ -868,12 +832,12 @@ function buildActors(scene, rnd, pal, SPEC) {
     for (let i = 1; i < Math.min((coinN || 6) + 1, platforms.length); i++) {
       const p = platforms[i];
       const coin = new THREE.Mesh(
-        new THREE.TorusGeometry(0.28, 0.1, 8, 14),
+        new THREE.TorusGeometry(SCALE.coinR, 0.1, 8, 14),
         mat(pal.accent, { emissive: pal.accent, emissiveIntensity: 0.95 }),
       );
       coin.position.set(p.x, p.top + 0.9, p.z);
       scene.add(coin);
-      coins.push({ mesh: coin, taken: false });
+      coins.push({ mesh: coin, taken: false, baseY: coin.position.y });
     }
     for (let i = 0; i < hazardN && i + 2 < platforms.length; i++) {
       const p = platforms[i + 2];
@@ -890,7 +854,7 @@ function buildActors(scene, rnd, pal, SPEC) {
   if (SPEC.loop !== 'race' && SPEC.loop !== 'jump' && enemyN > 0) {
     for (let i = 0; i < enemyN; i++) {
       const mesh = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(0.55, 0),
+        new THREE.IcosahedronGeometry(SCALE.threatR, 0),
         mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.75, metalness: 0.45 }),
       );
       const a = rnd() * Math.PI * 2;
@@ -928,12 +892,12 @@ function buildActors(scene, rnd, pal, SPEC) {
       plat.position.set((i - 2) * 3.4, i * 0.35, -4 - i * 2.2);
       scene.add(plat);
       const coin = new THREE.Mesh(
-        new THREE.TorusGeometry(0.28, 0.1, 8, 14),
+        new THREE.TorusGeometry(SCALE.coinR, 0.1, 8, 14),
         mat(pal.accent, { emissive: pal.accent, emissiveIntensity: 0.95 }),
       );
       coin.position.set(plat.position.x, plat.position.y + 1.1, plat.position.z);
       scene.add(coin);
-      coins.push({ mesh: coin, taken: false });
+      coins.push({ mesh: coin, taken: false, baseY: coin.position.y });
     }
   }
 
@@ -946,7 +910,7 @@ function buildActors(scene, rnd, pal, SPEC) {
     scene.add(body);
     npcs.push({ mesh: body, talked: false });
     door = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 2.4, 0.3),
+      new THREE.BoxGeometry(SCALE.doorW, SCALE.doorH, 0.3),
       mat(pal.grid, { emissive: pal.grid, emissiveIntensity: 0.25 }),
     );
     door.position.set(9.5, 1.2, -2);
@@ -1001,7 +965,7 @@ function buildActors(scene, rnd, pal, SPEC) {
     hunter = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.8, 5), mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.55 }));
     hunter.position.set(-10, 0.9, -10);
     scene.add(hunter);
-    door = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 0.25), mat(pal.accent, { emissive: pal.accent, emissiveIntensity: 0.85 }));
+    door = new THREE.Mesh(new THREE.BoxGeometry(SCALE.doorW, SCALE.doorH, 0.25), mat(pal.accent, { emissive: pal.accent, emissiveIntensity: 0.85 }));
     door.position.set(10, 1.2, -14);
     scene.add(door);
   }
@@ -1013,13 +977,13 @@ function spawnWave(actors, scene, rnd, pal, SPEC, wave) {
   const n = Math.min(16, 4 + wave * 2);
   while (actors.enemies.length < n) {
     const mesh = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(0.55, 0),
+      new THREE.IcosahedronGeometry(SCALE.threatR, 0),
       mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.75, metalness: 0.45 }),
     );
     scene.add(mesh);
-    actors.enemies.push({
+    actors.enemies.push(armBrain({
       mesh, hp: 1, speed: 1.4, baseY: 1.6, phase: rnd() * 6, sx: 0, sz: 0,
-    });
+    }));
   }
   for (const e of actors.enemies) {
     e.hp = 1 + Math.floor(wave / 2);
@@ -1030,6 +994,9 @@ function spawnWave(actors, scene, rnd, pal, SPEC, wave) {
     e.sx = Math.cos(a) * r;
     e.sz = Math.sin(a) * r - 4;
     e.mesh.position.set(e.sx, e.baseY, e.sz);
+    e.popT = null;
+    e.mesh.scale.setScalar(1);
+    armBrain(e);
   }
 }
 
@@ -1051,6 +1018,10 @@ function buildWeapon(camera, pal) {
   return {
     get visible() { return root.visible; },
     set visible(v) { root.visible = v; },
+    applyRecoil(r) {
+      root.position.set(r.x, r.y, r.z);
+      root.rotation.x = r.pitch;
+    },
     flash() {
       glow.material.emissiveIntensity = 3.5;
       setTimeout(() => { glow.material.emissiveIntensity = 1.1; }, 40);

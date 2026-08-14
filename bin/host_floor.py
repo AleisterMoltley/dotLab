@@ -86,9 +86,7 @@ _FEWSHOTS = """# Patch few-shots (copy the shape, not the numbers)
     hits += 1;
 @@ replace
     hits += 1;
-    timeJuice.punch(CONFIG.hitstopMs || 40);
-    pulseShake(shake, CONFIG.shakeHit || 0.12);
-    sfx.hit();
+    punch(stack, 'hit');
 @@ end
 
 @@ file:src/game.js

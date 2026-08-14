@@ -53,12 +53,15 @@ If the model would only change numbers, **do not call the model**.
 
 ```
 src/main.js     boot only
-src/game.js     createGame + CONFIG + loop
+src/game.js     createGame + CONFIG + loop — calls craft, does not rewrite it
+src/craft/*     punch / camera / pool / brain / blob / recoil / mark
+src/look/*      applyLook card
+src/systems/*   the one novelty
 WIKI.md         durable facts (palette, feel, verb)
 DESIGN.md       future / kill list
 ```
 
-Rules: fog=background · no `new Vector3` in loop · `three/addons` never `examples/jsm` · complete files · `__GF_PLAYTEST__` hooks · WebAudio blip on hit.
+Rules: fog=background · no `new Vector3` in loop · `three/addons` never `examples/jsm` · complete files · `__GF_PLAYTEST__` hooks · `punch(stack, kind)` on every meaningful hit. Strike uses `lockX/lockZ`.
 
 ## Taste voice
 

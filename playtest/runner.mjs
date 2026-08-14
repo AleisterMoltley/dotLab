@@ -137,6 +137,18 @@ const INJECT = `
         title: document.title,
         reach_x: xs.length ? Math.max(...xs) - Math.min(...xs) : 0,
         maxX: xs.length ? Math.max(...xs) : 0,
+        look: window.__GF_LOOK__ || null,
+        gpu: (() => {
+          try {
+            const r = window.__GF_RENDERER__;
+            if (!r || !r.info) return null;
+            return {
+              calls: r.info.render.calls,
+              triangles: r.info.render.triangles,
+              geometries: r.info.memory.geometries,
+            };
+          } catch (e) { return null; }
+        })(),
       };
     },
   };

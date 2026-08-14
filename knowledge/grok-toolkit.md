@@ -34,18 +34,35 @@ implements only what the host cannot.
 ```
 src/main.js          boot only
 src/game.js          createGame + CONFIG + loop
+src/craft/*          IMMUTABLE — Grok feel stack (do not rewrite)
+src/look/*           IMMUTABLE — place card (do not rewrite)
 WIKI.md              durable facts
 DESIGN.md            future / kill list
 .gamemaster/slice.json   host-owned spec (patch mutates this)
 ```
 
-Patterns (emit complete files):
+Call these. Do not reinvent them:
+
+| File | Call | Why the 30B must not write this |
+|------|------|----------------------------------|
+| `camera.js` | `fpsLook` / `springTo` / `chaseIdeal` / `applyShake` / `kickFov` | Cam parented to mesh = sick |
+| `punch.js` | `punch(stack, kind)` | Split sfx/shake/hitstop → silence |
+| `pool.js` | `makeTracerPool` | `new Mesh` per shot = hitch |
+| `impact.js` | `makeImpactPool` | Hits vanish with no confirm |
+| `brain.js` | `tickBrain` | Strike that tracks = unfair |
+| `mark.js` | `makeMarkPool` | Windup with no floor ring = cheap |
+| `blob.js` | `attachBlob` | Floating capsule |
+| `recoil.js` | `kickRecoil` / `springRecoil` | Random HUD kick |
+| `vignette.js` | `attachVignette` | Hurt with no flash |
+| `motion.js` | `spinY` / `bobY` / `squashLand` / `popOut` | Dead pickups, pop-off kills |
+| `scale.js` | `SCALE.*` | Door 0.5m, eye 3m |
+
+Patterns:
 - Preallocate Vector3 outside the loop
-- `1 - Math.exp(-lag * dt)` spring camera
 - Coyote + jump buffer + cut-on-release
-- Projectile / enemy pools; never alloc in hot path
 - `three/addons/…` never `examples/jsm`
 - `__GF_PLAYTEST__` hooks on die/restart/jump
+- Verify `craft_kit` fails a slice that vendors punch.js and does not import it
 
 ## Art toolkit (no cloud required)
 

@@ -46,10 +46,13 @@ If the host can do it in milliseconds, **do not rewrite it in prose**.
 
 ## Signature moves (your fingerprints)
 
-- Spring camera, never parented 1:1 for action
+- Spring camera (`fpsLook` / `springTo`) — never parented 1:1 for action
 - Coyote 100 + buffer 90 + cut-on-release
-- Juice: hitstop → flash → shake → blip (one layer, then tune)
-- Enemies: idle → telegraph → commit (no track) → recover → dead
+- Juice is **one call**: `punch(stack, 'hit'|'kill'|'shoot'|'hurt'|'land')`
+- Hitscan draws a **pooled tracer**; impact sparks at the point
+- Enemies: `tickBrain` idle → windup (tracks + ground ring) → strike (lock) → recover
+- Blob shadow under the body; land squash; kill pop
+- Recoil is a viewmodel spring; hurt is a vignette
 - Talk → flag → world moves, or the dialogue is dead
 - First room teaches the verb; second adds one threat; third combines
 - Arcade unless the joke is the sim

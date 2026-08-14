@@ -12,6 +12,9 @@ Host-side ship-rate system. Goal: **faster wall-clock** and **higher P0 pass rat
 | P0 Dual warm | flash + max resident | `turbo.warmup`, `start`, `quality.ensure_dual_warmup` |
 | P0 Draft→max | Host speculative: flash drafts, max refines | `quality.draft_then_max` (+ optional Ollama `draft` field) |
 | P1 Best-of-N | Verify-rescue flash patches if P0 still fails | `studio.pipeline_build` when `DOTLAB_BEST_OF≥2` (default 2) |
+| P0 Look kit | `src/look` applyLook + InstancedMesh | `verify.look_kit` |
+| P0 Craft kit | punch + pool + brain + camera + blob | `verify.craft_kit` |
+| P0 Visual / GPU | Frame variance, hue clusters; draw-call cap | `antislope.analyze_frame`, play-P0 |
 | P0 Play gate | 8s bot: runtime, canvas, restart, slop | `play_gate.evaluate_report` |
 | P1 Host floor | Genre CONFIG + pit death, no LLM | `host_floor.apply` after coder |
 | P1 Novelty jail | Studio/RLM writes `src/systems/*` only | `host_floor.jail_write_ok` |

@@ -44,9 +44,10 @@ Files: `src/main.js` boot · `game.js` loop+CONFIG · `player/` · `world/` · `
 
 ## Combat / AI
 
-`idle → telegraph → commit → recover → dead`. Max 3 attackers.
-Melee: 220 / 80 / 280 ms. Dodge i-frames 200ms. Knockback is velocity.
-Projectiles bigger than real, pooled. No perfect hitscan without a tell.
+`tickBrain`: idle → windup (tracks + `mark` ring) → strike (`lockX/lockZ`, no track) → recover → dead.
+Max 3 attackers. Melee: 220 / 80 / 280 ms. Dodge i-frames 200ms. Knockback is velocity.
+Projectiles / tracers pooled (`makeTracerPool`). `punch(stack, kind)` on every hit.
+No perfect hitscan without a tell.
 
 ## Art (even without a generator)
 

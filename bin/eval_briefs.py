@@ -54,6 +54,13 @@ def run_eval(engine: str | None = None) -> dict:
                 vr = verify.evaluate(dest)
                 min_s = int(b.get("min_score") or 70)
                 ok = (not vr.get("p0_fail")) and int(vr.get("score") or 0) >= min_s
+                look_ok = True
+                craft_ok = True
+                ch = vr.get("checks") or {}
+                if "look_kit" in ch:
+                    look_ok = bool(ch["look_kit"].get("ok"))
+                if "craft_kit" in ch:
+                    craft_ok = bool(ch["craft_kit"].get("ok"))
                 js = ""
                 gp = dest / "src" / "game.js"
                 if gp.is_file():
@@ -74,6 +81,8 @@ def run_eval(engine: str | None = None) -> dict:
                         "min_score": min_s,
                         "genre": spec.get("genre"),
                         "play_skipped": True,
+                        "look_ok": look_ok,
+                        "craft_ok": craft_ok,
                     }
                 )
     # Also run fixed multi-engine matrix (short list)
@@ -108,6 +117,8 @@ def run_eval(engine: str | None = None) -> dict:
                 )
 
     passed = sum(1 for r in rows if r.get("ok"))
+    look_pass = sum(1 for r in rows if r.get("look_ok") is not False)
+    craft_pass = sum(1 for r in rows if r.get("craft_ok") is not False)
     by_eng: dict[str, dict] = {}
     for r in rows:
         e = str(r.get("engine") or "auto")
@@ -124,6 +135,8 @@ def run_eval(engine: str | None = None) -> dict:
         "passed": passed,
         "total": len(rows),
         "ship_rate": round(100 * passed / len(rows), 1) if rows else 0,
+        "look_rate": round(100 * look_pass / len(rows), 1) if rows else 0,
+        "craft_rate": round(100 * craft_pass / len(rows), 1) if rows else 0,
         "by_engine": by_eng,
         "cases": rows,
         "play_note": "compile-only; pass --play to add Playwright P0 when installed",

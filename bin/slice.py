@@ -15,6 +15,7 @@ import verify
 from gmcommon import GAME_GITIGNORE, KNOWLEDGE, ROOT, TEMPLATES, slugify_project
 
 CRAFT_LIB = ROOT / "lib" / "craft"
+LOOK_LIB = ROOT / "lib" / "look"
 PIXELART_LIB = ROOT / "lib" / "pixelart"
 VINTAGE_LIB = ROOT / "lib" / "vintage"
 
@@ -436,6 +437,26 @@ def vintage_config(profile: str, props: str = "forest", genre: str = "adventure"
     }
 
 
+def pick_look(genre: str, loop: str, props: str, prompt: str = "") -> str:
+    """Host look-card id. The model does not invent lighting."""
+    blob = f"{genre} {loop} {props} {prompt}".lower()
+    if re.search(r"neon|cyber|void|shoot|fps|arena", blob):
+        return "neon-night"
+    if re.search(r"desert|dune|sand|racing", blob):
+        return "desert-gold"
+    if re.search(r"horror|sneak|rain|alley", blob):
+        return "rain-alley"
+    if re.search(r"village|town|interior|inn|rpg", blob):
+        return "interior-warm"
+    if re.search(r"coast|sea|dusk|harbor|adventure", blob):
+        return "dusk-coast"
+    if re.search(r"jump|platform|forest|pine|grove", blob):
+        return "pine-ridge"
+    if loop == "run":
+        return "neon-night"
+    return "dusk-coast"
+
+
 def infer_genre(prompt: str) -> str:
     p = (prompt or "").lower()
     for rx, genre in _GENRE_RX:
@@ -528,6 +549,7 @@ def compile_prompt(
         ship = f"vintage-{(vcfg or {}).get('profile') or 'gb'}"
     elif loop == "shoot" or g in ("fps", "arena"):
         ship = "neon-ink"
+    look = pick_look(g, loop, props, text)
     spec = {
         "prompt": text,
         "title": _title(text),
@@ -550,6 +572,7 @@ def compile_prompt(
         "density": 1.0,
         "juice": 0.85 if eng == "vintage" else 1.0,
         "shipBar": ship,
+        "look": look,
     }
     if vcfg:
         spec["vintage"] = vcfg
@@ -766,6 +789,11 @@ def _slim_spec(spec: dict) -> dict:
         "density": float(spec.get("density") or 1.0),
         "juice": float(spec.get("juice") or 1.0),
         "roomCount": int(spec.get("roomCount") or 1),
+        "look": spec.get("look") or pick_look(
+            str(spec.get("genre") or ""),
+            str(spec.get("loop") or ""),
+            str(spec.get("props") or ""),
+        ),
     }
 
 
@@ -1181,6 +1209,16 @@ game.start();
         for p in dest_craft.rglob("*"):
             if p.is_file():
                 written.append(str(p.relative_to(dest)))
+    if LOOK_LIB.is_dir():
+        import shutil
+
+        dest_look = dest / "src" / "look"
+        if dest_look.exists():
+            shutil.rmtree(dest_look)
+        shutil.copytree(LOOK_LIB, dest_look)
+        for p in dest_look.rglob("*"):
+            if p.is_file():
+                written.append(str(p.relative_to(dest)))
 
     # Host genre slots (novelty / weapon / enemy) — LLM fills later; host owns machine
     try:
@@ -1225,6 +1263,7 @@ Living facts for this game. One bullet + **Why:**. Loaded into every Studio/Agen
 - Prompt: {spec["prompt"]}. **Why:** source of truth.
 - Ship bar: {spec.get("shipBar", "vertical-slice")} (NEON INK quality target for skill FPS). **Why:** local Grok must match pair-built games.
 - Craft modules: src/craft (palette, juice TimeJuice, audio sfx). **Why:** zero-asset juice stack.
+- Look card: {spec.get("look") or "dusk-coast"} in src/look (immutable). **Why:** Three.js place is a kit, not a prompt.
 """,
     )
     put(

@@ -50,6 +50,10 @@ CHECKS_META = {
     "feel_keys": 1,
     "playtest": 1,
     "wiki": 1,
+    "look_kit": 8,  # src/look + applyLook when kit is vendored
+    "instanced": 3,
+    "no_alloc_loop": 3,
+    "craft_kit": 8,  # punch + pool + brain + camera + blob when punch.js vendored
 }
 
 
@@ -436,6 +440,56 @@ def evaluate(project: Path) -> dict:
             detail = "three + craft/juice" if eng_ok else "missing three craft ship bar"
         add("engine_ship", eng_ok, detail)
         checks["bake_budget"] = {"ok": True, "detail": "n/a three", "weight": 1}
+
+        look_dir = project / "src" / "look"
+        if look_dir.is_dir():
+            look_js = ""
+            try:
+                for p in look_dir.glob("*.js"):
+                    look_js += p.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                pass
+            has_apply = "applyLook" in js and "InstancedMesh" in look_js
+            add("look_kit", has_apply, "applyLook + InstancedMesh" if has_apply else "look kit incomplete")
+            add(
+                "instanced",
+                "InstancedMesh" in look_js or "InstancedMesh" in js,
+                "InstancedMesh scatter",
+            )
+        else:
+            add("look_kit", True, "no look kit (skip)")
+            add("instanced", True, "no look kit (skip)")
+        punch_p = project / "src" / "craft" / "punch.js"
+        if punch_p.is_file():
+            game_js = ""
+            gp = project / "src" / "game.js"
+            if gp.is_file():
+                try:
+                    game_js = gp.read_text(encoding="utf-8", errors="ignore")
+                except OSError:
+                    game_js = js
+            has_craft = (
+                "punch(" in game_js
+                and "makeTracerPool" in game_js
+                and "tickBrain" in game_js
+                and ("fpsLook" in game_js or "from './craft/camera.js'" in game_js)
+                and "attachBlob" in game_js
+            )
+            add(
+                "craft_kit",
+                has_craft,
+                "punch+pool+brain+camera+blob" if has_craft else "craft kit unused — import punch/pool/brain/camera/blob",
+            )
+        # Alloc in the hot loop — pooled vectors must live outside update/frame
+        loop_body = ""
+        mloop = re.search(
+            r"function\s+(update|frame|tick|loop)\s*\([^)]*\)\s*\{",
+            js,
+        )
+        if mloop:
+            loop_body = js[mloop.end() : mloop.end() + 2500]
+        alloc = bool(re.search(r"new\s+THREE\.(Vector3|Object3D|Mesh)\s*\(", loop_body))
+        add("no_alloc_loop", not alloc, "pooled vectors" if not alloc else "new THREE.* inside update/frame")
 
     g_ok, g_detail, g_enforced = genre_contract(project, js)
     if g_enforced:

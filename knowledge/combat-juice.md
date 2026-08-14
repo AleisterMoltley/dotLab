@@ -55,6 +55,19 @@ Unfair (do not ship):
 
 ## Juice implementation (do this, not a VFX novel)
 
+Host owns this. Import `punch` from `src/craft/punch.js`. Do not rewrite.
+
+```js
+import { punch } from './craft/punch.js';
+punch(stack, 'hit');   // TimeJuice.body + shake + sfx + hitmark
+punch(stack, 'kill');
+punch(stack, 'shoot');
+// Windup ring: makeMarkPool.show(lockX, lockZ, id)
+// Strike: tickBrain — commit uses lockX/lockZ, does NOT track
+```
+
+Legacy sketch (do not paste into game.js):
+
 ```js
 // src/fx/juice.js — one module the whole game calls
 export const juice = {

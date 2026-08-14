@@ -36,9 +36,10 @@ if (!held && vy > 0) vy *= CONFIG.jumpCut;
 ## Spring camera (never parent to player for action)
 
 ```js
-const k = 1 - Math.exp(-CONFIG.camLag * dt);
-camera.position.lerp(ideal, k);
-camera.lookAt(look);
+import { springTo, fpsLook, chaseIdeal, applyShake, kickFov } from './craft/camera.js';
+fpsLook(camera, player.pos, yaw, pitch, _look);
+chaseIdeal(_ideal, player.pos, CONFIG, spec.camera);
+springTo(camera, _ideal, dt, CONFIG.camLag);
 ```
 
 ## FPS look + move
@@ -51,17 +52,16 @@ camera.lookAt(look);
 ## Hitscan shoot
 
 ```js
-_ray.setFromCamera(_ndc.set(0, 0), camera);
-const hits = _ray.intersectObjects(enemyMeshes, false);
-// hitstop + shake + blip; pool enemies; do not alloc meshes on kill
+import { makeTracerPool } from './craft/pool.js';
+import { punch } from './craft/punch.js';
+tracers.spawn(origin, dir, color);
+if (hits[0]) punch(stack, e.hp <= 0 ? 'kill' : 'hit');
 ```
 
 ## Juice minimum
 
 ```js
-// hitstop: skip update for hitstopMs
-// shake: offset cam by sin(t)*shake, decay shake
-// blip: AudioContext oscillator 40–80ms, gain ramp to 0
+punch(stack, 'hit'); // TimeJuice → shake → sfx → hitmark. Do not split.
 ```
 
 ## WebAudio blip

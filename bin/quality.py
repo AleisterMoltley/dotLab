@@ -46,6 +46,7 @@ PROTECTED_MIN_LINES = 80  # below this, full replace still ok
 # Host craft/kits — never full-replace (anti-slop immutable)
 IMMUTABLE_PREFIXES = (
     "src/craft/",
+    "src/look/",
     "src/kits/",
 )
 

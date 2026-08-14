@@ -29,8 +29,10 @@ from gmcommon import KNOWLEDGE, ROOT, meta_dir, run
 # Immutable host paths — LLM must not full-replace
 IMMUTABLE_PREFIXES = (
     "src/craft/",
+    "src/look/",
     "src/kits/",
     "lib/craft/",
+    "lib/look/",
 )
 IMMUTABLE_FILES = frozenset(
     {
@@ -38,6 +40,20 @@ IMMUTABLE_FILES = frozenset(
         "src/craft/audio.js",
         "src/craft/palette.js",
         "src/craft/index.js",
+        "src/craft/punch.js",
+        "src/craft/camera.js",
+        "src/craft/pool.js",
+        "src/craft/blob.js",
+        "src/craft/brain.js",
+        "src/craft/scale.js",
+        "src/craft/motion.js",
+        "src/craft/recoil.js",
+        "src/craft/impact.js",
+        "src/craft/mark.js",
+        "src/craft/vignette.js",
+        "src/look/index.js",
+        "src/look/rig.js",
+        "src/look/cards.js",
         "src/kits/README.md",
     }
 )
@@ -146,7 +162,7 @@ def check_silence_on_hit(js: str) -> tuple[bool, str]:
         return True, "n/a (not a shoot loop)"
     has_juice = bool(
         re.search(
-            r"TimeJuice|hitstop|timeJuice\.|sfx\.|pulseShake|makeShake|pxShake|blip\(|shakeT",
+            r"TimeJuice|hitstop|timeJuice\.|sfx\.|pulseShake|makeShake|pxShake|blip\(|shakeT|punch\(",
             js,
         )
     )
@@ -202,7 +218,7 @@ def check_feel_ranges(js: str) -> tuple[bool, str]:
 
 def check_no_green_capsule(js: str) -> tuple[bool, str]:
     if re.search(r"CapsuleGeometry|capsule", js, re.I) and re.search(
-        r"0x00ff00|0x22c55e|0x4ade80|MeshBasicMaterial\(\s*\{\s*color:\s*0x00",
+        r"0x00ff00|0x22c55e|0x4ade80",
         js,
         re.I,
     ):
@@ -443,6 +459,103 @@ def visual_distance(path_a: Path, path_b: Path) -> dict[str, Any]:
     }
 
 
+def analyze_frame(path: Path) -> dict[str, Any]:
+    """Variance, hue clusters, edge density — does the place read in one second?"""
+    samples = _png_samples(Path(path))
+    if not samples:
+        return {"ok": False, "error": "unreadable png"}
+    n = len(samples)
+    mean_r = sum(s[0] for s in samples) / n
+    mean_g = sum(s[1] for s in samples) / n
+    mean_b = sum(s[2] for s in samples) / n
+    var = sum((s[0] - mean_r) ** 2 + (s[1] - mean_g) ** 2 + (s[2] - mean_b) ** 2 for s in samples) / n
+    hues: dict[int, int] = {}
+    for r, g, b in samples:
+        mx = max(r, g, b)
+        mn = min(r, g, b)
+        if mx - mn < 12:
+            bucket = -1
+        elif mx == r:
+            bucket = int(((g - b) / (mx - mn + 1e-6)) % 6)
+        elif mx == g:
+            bucket = int((2 + (b - r) / (mx - mn + 1e-6)) % 6)
+        else:
+            bucket = int((4 + (r - g) / (mx - mn + 1e-6)) % 6)
+        hues[bucket] = hues.get(bucket, 0) + 1
+    clusters = sum(1 for c, k in hues.items() if c >= 0 and k > n * 0.06)
+    edges = 0
+    # neighbor contrast along the sample stream
+    for i in range(1, n):
+        a, b = samples[i - 1], samples[i]
+        if abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2]) > 48:
+            edges += 1
+    edge_ratio = edges / max(1, n - 1)
+    hints: list[str] = []
+    if var < 180:
+        hints.append("flat_frame")
+    if clusters < 2:
+        hints.append("few_hues")
+    if edge_ratio < 0.04:
+        hints.append("no_silhouette")
+    return {
+        "ok": True,
+        "variance": round(var, 1),
+        "hue_clusters": clusters,
+        "edge_ratio": round(edge_ratio, 3),
+        "mean": [round(mean_r, 1), round(mean_g, 1), round(mean_b, 1)],
+        "hints": hints,
+        "readable": not hints,
+    }
+
+
+def _png_samples(path: Path) -> list[tuple[float, float, float]]:
+    m = _png_mean_rgb(path)
+    # Re-walk via mean helper internals: decode again for samples
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return []
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        return []
+    pos = 8
+    width = height = 0
+    bit_depth = color_type = 0
+    idat = b""
+    while pos + 8 <= len(data):
+        length = struct.unpack(">I", data[pos : pos + 4])[0]
+        ctype = data[pos + 4 : pos + 8]
+        chunk = data[pos + 8 : pos + 8 + length]
+        pos += 12 + length
+        if ctype == b"IHDR":
+            width, height, bit_depth, color_type = struct.unpack(">IIBB", chunk[:10])
+        elif ctype == b"IDAT":
+            idat += chunk
+        elif ctype == b"IEND":
+            break
+    if not width or not idat:
+        return []
+    try:
+        raw = zlib.decompress(idat)
+    except Exception:
+        return []
+    bpp = {2: 3, 6: 4}.get(color_type, 0)
+    if bit_depth != 8 or bpp == 0:
+        return []
+    stride = width * bpp + 1
+    out: list[tuple[float, float, float]] = []
+    step = 6
+    for y in range(0, height, step):
+        row = raw[y * stride : (y + 1) * stride]
+        if len(row) < stride:
+            break
+        for x in range(0, width, step):
+            i = 1 + x * bpp
+            if i + 2 >= len(row):
+                break
+            out.append((float(row[i]), float(row[i + 1]), float(row[i + 2])))
+    return out or ([] if not m else [m])
+
+
 def screenshot_slop_hint(path: Path) -> dict[str, Any]:
     """Single-frame heuristic: near-black = empty, neon-green dominant = capsule."""
     m = _png_mean_rgb(Path(path))
@@ -457,12 +570,21 @@ def screenshot_slop_hint(path: Path) -> dict[str, Any]:
         hints.append("green_dominant")
     if b > 120 and r > 80 and g < 80:
         hints.append("purple_fog_like")
+    look = analyze_frame(path)
+    if look.get("ok"):
+        for h in look.get("hints") or []:
+            if h not in hints:
+                hints.append(h)
     return {
         "ok": True,
         "mean": [round(r, 1), round(g, 1), round(b, 1)],
         "luminance": round(lum, 1),
+        "variance": look.get("variance"),
+        "hue_clusters": look.get("hue_clusters"),
+        "edge_ratio": look.get("edge_ratio"),
         "hints": hints,
         "slop_risk": bool(hints),
+        "readable": look.get("readable", not hints),
     }
 
 
