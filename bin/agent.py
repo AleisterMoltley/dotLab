@@ -1031,7 +1031,11 @@ def main() -> int:
                     try:
                         import play_gate as pgl
 
-                        pr = pgl.evaluate_report(pgl.load_report(project), family=pgl.family_of(project))
+                        pr = pgl.evaluate_report(
+                            pgl.load_report(project),
+                            family=pgl.family_of(project),
+                            project=project,
+                        )
                         if not pr.get("skipped"):
                             print(pr["report"])
                             if pr.get("p0_fail") and not verify_repair_used:

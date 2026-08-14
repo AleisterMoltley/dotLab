@@ -142,6 +142,11 @@ export function createGame({ genre, title }) {
       }
     }
     if (grounded) state.lastGround = state.now;
+    try {
+      window.__GF_PLAYTEST__?.recordSample?.({
+        x: player.pos.x, y: player.pos.y, z: player.pos.z, grounded,
+      });
+    } catch { /* */ }
 
     if (isFps && pointer.locked) {
       player.yaw -= pointer.mx * (CONFIG.mouseSens || 0.002);

@@ -259,6 +259,14 @@ def taste_action(project: Path, action: str) -> dict[str, Any]:
 
     project = Path(project).expanduser().resolve()
     action = (action or "").strip().lower()
+
+    def _stamp(act: str) -> None:
+        try:
+            import hands as handslib
+
+            handslib.timeline_add(project, act)
+        except Exception:
+            pass
     if action in ("keep", "accept"):
         try:
             qualitylib.log_accept_pair(
@@ -280,11 +288,18 @@ def taste_action(project: Path, action: str) -> dict[str, Any]:
             prefslib.save_json(path, data)
         except Exception:
             pass
+        try:
+            import hands as handslib
+
+            handslib.timeline_add(project, "keep")
+        except Exception:
+            pass
         return {"ok": True, "action": "keep", "summary": "Kept — logged as accept pair."}
 
     if action in ("tighter", "tight", "snappy"):
         r = patchlib.try_patch(project, "snappy tighter controls less floaty")
         if r and r.get("ok"):
+            _stamp("tighter")
             return {"ok": True, "action": "tighter", "summary": r.get("summary"), "written": r.get("written")}
         # force feel
         spec = patchlib.load_spec(project)
@@ -299,11 +314,13 @@ def taste_action(project: Path, action: str) -> dict[str, Any]:
         import slice as slicelib
 
         written = slicelib.write_slice(project, spec)
+        _stamp("tighter")
         return {"ok": True, "action": "tighter", "summary": "Host tightened gravity/friction/accel.", "written": written}
 
     if action in ("juice", "more-juice", "juicier"):
         r = patchlib.try_patch(project, "more juice screen shake hitstop")
         if r and r.get("ok"):
+            _stamp("juice")
             return {"ok": True, "action": "juice", "summary": r.get("summary"), "written": r.get("written")}
         spec = patchlib.load_spec(project)
         if not spec:
@@ -317,6 +334,7 @@ def taste_action(project: Path, action: str) -> dict[str, Any]:
         import slice as slicelib
 
         written = slicelib.write_slice(project, spec)
+        _stamp("juice")
         return {"ok": True, "action": "juice", "summary": "Host boosted juice/hitstop/shake.", "written": written}
 
     return {"ok": False, "error": f"unknown action {action} (keep|tighter|juice)"}

@@ -60,6 +60,14 @@ def pref_block(project: Path | None) -> str:
             parts.append(wb)
     except Exception:
         pass
+    try:
+        import hands as handslib
+
+        hb = handslib.brief_block(project) if project else ""
+        if hb:
+            parts.append(hb)
+    except Exception:
+        pass
     return "\n\n".join(parts)
 
 
@@ -881,7 +889,9 @@ def pipeline_build(
         try:
             import play_gate as pgl
 
-            pr = pgl.evaluate_report(pgl.load_report(project), family=pgl.family_of(project))
+            pr = pgl.evaluate_report(
+                pgl.load_report(project), family=pgl.family_of(project), project=project
+            )
             print(pr.get("report") or "")
             write_session(project, "03d-play-p0.txt", pr.get("report") or "")
             if pr.get("p0_fail"):

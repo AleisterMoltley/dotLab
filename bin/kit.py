@@ -346,9 +346,38 @@ def run_kit(project: Path, action: str, args: dict | None = None) -> str:
         return p or "ERROR: no last prompt"
     if a in ("recap", "session"):
         return recap(project)
+    if a in ("fit", "jump_fit", "fit_jump"):
+        try:
+            import hands as handslib
+
+            return json.dumps(handslib.apply_fit(project))
+        except Exception as e:
+            return f"ERROR hands fit: {e}"
+    if a in ("mark", "spatial"):
+        try:
+            import hands as handslib
+
+            return json.dumps(handslib.mark(project, args.get("kind") or "flag", None, args.get("note") or ""))
+        except Exception as e:
+            return f"ERROR mark: {e}"
+    if a in ("timeline",):
+        try:
+            import hands as handslib
+
+            return json.dumps(handslib.timeline_list(project))
+        except Exception as e:
+            return f"ERROR timeline: {e}"
+    if a in ("share",):
+        try:
+            import hands as handslib
+
+            return json.dumps(handslib.share(project))
+        except Exception as e:
+            return f"ERROR share: {e}"
     return (
         "ERROR: unknown kit action. Use: todo_list, todo_add, todo_done, "
-        "wiki_add, map, art_test, feel, verify, pixel, undo, replay, recap"
+        "wiki_add, map, art_test, feel, verify, pixel, undo, replay, recap, "
+        "fit, mark, timeline, share"
     )
 
 

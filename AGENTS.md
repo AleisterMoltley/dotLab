@@ -56,6 +56,7 @@ Modelfile       baked Ollama system prompt
 | Slice verify (P0 gate, no Ollama) | `bin/verify.py` — agent `done` + studio after coder |
 | Host feel / few-shots / verify repair | `bin/host_floor.py` |
 | Play-P0 (bot metrics, slop, gap) | `bin/play_gate.py` |
+| Hands (jump-fit, ghost, spatial, share) | `bin/hands.py` |
 | Optional paid LLMs (off by default) | `bin/cloud.py` — grok / claude / openai / gemini / zoo |
 | OpenZoo x402 floor (leCore) | `bin/zoo.py` (`handle_http`) + `knowledge/openzoo.md` + `chat/` + `live/dashboard.html` |
 | Install / PATH | `install.sh` |

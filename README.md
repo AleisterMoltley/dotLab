@@ -345,6 +345,9 @@ dotlab github login
 dotlab ship -p ./Wilds -m "vertical slice"
 dotlab kit undo -p DIR
 dotlab kit recap -p DIR
+dotlab hands fit -p DIR --hang 0.55 --apex 1.8
+dotlab hands mark -p DIR --kind flag --x 12 --y 2
+dotlab share -p DIR
 
 # Local speed / stronger flash
 dotlab turbo warmup
@@ -383,6 +386,22 @@ A slice needs:
 - **opposition** that pushes back
 - **juice** on every meaningful hit
 - a **fair first death** and a restart under three seconds
+
+## Hands in the game
+
+The prompt shrinks. Play writes the floor.
+
+| You do | Host does |
+|--------|-----------|
+| **Jump** | Solves `gravity` / `jumpForce` from hang time and apex (`dotlab hands fit`) |
+| **Mark death / flag / place** in Play | Spatial brief for the next studio pass |
+| **Keep / Tighter / Juice** | Feel keyframes — `dotlab hands timeline` / `restore` |
+| **Play a green run** | Saves a **ghost**. A later patch that can't clear that jump is Play-P0 `ghost_broke` |
+| **Share** | `dotlab share -p DIR` → zip. Friend: `npm i && npm run dev`. Not a GitHub remote. |
+
+The game talks in the Play HUD: “You broke my jump.” / “I didn’t know where to go.” / “One more run?” — not a critic essay.
+
+After three look-alike slices the host stamps a **constraint** (four colors, one moving ledge, no dash). Same neon village twice is a fail.
 
 Feel lives in `CONFIG` numbers. The host writes them after every coder pass.
 

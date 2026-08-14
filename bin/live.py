@@ -165,6 +165,15 @@ class LiveSession:
         except Exception:
             data["cloud"] = ""
             data["zoo"] = {"ok": False}
+        try:
+            import hands as handslib
+
+            data["hands"] = {
+                "callout": handslib.read_callout(self.project),
+                "spatial": handslib._read_json(handslib.spatial_path(self.project), {}),
+            }
+        except Exception:
+            data["hands"] = {}
         return data
 
     def subscribe(self) -> Queue:
@@ -331,6 +340,28 @@ class LiveSession:
                     code, out = zoolib.handle_http("POST", parsed.path, payload)
                     self._json(code, out)
                     return
+                if parsed.path == "/api/hands":
+                    length = int(self.headers.get("Content-Length", 0))
+                    raw = self.rfile.read(length) if length else b"{}"
+                    try:
+                        payload = json.loads(raw.decode() or "{}")
+                    except json.JSONDecodeError:
+                        payload = {}
+                    try:
+                        import hands as handslib
+
+                        code, out = handslib.handle_http("POST", parsed.path, payload, session.project)
+                    except Exception as e:
+                        code, out = 500, {"ok": False, "error": str(e)}
+                    self._json(code, out)
+                    if out.get("ok") and payload.get("action") == "mark":
+                        session.emit(
+                            f"Marked {payload.get('kind')}",
+                            role="system",
+                            phase=session.phase,
+                            headline="Spatial brief",
+                        )
+                    return
                 if parsed.path == "/api/emit":
                     length = int(self.headers.get("Content-Length", 0))
                     raw = self.rfile.read(length) if length else b"{}"
@@ -367,6 +398,21 @@ class LiveSession:
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
+                    return
+                if path == "/api/hands":
+                    try:
+                        import hands as handslib
+
+                        code, payload = handslib.handle_http("GET", path, {}, session.project)
+                    except Exception as e:
+                        code, payload = 500, {"ok": False, "error": str(e)}
+                    raw = json.dumps(payload).encode()
+                    self.send_response(code)
+                    self.send_header("Content-Type", "application/json")
+                    self._cors()
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.end_headers()
+                    self.wfile.write(raw)
                     return
                 if path == "/api/status":
                     data = json.dumps(session.status_dict()).encode()

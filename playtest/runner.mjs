@@ -61,6 +61,12 @@ const INJECT = `
     frames: 0,
     maxDt: 0,
     canvas: null,
+    jumpSamples: [],
+    path: [],
+    lastPos: null,
+    _jumpT0: null,
+    _jumpY0: 0,
+    _apex: 0,
   };
   let last = performance.now();
   const markInput = () => {
@@ -77,6 +83,17 @@ const INJECT = `
     last = now;
     m.frames++;
     if (dt < 1000) m.maxDt = Math.max(m.maxDt, dt);
+    if (m._jumpT0 && m.lastPos) {
+      if (m.lastPos.y > m._apex) m._apex = m.lastPos.y;
+      if (m.lastPos.grounded && (now - m._jumpT0) > 80) {
+        m.jumpSamples.push({
+          hang: (now - m._jumpT0) / 1000,
+          apex: m._apex - m._jumpY0,
+        });
+        if (m.jumpSamples.length > 12) m.jumpSamples.shift();
+        m._jumpT0 = null;
+      }
+    }
     try { return cb(ts); } catch (e) { console.error(e); throw e; }
   });
 
@@ -96,9 +113,21 @@ const INJECT = `
         m.lastDeathAt = null;
       }
     },
-    recordJump() { m.jumps++; markInput(); },
+    recordJump() {
+      m.jumps++;
+      markInput();
+      m._jumpT0 = performance.now();
+      m._jumpY0 = (m.lastPos && m.lastPos.y) || 0;
+      m._apex = m._jumpY0;
+    },
+    recordSample(p) {
+      if (!p) return;
+      m.lastPos = p;
+      if (m.path.length < 80) m.path.push({ t: performance.now() - m.t0, x: p.x, y: p.y, z: p.z });
+    },
     dump() {
       const live = performance.now() - m.t0;
+      const xs = (m.path || []).map((q) => q.x).filter((n) => typeof n === 'number');
       return {
         ...m,
         liveMs: live,
@@ -106,9 +135,21 @@ const INJECT = `
         medianDeathToRestartMs: median(m.deathToRestartMs),
         hasCanvas: !!document.querySelector('canvas'),
         title: document.title,
+        reach_x: xs.length ? Math.max(...xs) - Math.min(...xs) : 0,
+        maxX: xs.length ? Math.max(...xs) : 0,
       };
     },
   };
+  window.addEventListener('message', (e) => {
+    if (e.data === 'gf-dump' && e.source) {
+      e.source.postMessage({ type: 'gf-metrics', metrics: window.__GF_PLAYTEST__.dump() }, '*');
+    }
+  });
+  setInterval(() => {
+    try {
+      parent.postMessage({ type: 'gf-pos', pos: m.lastPos }, '*');
+    } catch (err) { /* */ }
+  }, 500);
   function median(arr) {
     if (!arr.length) return null;
     const a = [...arr].sort((x, y) => x - y);

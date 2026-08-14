@@ -188,6 +188,10 @@
       <button type="button" id="btn-log" class="ghost">AI log</button>
       <button type="button" id="btn-newtab" class="ghost">Pop-out game</button>
       <span class="pill" id="zooPill" title="Backend — manage in studio">local</span>
+      <button type="button" id="btn-mark-death" class="ghost" title="This ledge is the first death">Mark death</button>
+      <button type="button" id="btn-mark-flag" class="ghost" title="The flag / verb target">Mark flag</button>
+      <button type="button" id="btn-mark-place" class="ghost" title="Landmark the player reads in 1s">Mark place</button>
+      <button type="button" id="btn-fit" class="ghost" title="Solve gravity from your last jump">Fit jump</button>
       <button type="button" id="btn-gh" class="gh">GitHub</button>
     </div>
   </header>
@@ -216,6 +220,7 @@
       <div class="hud-tl">
         <span class="pill ok" id="playState">click game to play</span>
         <span class="pill" id="updPill" style="display:none">0 pending</span>
+        <span class="pill ok" id="calloutPill" style="display:none"></span>
       </div>
       <iframe
         id="game"
@@ -402,6 +407,10 @@
           phaseEl.className = 'pill ' + (data.phase === 'done' || data.phase === 'ready' || data.phase === 'idle' ? 'ok' : 'busy');
         }
         if (data.zoo) paintZooPill(data.zoo);
+        if (data.hands && data.hands.callout) {
+          const cp = document.getElementById('calloutPill');
+          if (cp) { cp.style.display = ''; cp.textContent = data.hands.callout; }
+        }
         if (data.headline) headline.textContent = data.headline;
         if (data.detail) subhead.textContent = data.detail;
         if (typeof data.last_event_id === 'number' && data.last_event_id > lastEventId) {
@@ -546,6 +555,41 @@
         pill.title = 'Local Ollama — manage OpenZoo in studio';
       }
     }
+
+    let lastPos = null;
+    let lastSamples = [];
+    window.addEventListener('message', (e) => {
+      const d = e.data || {};
+      if (d.type === 'gf-pos' && d.pos) lastPos = d.pos;
+      if (d.type === 'gf-metrics' && d.metrics) {
+        if (d.metrics.jumpSamples) lastSamples = d.metrics.jumpSamples;
+        if (d.metrics.lastPos) lastPos = d.metrics.lastPos;
+      }
+    });
+    function postHands(body) {
+      return fetch('/api/hands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then((r) => r.json());
+    }
+    function markKind(kind) {
+      try { iframe.contentWindow && iframe.contentWindow.postMessage({ type: 'gf-mark', kind: kind }, '*'); } catch (_) {}
+      postHands({ action: 'mark', kind: kind, pos: lastPos || {} }).then((d) => {
+        if (d && d.ok) playState.textContent = 'marked ' + kind;
+      });
+    }
+    document.getElementById('btn-mark-death').onclick = () => markKind('first_death');
+    document.getElementById('btn-mark-flag').onclick = () => markKind('flag');
+    document.getElementById('btn-mark-place').onclick = () => markKind('landmark');
+    document.getElementById('btn-fit').onclick = () => {
+      try { iframe.contentWindow && iframe.contentWindow.postMessage('gf-dump', '*'); } catch (_) {}
+      setTimeout(() => {
+        postHands({ action: 'fit', samples: lastSamples, pos: lastPos }).then((d) => {
+          if (d && d.ok) playState.textContent = 'jump fitted g=' + ((d.feel || {}).gravity);
+        });
+      }, 80);
+    };
 
     setInterval(poll, 700);
     poll();

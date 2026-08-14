@@ -252,7 +252,7 @@ def main() -> int:
             try:
                 import play_gate as pgl
 
-                pr = pgl.evaluate_report(rep, family=pgl.family_of(project))
+                pr = pgl.evaluate_report(rep, family=pgl.family_of(project), project=project)
                 print(pr.get("report") or "")
                 (out / "play-p0.txt").write_text(pr.get("report") or "", encoding="utf-8")
                 if pr.get("p0_fail"):

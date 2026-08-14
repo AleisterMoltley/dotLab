@@ -114,6 +114,7 @@ def evaluate_report(
     genre: str = "",
     loop: str = "",
     family: str = "",
+    project: Path | None = None,
 ) -> dict[str, Any]:
     """Grade a playtest report. Missing report → skipped, not a fail."""
     if not report:
@@ -205,7 +206,7 @@ def evaluate_report(
         lines.append("P0 must-fix: " + ", ".join(p0))
         lines.append("Do not add features. Fix these, then done.")
 
-    return {
+    result = {
         "ok": not p0,
         "skipped": False,
         "p0_fail": p0,
@@ -225,6 +226,19 @@ def evaluate_report(
         },
         "report": "\n".join(lines),
     }
+    if project is not None:
+        try:
+            import hands as handslib
+
+            extra = handslib.after_play(Path(project), result, report)
+            if extra.get("callout"):
+                result["callout"] = extra["callout"]
+            result["p0_fail"] = list(result.get("p0_fail") or [])
+            result["ok"] = not result["p0_fail"]
+            result["report"] = result.get("report") or ""
+        except Exception:
+            pass
+    return result
 
 
 def repair_task(result: dict) -> str:
@@ -425,7 +439,7 @@ def try_run(project: Path, *, duration: int = 8, force: bool = False) -> dict[st
             "report": f"PLAY-P0 skipped ({e})",
         }
     rep = load_report(project)
-    result = evaluate_report(rep, family=fam)
+    result = evaluate_report(rep, family=fam, project=project)
     try:
         apply_metric_fixes(project, result)
     except Exception:

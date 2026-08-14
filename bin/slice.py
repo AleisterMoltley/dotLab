@@ -559,6 +559,12 @@ def compile_prompt(
         spec = rlmlib.stamp_spec(spec)
     except Exception:
         spec["floor"] = "v1"
+    try:
+        import hands as handslib
+
+        spec = handslib.apply_sameness(spec)
+    except Exception:
+        pass
     return spec
 
 
