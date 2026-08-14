@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    :root {
+      --bg: #050508; --panel: #0e0e14; --border: #27272f; --text: #f4f4f5;
+      --muted: #a1a1aa; --accent: #6ee7b7; --info: #38bdf8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      width: 1280px; height: 720px; background: var(--bg); color: var(--text);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      display: grid; grid-template-rows: 48px 1fr; overflow: hidden;
+    }
+    header {
+      display: flex; align-items: center; justify-content: space-between; padding: 0 12px;
+      border-bottom: 1px solid var(--border); background: rgba(5,5,8,.92);
+    }
+    .logo {
+      width: 26px; height: 26px; border-radius: 7px;
+      background: linear-gradient(135deg, var(--accent), var(--info));
+      color: #042f1c; display: grid; place-items: center; font-size: 10px; font-weight: 900;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand h1 { margin: 0; font-size: 13px; }
+    .brand p { margin: 1px 0 0; font-size: 11px; color: var(--muted); }
+    .actions { display: flex; gap: 6px; align-items: center; }
+    button {
+      appearance: none; border: 1px solid var(--border); background: #18181f; color: var(--text);
+      border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 650;
+    }
+    button.primary { background: var(--accent); color: #042f1c; border-color: transparent; }
+    button.active { border-color: var(--accent); color: var(--accent); background: transparent; }
+    button.ghost { background: transparent; }
+    .pill { font-size: 10px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+    .pill.ok { color: var(--accent); border-color: rgba(110,231,183,.35); }
+    #stage { display: grid; grid-template-columns: 1fr 300px; min-height: 0; }
+    .play { position: relative; overflow: hidden; background: #1a140e; }
+    .sky {
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 70% 50% at 70% 28%, rgba(255,180,90,.35), transparent 55%),
+        linear-gradient(#3a2a3a 0%, #c4784a 32%, #e8b06a 48%, #8aa0b8 58%, #4a5a38 59%, #2a3324 100%);
+    }
+    .ridge {
+      position: absolute; left: -4%; right: -4%; bottom: 42%; height: 28%;
+      background: linear-gradient(#2a3348, #1a2230);
+      clip-path: polygon(0 70%, 8% 40%, 16% 58%, 28% 22%, 40% 48%, 52% 18%, 64% 46%, 76% 12%, 88% 44%, 100% 28%, 100% 100%, 0 100%);
+    }
+    .ridge.far { bottom: 46%; opacity: .55; transform: scaleY(.85); background: #2c3544; }
+    .tree {
+      position: absolute; width: 0; height: 0;
+      border-left: 16px solid transparent; border-right: 16px solid transparent;
+      border-bottom: 44px solid #1e3524;
+    }
+    .tree::after {
+      content: ""; position: absolute; left: -3px; top: 42px; width: 6px; height: 10px; background: #2a1c10;
+    }
+    .ground {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 36%;
+      background: linear-gradient(#5a6a38 0%, #2a3324 28%, #1a1c14 100%);
+    }
+    .ledge {
+      position: absolute; height: 22px;
+      background: linear-gradient(#c4a574, #8a6a3a);
+      box-shadow: 0 14px 0 #2a2318, 0 22px 18px rgba(0,0,0,.35);
+    }
+    .ledge.b { filter: brightness(.92); }
+    .player {
+      position: absolute; width: 20px; height: 34px; left: 36%; bottom: 40%;
+      background: linear-gradient(#f0c46a, #d49a3a); border-radius: 5px 5px 2px 2px;
+      box-shadow: 0 0 0 2px #1a140e, 4px 2px 0 #c4782a;
+    }
+    .player::before {
+      content: ""; position: absolute; left: 3px; top: -8px; width: 14px; height: 10px;
+      background: #f4f0e4; border-radius: 4px 4px 0 0; box-shadow: 6px -2px 0 2px #e24;
+    }
+    .flag { position: absolute; right: 16%; bottom: 44%; width: 4px; height: 52px; background: #1a1a1a; }
+    .flag::after {
+      content: ""; position: absolute; left: 4px; top: 2px; width: 24px; height: 15px; background: #c8f060;
+      clip-path: polygon(0 0, 100% 50%, 0 100%);
+    }
+    .hud { position: absolute; top: 10px; left: 10px; display: flex; gap: 6px; }
+    .hud .pill { background: rgba(0,0,0,.55); }
+    #drawer { border-left: 1px solid var(--border); background: var(--panel); }
+    .dhead { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12px; }
+    .dhead span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .ev {
+      margin: 8px 10px; padding: 8px 10px; border-radius: 10px;
+      border: 1px solid var(--border); background: #0a0a10;
+      font: 11.5px/1.45 ui-monospace, Menlo, monospace;
+    }
+    .ev .t { color: var(--muted); font-size: 10px; }
+    .ev .role { font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
+    .ev.coder .role { color: var(--accent); }
+    .ev.file .role { color: #f9a8d4; }
+    .ev.director .role { color: #c4b5fd; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">DL</div>
+      <div><h1>dotLab Play</h1><p>~/dotLab/Projects/Skyjump</p></div>
+    </div>
+    <div class="actions">
+      <span class="pill ok">live</span>
+      <span class="pill ok">coding</span>
+      <button class="primary">Play</button>
+      <button>Apply updates</button>
+      <button class="active">Auto-update: ON</button>
+      <button class="ghost">AI log</button>
+      <span class="pill ok">local</span>
+      <button>GitHub</button>
+    </div>
+  </header>
+  <div id="stage">
+    <div class="play">
+      <div class="sky"></div>
+      <div class="ridge far"></div>
+      <div class="ridge"></div>
+      <div class="ground"></div>
+      <div class="tree" style="left:7%;bottom:36%"></div>
+      <div class="tree" style="left:13%;bottom:36%;transform:scale(1.35);opacity:.9"></div>
+      <div class="tree" style="left:20%;bottom:36%;transform:scale(.85);opacity:.75"></div>
+      <div class="tree" style="left:68%;bottom:40%"></div>
+      <div class="tree" style="left:76%;bottom:40%;transform:scale(1.25)"></div>
+      <div class="tree" style="left:84%;bottom:40%;transform:scale(.9);opacity:.8"></div>
+      <div class="ledge" style="left:8%;width:38%;bottom:36%"></div>
+      <div class="ledge b" style="left:54%;width:34%;bottom:40%"></div>
+      <div class="player"></div>
+      <div class="flag"></div>
+      <div class="hud">
+        <span class="pill ok">playing — keyboard active</span>
+      </div>
+    </div>
+    <aside id="drawer">
+      <div class="dhead">
+        <strong>AI activity</strong>
+        <span>Director / Coder / file writes. The game stays playable.</span>
+      </div>
+      <div class="ev director"><div class="t">14:02:11</div><div class="role">director</div><div>Verb: reach the flag. First death on the gap.</div></div>
+      <div class="ev coder"><div class="t">14:02:28</div><div class="role">coder</div><div>Patched coyote 100ms · gravity 28</div></div>
+      <div class="ev file"><div class="t">14:02:29</div><div class="role">file</div><div>Wrote src/game.js — game will reload</div></div>
+    </aside>
+  </div>
+</body>
+</html>

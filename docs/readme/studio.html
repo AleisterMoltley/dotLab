@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    :root {
+      --bg: #0b0b0b; --panel: #111; --elev: #161616; --line: #242424; --line2: #333;
+      --text: #ececec; --muted: #7a7a7a; --faint: #4a4a4a; --ok: #c8f060;
+      --side: 268px; --r: 4px;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      width: 1280px; height: 720px; overflow: hidden;
+      font: 13px/1.45 var(--sans); color: var(--text); background: var(--bg);
+      display: grid; grid-template-columns: var(--side) 1fr;
+    }
+    button { font: inherit; color: inherit; border: 1px solid var(--line); background: var(--elev);
+      border-radius: var(--r); padding: 5px 8px; font-size: 11px; }
+    aside { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+    .side-head { padding: 14px; border-bottom: 1px solid var(--line); }
+    .word { font-size: 15px; font-weight: 650; letter-spacing: -0.02em; }
+    .tag { font: 10px/1 var(--mono); color: var(--faint); text-transform: uppercase; letter-spacing: 0.08em; margin-left: 8px; }
+    .side-status { margin: 10px; padding: 8px 10px; border: 1px solid var(--line); background: var(--bg);
+      display: flex; align-items: center; gap: 8px; font: 11px/1.3 var(--mono); color: var(--muted); }
+    .led { width: 6px; height: 6px; background: var(--ok); }
+    .side-tools { padding: 10px; border-bottom: 1px solid var(--line); }
+    .primary { background: var(--text); color: #0b0b0b; border-color: var(--text); font-weight: 700; width: 100%; padding: 8px 10px; }
+    .search { width: 100%; margin-top: 6px; background: var(--bg); border: 1px solid var(--line); padding: 7px 9px; color: var(--faint); border-radius: var(--r); }
+    .sec { padding: 12px 12px 6px; font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
+    .proj { margin: 0 6px 2px; padding: 8px 10px; border-radius: var(--r); }
+    .proj.on { background: #1a1a1a; border: 1px solid var(--line2); }
+    .proj .name { font-weight: 600; }
+    .proj .meta { font: 10px var(--mono); color: var(--faint); margin-top: 2px; }
+    main { display: flex; flex-direction: column; min-width: 0; }
+    .top { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+    .crumb { font: 12px var(--mono); color: var(--muted); }
+    .top-r { display: flex; gap: 6px; }
+    .stage { flex: 1; padding: 28px 36px; }
+    h1 { font-size: 28px; font-weight: 650; letter-spacing: -0.03em; margin: 0 0 8px; }
+    .lead { color: var(--muted); margin: 0 0 22px; }
+    ol { list-style: none; padding: 0; margin: 0; }
+    ol li { display: flex; gap: 14px; padding: 10px 0; border-top: 1px solid var(--line); }
+    ol i { font: 11px var(--mono); color: var(--faint); font-style: normal; }
+    ol b { display: block; }
+    .composer { margin: 0 16px 16px; border: 1px solid var(--line2); background: var(--bg); border-radius: var(--r); padding: 10px 12px; }
+    .composer .ph { color: var(--faint); }
+    .cbar { display: flex; justify-content: space-between; margin-top: 10px; font: 10px var(--mono); color: var(--faint); }
+    .send { background: var(--text); color: #0b0b0b; font-weight: 700; padding: 8px 14px; border: 0; border-radius: var(--r); white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <aside>
+    <div class="side-head"><span class="word">dotLab</span><span class="tag">local</span></div>
+    <div class="side-status"><span class="led"></span>dotlab · local</div>
+    <div class="side-tools">
+      <button class="primary">New game</button>
+      <div class="search">Filter projects…</div>
+    </div>
+    <div class="sec">Projects 3</div>
+    <div class="proj on">
+      <div class="name">Skyjump</div>
+      <div class="meta">three · platformer · P0 pass</div>
+    </div>
+    <div class="proj">
+      <div class="name">Wilds</div>
+      <div class="meta">world · coastal village</div>
+    </div>
+    <div class="proj">
+      <div class="name">Grove</div>
+      <div class="meta">pixel · nearest</div>
+    </div>
+  </aside>
+  <main>
+    <header class="top">
+      <div class="crumb">Skyjump</div>
+      <div class="top-r">
+        <button>Play</button><button>Verify</button><button>Deep</button>
+        <button>More</button><button>⌘K</button>
+        <button>local $0</button><button>Ship</button>
+      </div>
+    </header>
+    <div class="stage">
+      <h1>Describe the verb.</h1>
+      <p class="lead">dotLab ships playable slices offline. Pick an engine, then the player action at t=8s.</p>
+      <ol>
+        <li><i>01</i><span><b>Choose engine</b>Three.js · Pixel · Vintage (GB→GBA)</span></li>
+        <li><i>02</i><span><b>Write what the player does</b>place optional · Make game</span></li>
+        <li><i>03</i><span><b>Play · Craft · Verify</b>engine-aware P0 gates · Deep for features</span></li>
+      </ol>
+    </div>
+    <div class="composer">
+      <div class="ph">Third-person village: walk, talk, fair first death…</div>
+      <div class="cbar"><span>Enter to send · Shift+Enter newline</span><span class="send">Make game</span></div>
+    </div>
+  </main>
+</body>
+</html>

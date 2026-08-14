@@ -278,6 +278,11 @@ class TestCatalogHooks(unittest.TestCase):
         dash = (root / "live" / "dashboard.html").read_text(encoding="utf-8")
         self.assertIn("https://openzoo.fun/", readme)
         self.assertIn("dotlab zoo ping", readme)
+        self.assertIn("docs/readme/studio.png", readme)
+        self.assertIn("docs/readme/play.png", readme)
+        self.assertIn("docs/readme/zoo.png", readme)
+        for name in ("studio.png", "play.png", "zoo.png", "hero.jpg"):
+            self.assertTrue((root / "docs" / "readme" / name).is_file(), name)
         self.assertIn("id=\"zooPill\"", dash)
         self.assertNotIn("id=\"zooModal\"", dash)
         self.assertIn("openzoo.fun", dash)
