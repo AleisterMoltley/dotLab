@@ -52,6 +52,47 @@ class TestFeelMerge(unittest.TestCase):
             self.assertGreater(float(spec["feel"]["gravity"]), 8)
 
 
+class TestRestoreKits(unittest.TestCase):
+    def test_restore_recopies_punch(self) -> None:
+        import scaffold
+
+        with tempfile.TemporaryDirectory() as td:
+            dest = Path(td) / "pit"
+            dest.mkdir()
+            scaffold.scaffold_web_game(dest, "Kit Pit", "fps", prompt="neon fps")
+            punch = dest / "src" / "craft" / "punch.js"
+            self.assertTrue(punch.is_file())
+            punch.write_text("// slop\n", encoding="utf-8")
+            out = host_floor.restore_kits(dest)
+            self.assertTrue(any("craft" in a for a in out))
+            self.assertIn("export function punch", punch.read_text(encoding="utf-8"))
+
+    def test_restitch_when_applyLook_deleted(self) -> None:
+        import scaffold
+        import verify
+
+        with tempfile.TemporaryDirectory() as td:
+            dest = Path(td) / "pit"
+            dest.mkdir()
+            scaffold.scaffold_web_game(dest, "Slop Pit", "fps", prompt="neon fps")
+            game = dest / "src" / "game.js"
+            game.write_text(
+                "import * as THREE from 'three';\n"
+                "const renderer = new THREE.WebGLRenderer();\n"
+                "new THREE.HemisphereLight(0xffffff, 0x000000, 1);\n"
+                "new THREE.CapsuleGeometry(0.4, 1, 4, 8);\n",
+                encoding="utf-8",
+            )
+            out = host_floor.restitch_if_kits_broken(dest)
+            self.assertTrue(any("restitch" in a for a in out), out)
+            js = game.read_text(encoding="utf-8")
+            self.assertIn("applyLook", js)
+            self.assertIn("makePlayer", js)
+            self.assertNotIn("HemisphereLight", js)
+            r = verify.evaluate(dest)
+            self.assertEqual(r["p0_fail"], [], r["report"])
+
+
 class TestFewshotAndRepair(unittest.TestCase):
     def test_fewshot_has_patch_grammar(self) -> None:
         block = host_floor.fewshot_block("tighten coyote jump")

@@ -399,9 +399,9 @@ That is not a preference. Verify `engine_law` fails a new three-slice that pulls
 
 A local 30B can write a loop. It cannot reliably invent lighting, a camera that does not make you sick, juice on every hit, a readable figure, or enemies that telegraph and then commit. Those are **host modules**. The model picks card ids and writes the novelty. It does not rewrite the kit.
 
-![A neon pit slice: cyan grid, facade ring, lime drones, cover with a lit lip, pulse rifle in view](docs/readme/slice-arena.png)
+![A neon pit slice: dark void sky, cyan grid, facade windows, lime drones with magenta rings, cover with a lit lip, pulse rifle](docs/readme/slice-arena.png)
 
-<p align="center"><em>A real slice (Razor Pit), not a mock. Place, bodies, cover, and a pulse rifle — Play-P0 grades this frame.</em></p>
+<p align="center"><em>A real 1280×720 slice (Razor Pit), not a mock and not a phone crop. Place, bodies, cover, captain, pulse rifle — this is the host kit on Ollama.</em></p>
 
 ### Look — the place
 
@@ -474,6 +474,8 @@ The game talks in the Play HUD: “You broke my jump.” / “I didn’t know wh
 After three look-alike slices the host stamps a **constraint** (four colors, one moving ledge, no dash). Same neon village twice is a fail.
 
 Feel lives in `CONFIG` numbers. The host writes them after every coder pass.
+
+After a coder pass the host **re-vendors** `src/look`, `src/craft`, `src/body`. If the 30B deleted `applyLook` / `punch` / `makePlayer`, the host **restitches** `game.js` from the template. Novelty jail is **on** by default: the model writes `src/systems/*`, not a new lighting rig.
 
 `dotlab verify -p DIR` grades the tree without an LLM (`look_kit`, `craft_kit`, `body_kit`, `engine_law`, genre contracts). `dotlab playtest -p DIR` grades the running game: no canvas, no input, restart slower than 3s, stutter, or a near-black / green-capsule frame is a Play-P0 fail. Skill routing refuses tools the catalog cannot name.
 

@@ -70,7 +70,7 @@ FEATURE_NOISE = re.compile(
     r"save system|crafting|quest log|shop|prestige|achievements?)\b"
 )
 
-_FEWSHOTS = """# Patch few-shots (copy the shape, not the numbers)
+_FEWSHOTS = """# Patch few-shots (copy the shape). Do not rewrite createGame.
 
 @@ file:src/game.js
 @@ search
@@ -89,12 +89,13 @@ _FEWSHOTS = """# Patch few-shots (copy the shape, not the numbers)
     punch(stack, 'hit');
 @@ end
 
-@@ file:src/game.js
+@@ file:src/systems/flag.js
 @@ search
-    player.pos.y += player.vy * dt;
+export function tick() {}
 @@ replace
-    player.pos.y += player.vy * dt;
-    if (player.pos.y < -24) die();
+export function tick(dt, ctx) {
+  if (ctx.nearFlag) ctx.setFlag('open');
+}
 @@ end
 """
 
@@ -253,7 +254,78 @@ def apply(project: Path) -> dict[str, Any]:
                     applied.append(note)
             except OSError:
                 pass
+    applied.extend(restore_kits(project))
+    applied.extend(restitch_if_kits_broken(project))
     return {"ok": True, "genre": genre or "generic", "applied": applied}
+
+
+KIT_P0 = ("look_kit", "craft_kit", "body_kit", "engine_law")
+
+
+def restore_kits(project: Path) -> list[str]:
+    """Re-vendor immutable kits. The 30B must not drift punch/look/body."""
+    try:
+        from gmcommon import ROOT
+    except Exception:
+        return []
+    import shutil
+
+    applied: list[str] = []
+    for name in ("craft", "look", "body"):
+        src = ROOT / "lib" / name
+        dest = Path(project) / "src" / name
+        if not src.is_dir() or not dest.is_dir():
+            continue
+        try:
+            shutil.rmtree(dest)
+            shutil.copytree(src, dest)
+            applied.append(f"vendor:{name}")
+        except OSError:
+            continue
+    return applied
+
+
+def restitch_game(project: Path) -> list[str]:
+    """Rewrite src/game.js from the host template + current spec. Systems stay."""
+    try:
+        import slice as slicelib
+        import patch as patchlib
+    except Exception:
+        return []
+    try:
+        spec = patchlib.load_spec(project)
+    except Exception:
+        return []
+    if not isinstance(spec, dict):
+        return []
+    eng = str(spec.get("engine") or "three")
+    if eng not in ("", "three"):
+        return []
+    try:
+        js = slicelib.render_game_js(spec)
+        (Path(project) / "src" / "game.js").write_text(js, encoding="utf-8")
+        return ["restitch:game.js"]
+    except Exception:
+        return []
+
+
+def restitch_if_kits_broken(project: Path) -> list[str]:
+    """If the model deleted applyLook / punch / makePlayer, put the slice back."""
+    project = Path(project)
+    if not (project / "src" / "look").is_dir() and not (project / "src" / "craft" / "punch.js").is_file():
+        return []
+    try:
+        import verify
+
+        vr = verify.evaluate(project)
+    except Exception:
+        return []
+    failed = set(vr.get("p0_fail") or [])
+    if not any(k in failed for k in KIT_P0):
+        return []
+    out = restore_kits(project)
+    out.extend(restitch_game(project))
+    return out
 
 
 def fewshot_block(task: str = "") -> str:
@@ -361,8 +433,9 @@ def _trim_teacher() -> None:
 
 
 def jail_on() -> bool:
-    v = os.environ.get("DOTLAB_NOVELTY_JAIL", "0").strip().lower()
-    return v in ("1", "true", "on", "yes")
+    # Default ON. Local 30B rewriting game.js is the slop path.
+    v = os.environ.get("DOTLAB_NOVELTY_JAIL", "1").strip().lower()
+    return v not in ("0", "false", "off", "no")
 
 
 JAIL_WRITE_PREFIXES = ("src/systems/",)

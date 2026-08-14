@@ -778,6 +778,26 @@ def apply_model_files(project: Path, text: str) -> dict:
         }
     result = verify.evaluate(project)
     if result.get("p0_fail"):
+        kit_hit = any(
+            k in (result.get("p0_fail") or [])
+            for k in ("look_kit", "craft_kit", "body_kit", "engine_law")
+        )
+        if kit_hit:
+            try:
+                import host_floor as floor
+
+                floor.restore_kits(project)
+                floor.restitch_game(project)
+                result2 = verify.evaluate(project)
+                if not result2.get("p0_fail"):
+                    return {
+                        "written": written + ["restitch:game.js"],
+                        "rejected": False,
+                        "reason": "host restitch after kit P0",
+                        "mode": "restitch",
+                    }
+            except Exception:
+                pass
         for rel, old in backups.items():
             dest = project / rel
             if old is None:

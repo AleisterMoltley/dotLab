@@ -451,8 +451,27 @@ def evaluate(project: Path) -> dict:
                     look_js += p.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 pass
-            has_apply = "applyLook" in js and "InstancedMesh" in look_js
-            add("look_kit", has_apply, "applyLook + InstancedMesh" if has_apply else "look kit incomplete")
+            game_js = ""
+            gp = project / "src" / "game.js"
+            if gp.is_file():
+                try:
+                    game_js = gp.read_text(encoding="utf-8", errors="ignore")
+                except OSError:
+                    game_js = js
+            reinvent = bool(
+                re.search(
+                    r"new\s+THREE\.(HemisphereLight|DirectionalLight|AmbientLight)\s*\(",
+                    game_js,
+                )
+            )
+            has_apply = "applyLook" in game_js and "InstancedMesh" in look_js and not reinvent
+            add(
+                "look_kit",
+                has_apply,
+                "applyLook + InstancedMesh"
+                if has_apply
+                else ("game.js invents lights — use applyLook" if reinvent else "look kit incomplete"),
+            )
             add(
                 "instanced",
                 "InstancedMesh" in look_js or "InstancedMesh" in js,

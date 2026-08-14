@@ -18,7 +18,7 @@ Host-side ship-rate system. Goal: **faster wall-clock** and **higher P0 pass rat
 | P0 Engine law | Vite + three vanilla + metres + Y-up | `verify.engine_law` |
 | P0 Visual / GPU | Frame variance, hue clusters; draw-call cap | `antislope.analyze_frame`, play-P0 |
 | P0 Play gate | 8s bot: runtime, canvas, restart, slop | `play_gate.evaluate_report` |
-| P1 Host floor | Genre CONFIG + pit death, no LLM | `host_floor.apply` after coder |
+| P1 Host floor | Genre CONFIG + pit death, re-vendor kits, restitch if look/craft/body P0 | `host_floor.apply` after coder |
 | P1 Novelty jail | Studio/RLM writes `src/systems/*` only | `host_floor.jail_write_ok` |
 | P1 Few-shots | Golden @@ patches instead of 4k law | `host_floor.fewshot_block` |
 | P0 Fuzzy patch | Whitespace / line-stripped search rescue | `quality.find_search_span` |

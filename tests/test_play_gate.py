@@ -152,10 +152,11 @@ class TestHostFixes(unittest.TestCase):
 
 
 class TestJailAndPitch(unittest.TestCase):
-    def test_jail_off_by_default(self) -> None:
+    def test_jail_on_by_default(self) -> None:
         os.environ.pop("DOTLAB_NOVELTY_JAIL", None)
-        ok, _ = host_floor.jail_write_ok("src/game.js", kind="write")
-        self.assertTrue(ok)
+        ok, err = host_floor.jail_write_ok("src/game.js", kind="write")
+        self.assertFalse(ok)
+        self.assertIn("systems", err)
 
     def test_jail_blocks_game_write(self) -> None:
         os.environ["DOTLAB_NOVELTY_JAIL"] = "1"

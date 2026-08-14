@@ -1,76 +1,36 @@
-# Three.js recipes — paste-ready patterns (Gamemaster)
+# Three.js — call the host kit. Do not invent a renderer.
 
-Front-load these when writing or repairing `src/game.js`.
-
-## Boot (always)
-
-```js
-import * as THREE from 'three';
-// fog color === background
-scene.background = new THREE.Color(bg);
-scene.fog = new THREE.Fog(bg, near, far);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-// 1 shadow map max for mobile
-```
-
-## Feel CONFIG
+You do **not** write lighting, camera springs, juice, or figures.
+Those live in `src/look`, `src/craft`, `src/body`. Immutable.
 
 ```js
-const CONFIG = {
-  moveSpeed: 6.2, accel: 42, friction: 26, gravity: 24,
-  jumpForce: 8.2, coyoteMs: 100, jumpBufferMs: 90, jumpCut: 0.45,
-  camLag: 8, camDist: 6.4, camHeight: 2.15, eyeHeight: 1.55,
-  hitstopMs: 40, shakeHit: 0.12, mouseSens: 0.0022, fov: 58, hp: 3,
-};
-```
-
-## Grounded jump
-
-```js
-const grounded = onGround || (now - lastGround) < CONFIG.coyoteMs / 1000;
-if (jumpBuf > 0 && grounded && vy <= 0.05) { vy = CONFIG.jumpForce; jumpBuf = 0; }
-if (!held && vy > 0) vy *= CONFIG.jumpCut;
-```
-
-## Spring camera (never parent to player for action)
-
-```js
-import { springTo, fpsLook, chaseIdeal, applyShake, kickFov } from './craft/camera.js';
-fpsLook(camera, player.pos, yaw, pitch, _look);
-chaseIdeal(_ideal, player.pos, CONFIG, spec.camera);
-springTo(camera, _ideal, dt, CONFIG.camLag);
-```
-
-## FPS look + move
-
-```js
-// yaw/pitch from pointer lock; forward = (-sin yaw, 0, -cos yaw) if look is -Z
-// wish dir from WASD relative to yaw; damp vx/vz toward wish * moveSpeed
-```
-
-## Hitscan shoot
-
-```js
-import { makeTracerPool } from './craft/pool.js';
+import { applyLook } from './look/index.js';
+import { applyEngine } from './craft/engine.js';
 import { punch } from './craft/punch.js';
-tracers.spawn(origin, dir, color);
-if (hits[0]) punch(stack, e.hp <= 0 ? 'kill' : 'hit');
+import { makeTracerPool } from './craft/pool.js';
+import { tickBrain, tickDirector } from './craft';
+import { makePlayer, makeEnemy, tickPose } from './body/index.js';
+
+applyEngine(camera, scene);
+applyLook({ scene, renderer, camera, pal, spec: SPEC });
+const player = makePlayer(scene, pal, { kind: 'visor' });
+punch(stack, 'hit');
 ```
 
-## Juice minimum
+## Law
+
+- Vanilla Three + Vite. Metres. Y-up (`applyEngine`).
+- `three/addons/…` never `examples/jsm`
+- No `new Vector3` in the loop
+- No `new HemisphereLight` / `DirectionalLight` in `game.js`
+- No lone `CapsuleGeometry` hero, no `IcosahedronGeometry` drone
+- Novelty only in `src/systems/*.js`
+
+## Feel CONFIG (host owns numbers)
 
 ```js
-punch(stack, 'hit'); // TimeJuice → shake → sfx → hitmark. Do not split.
-```
-
-## WebAudio blip
-
-```js
-const o = ctx.createOscillator(), g = ctx.createGain();
-o.frequency.value = freq; g.gain.value = 0.05;
-o.connect(g); g.connect(ctx.destination);
-o.start(); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+// mutate CONFIG keys. Do not rewrite createGame.
+gravity: 28, coyoteMs: 110, jumpForce: 9, camLag: 8
 ```
 
 ## Forbidden
@@ -78,5 +38,4 @@ o.start(); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
 - `three/examples/jsm`
 - `new THREE.Vector3()` inside the frame loop
 - `alert()` for dialogue
-- incomplete files / `// ...` holes
-- inventory before the verb is fun
+- Rewriting `src/look/*` `src/craft/*` `src/body/*`

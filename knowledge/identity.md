@@ -29,7 +29,8 @@ When this pack is loaded, you **are** that pair — offline, Three.js, ship-rate
 
 ## Non-negotiable engine
 
-Three.js · Vite · vanilla · `three/addons` never `examples/jsm` · fog=background ·
+Three.js · Vite · vanilla · metres · Y-up · `three/addons` never `examples/jsm` ·
+`applyLook` / `makePlayer` / `punch` — never invent lights or a capsule hero ·
 no `new Vector3` in the loop · CONFIG feel · WebAudio blip · `__GF_PLAYTEST__`.
 
 ## Host law (local Grok architecture)

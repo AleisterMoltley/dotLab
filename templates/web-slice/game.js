@@ -864,9 +864,9 @@ function buildWorld(scene, rnd, pal, SPEC) {
   if (SPEC.loop === 'shoot') {
     const covers = [];
     const spots = [
-      [-3.4, -2.2],
-      [3.6, -4.0],
-      [0.2, -7.6],
+      [-4.2, -3.4],
+      [4.4, -5.2],
+      [-2.6, -10.4],
     ];
     for (const [x, z] of spots) {
       covers.push(makeCover(scene, pal, { x, z }));
@@ -970,7 +970,7 @@ function buildActors(scene, rnd, pal, SPEC) {
       const r = 8.5 + (i % 3) * 1.8 + rnd() * 1.2;
       const sx = Math.sin(a) * r;
       const sz = -Math.abs(Math.cos(a) * r) - 1.4;
-      const baseY = elite ? 0.15 : (kind === 'crawler' ? 0 : 1.05);
+      const baseY = elite ? 0.15 : (kind === 'crawler' ? 0 : 0.48);
       built.mesh.position.set(sx, baseY, sz);
       enemies.push({
         ...built,
@@ -1086,7 +1086,7 @@ function spawnWave(actors, scene, rnd, pal, SPEC, wave) {
   while (actors.enemies.length < n) {
     const built = makeEnemy(scene, pal, { kind: pickBody(SPEC).enemy });
     actors.enemies.push(armBrain({
-      ...built, hp: 1, speed: 1.4, baseY: 1.05, phase: rnd() * 6, sx: 0, sz: 0, elite: false,
+      ...built, hp: 1, speed: 1.4, baseY: 0.48, phase: rnd() * 6, sx: 0, sz: 0, elite: false,
     }));
   }
   const eliteIdx = wave % 3 === 0 ? actors.enemies.length - 1 : -1;
@@ -1105,7 +1105,7 @@ function spawnWave(actors, scene, rnd, pal, SPEC, wave) {
     const r = 9 + (i % 3) * 1.6 + rnd();
     e.sx = Math.sin(a) * r;
     e.sz = -Math.abs(Math.cos(a) * r) - 1.4;
-    e.baseY = elite ? 1.75 : 1.5;
+    e.baseY = elite ? 0.15 : 0.48;
     e.mesh.position.set(e.sx, e.baseY, e.sz);
     e.popT = null;
     armBrain(e);
