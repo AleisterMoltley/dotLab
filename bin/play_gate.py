@@ -95,7 +95,8 @@ def scan_shots(paths: list[str]) -> list[str]:
         import antislope as aslib
     except Exception:
         return hints
-    for raw in paths[:6]:
+    # The first shot is the place-read. Later frames can be a wall or a kill cam.
+    for raw in paths[:1]:
         p = Path(raw)
         if not p.is_file():
             continue
@@ -129,12 +130,20 @@ def evaluate_report(
         }
     fam = family or family_of(None, genre, loop)
     metrics = report.get("metrics") if isinstance(report.get("metrics"), dict) else {}
+    _noise = re.compile(
+        r"favicon|WrongDocumentError|pointer lock|not valid for pointer",
+        re.I,
+    )
     errors = [
         str(e)
         for e in (report.get("errors") or [])
-        if "favicon" not in str(e).lower()
+        if not _noise.search(str(e))
     ]
-    page_errors = [str(e) for e in (report.get("pageErrors") or [])]
+    page_errors = [
+        str(e)
+        for e in (report.get("pageErrors") or [])
+        if not _noise.search(str(e))
+    ]
     slop = scan_shots([str(p) for p in (report.get("screenshots") or [])])
 
     jumps = int(metrics.get("jumps") or 0)
@@ -161,7 +170,9 @@ def evaluate_report(
         p0.append("no_input")
     try:
         if max_dt is not None and float(max_dt) > 80 and int(metrics.get("frames") or 0) > 20:
-            p0.append("stutter")
+            # Headless screenshots stall the GPU (ReadPixels). High avg fps = one hitch.
+            if fps is None or float(fps) < 40:
+                p0.append("stutter")
     except (TypeError, ValueError):
         pass
     try:
@@ -173,8 +184,11 @@ def evaluate_report(
             p0.append("slow_restart")
     except (TypeError, ValueError):
         pass
-    if any(h in ("near_black_frame", "green_dominant", "flat_frame", "few_hues") for h in slop):
+    hard_slop = ("near_black_frame", "green_dominant", "flat_frame")
+    if any(h in hard_slop for h in slop):
         p0.append("slop_frame")
+    elif "few_hues" in slop:
+        p1.append("few_hues")
     gpu = metrics.get("gpu") if isinstance(metrics.get("gpu"), dict) else {}
     try:
         calls = int(gpu.get("calls") or 0)

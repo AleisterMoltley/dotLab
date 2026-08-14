@@ -53,6 +53,8 @@ class TestLookVendored(unittest.TestCase):
             self.assertIn("applyLook", game)
             self.assertIn("from './look/index.js'", game)
             self.assertNotIn("for (let i = 0; i < 22; i++)", game)
+            self.assertTrue((dest / "src" / "look" / "volume.js").is_file())
+            self.assertIn("makeSky", (dest / "src" / "look" / "shaders.js").read_text(encoding="utf-8"))
             r = verify.evaluate(dest)
             self.assertEqual(r["p0_fail"], [], r["report"])
             self.assertTrue(r["checks"]["look_kit"]["ok"], r["report"])
@@ -81,6 +83,14 @@ class TestAnalyzeFrame(unittest.TestCase):
             self.assertTrue(a["ok"] and b["ok"])
             self.assertIn("flat_frame", a["hints"])
             self.assertGreater(b["hue_clusters"], a["hue_clusters"])
+
+    def test_playwright_png_unfilters(self) -> None:
+        shot = Path("/Users/pmr/dotLab/Projects/razor-pit/.gamemaster/playtest/00-start.png")
+        if not shot.is_file():
+            self.skipTest("razor-pit playtest shot not on disk")
+        h = antislope.screenshot_slop_hint(shot)
+        self.assertGreater(h["luminance"], 12, h)
+        self.assertNotIn("near_black_frame", h["hints"])
 
 
 class TestLookImmutable(unittest.TestCase):

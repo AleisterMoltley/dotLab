@@ -85,9 +85,10 @@ export function createGame({ genre, title }) {
   const _dir = new THREE.Vector3();
 
   const rnd = lcg(SPEC.seed || 1);
-  buildWorld(scene, rnd, pal, SPEC);
+  const world = buildWorld(scene, rnd, pal, SPEC) || {};
   const player = buildPlayer(scene, pal, CONFIG);
   const actors = buildActors(scene, rnd, pal, SPEC);
+  actors.covers = world.covers || [];
   if (actors.start) player.pos.set(actors.start.x, actors.start.y, actors.start.z);
   for (const e of actors.enemies) armBrain(e);
   if (actors.hunter) {
@@ -211,6 +212,29 @@ export function createGame({ genre, title }) {
     }
     player.pos.x += player.vx * dt;
     player.pos.z += player.vz * dt;
+    if (SPEC.loop === 'shoot') {
+      const rad = 12.0;
+      const d2 = Math.hypot(player.pos.x, player.pos.z);
+      if (d2 > rad) {
+        player.pos.x *= rad / d2;
+        player.pos.z *= rad / d2;
+        player.vx *= 0.4;
+        player.vz *= 0.4;
+      }
+      for (const c of actors.covers || []) {
+        const dx = player.pos.x - c.x;
+        const dz = player.pos.z - c.z;
+        if (Math.abs(dx) < c.hw && Math.abs(dz) < c.hd) {
+          if (Math.abs(dx) * c.hd > Math.abs(dz) * c.hw) {
+            player.pos.x = c.x + Math.sign(dx || 1) * c.hw;
+            player.vx = 0;
+          } else {
+            player.pos.z = c.z + Math.sign(dz || 1) * c.hd;
+            player.vz = 0;
+          }
+        }
+      }
+    }
 
     const wantJump = state.jumpBuf > 0;
     const coyote = state.now - state.lastGround <= (CONFIG.coyoteMs || 100) / 1000;
@@ -307,15 +331,24 @@ export function createGame({ genre, title }) {
         marks.hide(e.mesh.id);
         continue;
       }
-      tickBrain(e, player.pos.x, player.pos.z, dt, state.now, { aggro: 7 });
+      tickBrain(e, player.pos.x, player.pos.z, dt, state.now, {
+        aggro: e.elite ? 10 : 7,
+        windup: e.elite ? 0.48 : 0.32,
+      });
+      const dx = player.pos.x - e.mesh.position.x;
+      const dz = player.pos.z - e.mesh.position.z;
+      const d = Math.hypot(dx, dz) || 1;
+      if (d < 1.45) {
+        e.mesh.position.x -= (dx / d) * (1.45 - d);
+        e.mesh.position.z -= (dz / d) * (1.45 - d);
+      }
       if (e.phase === PHASE.windup) {
-        marks.show(e.lockX, e.lockZ, e.mesh.id, pal.accent);
+        marks.show(e.lockX, e.lockZ, e.mesh.id, e.elite ? pal.grid : pal.accent);
       } else {
         marks.hide(e.mesh.id);
       }
-      if (striking(e) && state.dashT <= 0) {
-        const d = Math.hypot(player.pos.x - e.mesh.position.x, player.pos.z - e.mesh.position.z);
-        if (d < 1.2) hurt(12 * dt * 8);
+      if (striking(e) && state.dashT <= 0 && d < 1.35) {
+        hurt((e.elite ? 18 : 12) * dt * 8);
       }
     }
   }
@@ -623,8 +656,13 @@ export function createGame({ genre, title }) {
       renderer.setSize(innerWidth, innerHeight);
     });
     renderer.domElement.addEventListener('click', () => {
-      if (isFps) renderer.domElement.requestPointerLock?.();
-      if (!isFps && SPEC.loop === 'shoot') tryFire();
+      if (isFps) {
+        try {
+          const p = renderer.domElement.requestPointerLock?.();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch { /* playtest / iframe */ }
+      }
+      if (SPEC.loop === 'shoot') tryFire();
     });
     addEventListener('pointerlockchange', () => {
       pointer.locked = document.pointerLockElement === renderer.domElement;
@@ -759,6 +797,25 @@ function mat(color, extra) {
 
 function buildWorld(scene, rnd, pal, SPEC) {
   // Place / scatter / lights live in src/look (applyLook). Only gameplay volume here.
+  if (SPEC.loop === 'shoot') {
+    const covers = [];
+    const spots = [
+      [-3.4, -2.2],
+      [3.6, -4.0],
+      [0.2, -7.6],
+    ];
+    for (const [x, z] of spots) {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1.7, 1.35, 1.15),
+        mat(pal.building, { roughness: 0.7, metalness: 0.18 }),
+      );
+      mesh.position.set(x, 0.68, z);
+      mesh.castShadow = true;
+      scene.add(mesh);
+      covers.push({ x, z, hw: 1.05, hd: 0.78, mesh });
+    }
+    return { covers };
+  }
   if (SPEC.loop === 'jump') {
     const pit = new THREE.Mesh(
       new THREE.PlaneGeometry(220, 40),
@@ -853,19 +910,30 @@ function buildActors(scene, rnd, pal, SPEC) {
 
   if (SPEC.loop !== 'race' && SPEC.loop !== 'jump' && enemyN > 0) {
     for (let i = 0; i < enemyN; i++) {
+      const elite = i === enemyN - 1 && enemyN >= 4;
       const mesh = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(SCALE.threatR, 0),
-        mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.75, metalness: 0.45 }),
+        new THREE.IcosahedronGeometry(elite ? SCALE.threatR * 1.45 : SCALE.threatR * 1.15, 0),
+        mat(pal.enemy, {
+          emissive: elite ? (pal.grid || pal.enemy) : pal.enemy,
+          emissiveIntensity: elite ? 1.35 : 1.05,
+          metalness: 0.45,
+        }),
       );
-      const a = rnd() * Math.PI * 2;
-      const r = 9 + rnd() * 11;
-      const sx = Math.cos(a) * r;
-      const sz = Math.sin(a) * r - 4;
-      mesh.position.set(sx, 1.6, sz);
+      const a = -1.05 + (i / Math.max(1, enemyN - 1)) * 2.1;
+      const r = 8.5 + (i % 3) * 1.8 + rnd() * 1.2;
+      const sx = Math.sin(a) * r;
+      const sz = -Math.abs(Math.cos(a) * r) - 1.4;
+      mesh.position.set(sx, elite ? 1.85 : 1.55, sz);
       scene.add(mesh);
       enemies.push({
-        mesh, hp: 1, speed: 1.5 + rnd() * 1.3,
-        baseY: 1.5 + rnd() * 0.7, phase: rnd() * 6, sx, sz,
+        mesh,
+        hp: elite ? 3 : 1,
+        speed: elite ? 1.15 : 1.5 + rnd() * 1.1,
+        baseY: elite ? 1.75 : 1.45 + rnd() * 0.35,
+        phase: rnd() * 6,
+        sx,
+        sz,
+        elite,
       });
     }
   }
@@ -982,20 +1050,28 @@ function spawnWave(actors, scene, rnd, pal, SPEC, wave) {
     );
     scene.add(mesh);
     actors.enemies.push(armBrain({
-      mesh, hp: 1, speed: 1.4, baseY: 1.6, phase: rnd() * 6, sx: 0, sz: 0,
+      mesh, hp: 1, speed: 1.4, baseY: 1.55, phase: rnd() * 6, sx: 0, sz: 0, elite: false,
     }));
   }
-  for (const e of actors.enemies) {
-    e.hp = 1 + Math.floor(wave / 2);
-    e.speed = 1.4 + wave * 0.12 + rnd() * 0.8;
+  const eliteIdx = wave % 3 === 0 ? actors.enemies.length - 1 : -1;
+  for (let i = 0; i < actors.enemies.length; i++) {
+    const e = actors.enemies[i];
+    const elite = i === eliteIdx;
+    e.elite = elite;
+    e.hp = (elite ? 3 : 1) + Math.floor(wave / 2);
+    e.speed = (elite ? 1.1 : 1.4) + wave * 0.12 + rnd() * 0.6;
     e.mesh.visible = true;
-    const a = rnd() * Math.PI * 2;
-    const r = 10 + rnd() * 14;
-    e.sx = Math.cos(a) * r;
-    e.sz = Math.sin(a) * r - 4;
+    e.mesh.scale.setScalar(elite ? 1.35 : 1);
+    if (e.mesh.material && e.mesh.material.emissiveIntensity != null) {
+      e.mesh.material.emissiveIntensity = elite ? 1.35 : 1.05;
+    }
+    const a = -1.05 + (i / Math.max(1, actors.enemies.length - 1)) * 2.1;
+    const r = 9 + (i % 3) * 1.6 + rnd();
+    e.sx = Math.sin(a) * r;
+    e.sz = -Math.abs(Math.cos(a) * r) - 1.4;
+    e.baseY = elite ? 1.75 : 1.5;
     e.mesh.position.set(e.sx, e.baseY, e.sz);
     e.popT = null;
-    e.mesh.scale.setScalar(1);
     armBrain(e);
   }
 }

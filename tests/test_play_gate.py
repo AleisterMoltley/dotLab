@@ -86,6 +86,48 @@ class TestEvaluateReport(unittest.TestCase):
         self.assertIn("jump", play_gate.actions_for("platformer"))
         self.assertIn("click", play_gate.actions_for("fps"))
 
+    def test_pointer_lock_noise_is_not_runtime(self) -> None:
+        r = play_gate.evaluate_report(
+            {
+                "errors": [
+                    "WrongDocumentError: The root document of this element is not valid for pointer lock."
+                ],
+                "pageErrors": [
+                    "WrongDocumentError: The root document of this element is not valid for pointer lock."
+                ],
+                "metrics": {
+                    "hasCanvas": True,
+                    "keys": 8,
+                    "clicks": 4,
+                    "frames": 80,
+                    "avgFps": 90,
+                    "maxDt": 20,
+                },
+                "screenshots": [],
+            },
+            family="fps",
+        )
+        self.assertNotIn("runtime", r["p0_fail"], r["report"])
+
+    def test_screenshot_hitch_not_stutter_when_fps_high(self) -> None:
+        r = play_gate.evaluate_report(
+            {
+                "errors": [],
+                "pageErrors": [],
+                "metrics": {
+                    "hasCanvas": True,
+                    "keys": 10,
+                    "clicks": 4,
+                    "frames": 200,
+                    "avgFps": 90,
+                    "maxDt": 300,
+                },
+                "screenshots": [],
+            },
+            family="fps",
+        )
+        self.assertNotIn("stutter", r["p0_fail"], r["report"])
+
 
 class TestHostFixes(unittest.TestCase):
     def test_shorten_gap_and_restart(self) -> None:

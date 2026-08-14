@@ -256,16 +256,19 @@ async function main() {
         await page.keyboard.up('KeyD');
       }
       if (ACTIONS.includes('wasd')) {
-        const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
-        const k = keys[tick % keys.length];
-        await page.keyboard.down(k);
-        await page.waitForTimeout(120);
-        await page.keyboard.up(k);
+        await page.keyboard.down('KeyW');
+        if (tick % 3 === 1) await page.keyboard.down('KeyA');
+        if (tick % 3 === 2) await page.keyboard.down('KeyD');
+        await page.waitForTimeout(220);
+        await page.keyboard.up('KeyW');
+        await page.keyboard.up('KeyA');
+        await page.keyboard.up('KeyD');
       }
-      // try common restart keys when "dead" UI might show
       if (tick % 8 === 0) {
-        await page.keyboard.press('KeyR');
-        await page.keyboard.press('Enter');
+        const hud = await page.locator('#hud').innerText().catch(() => '');
+        if (/dead|one more/i.test(hud)) {
+          await page.keyboard.press('KeyR');
+        }
       }
     } catch (e) {
       report.notes.push(`action error: ${e.message}`);

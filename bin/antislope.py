@@ -388,15 +388,24 @@ def gallery_prompt_block(query: str = "", max_chars: int = 2200) -> str:
 # ── Visual distance stub (PNG histogram, no ML deps) ────────────────────
 
 
-def _png_mean_rgb(path: Path) -> tuple[float, float, float] | None:
-    """Minimal PNG reader for 8-bit RGB/RGBA — mean color."""
+def _paeth(a: int, b: int, c: int) -> int:
+    p = a + b - c
+    pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    if pb <= pc:
+        return b
+    return c
+
+
+def _png_rows(path: Path) -> tuple[int, int, int, list[bytes]] | None:
+    """Decode 8-bit RGB/RGBA PNG rows with filters applied."""
     try:
         data = path.read_bytes()
     except OSError:
         return None
     if data[:8] != b"\x89PNG\r\n\x1a\n":
         return None
-    # parse IHDR + IDAT
     pos = 8
     width = height = 0
     bit_depth = color_type = 0
@@ -421,16 +430,50 @@ def _png_mean_rgb(path: Path) -> tuple[float, float, float] | None:
     bpp = {2: 3, 6: 4}.get(color_type, 0)
     if bit_depth != 8 or bpp == 0:
         return None
-    stride = width * bpp + 1
-    rs = gs = bs = n = 0
-    # sample every 8th pixel for speed
-    for y in range(height):
-        row = raw[y * stride : (y + 1) * stride]
-        if len(row) < stride:
+    stride = width * bpp
+    prev = bytearray(stride)
+    rows: list[bytes] = []
+    pos = 0
+    for _y in range(height):
+        if pos + 1 + stride > len(raw):
             break
-        # filter byte row[0] ignored for mean approx
+        ftype = raw[pos]
+        pos += 1
+        filt = raw[pos : pos + stride]
+        pos += stride
+        recon = bytearray(stride)
+        for i in range(stride):
+            left = recon[i - bpp] if i >= bpp else 0
+            up = prev[i]
+            ul = prev[i - bpp] if i >= bpp else 0
+            x = filt[i]
+            if ftype == 1:
+                x = (x + left) & 255
+            elif ftype == 2:
+                x = (x + up) & 255
+            elif ftype == 3:
+                x = (x + ((left + up) >> 1)) & 255
+            elif ftype == 4:
+                x = (x + _paeth(left, up, ul)) & 255
+            recon[i] = x
+        rows.append(bytes(recon))
+        prev = recon
+    if not rows:
+        return None
+    return width, height, bpp, rows
+
+
+def _png_mean_rgb(path: Path) -> tuple[float, float, float] | None:
+    """Minimal PNG reader for 8-bit RGB/RGBA — mean color."""
+    decoded = _png_rows(Path(path))
+    if not decoded:
+        return None
+    width, height, bpp, rows = decoded
+    rs = gs = bs = n = 0
+    for y in range(0, height, 8):
+        row = rows[y]
         for x in range(0, width, 8):
-            i = 1 + x * bpp
+            i = x * bpp
             if i + 2 >= len(row):
                 break
             rs += row[i]
@@ -482,7 +525,7 @@ def analyze_frame(path: Path) -> dict[str, Any]:
         else:
             bucket = int((4 + (r - g) / (mx - mn + 1e-6)) % 6)
         hues[bucket] = hues.get(bucket, 0) + 1
-    clusters = sum(1 for c, k in hues.items() if c >= 0 and k > n * 0.06)
+    clusters = sum(1 for c, k in hues.items() if c >= 0 and k > n * 0.035)
     edges = 0
     # neighbor contrast along the sample stream
     for i in range(1, n):
@@ -509,51 +552,20 @@ def analyze_frame(path: Path) -> dict[str, Any]:
 
 
 def _png_samples(path: Path) -> list[tuple[float, float, float]]:
-    m = _png_mean_rgb(path)
-    # Re-walk via mean helper internals: decode again for samples
-    try:
-        data = path.read_bytes()
-    except OSError:
+    decoded = _png_rows(Path(path))
+    if not decoded:
         return []
-    if data[:8] != b"\x89PNG\r\n\x1a\n":
-        return []
-    pos = 8
-    width = height = 0
-    bit_depth = color_type = 0
-    idat = b""
-    while pos + 8 <= len(data):
-        length = struct.unpack(">I", data[pos : pos + 4])[0]
-        ctype = data[pos + 4 : pos + 8]
-        chunk = data[pos + 8 : pos + 8 + length]
-        pos += 12 + length
-        if ctype == b"IHDR":
-            width, height, bit_depth, color_type = struct.unpack(">IIBB", chunk[:10])
-        elif ctype == b"IDAT":
-            idat += chunk
-        elif ctype == b"IEND":
-            break
-    if not width or not idat:
-        return []
-    try:
-        raw = zlib.decompress(idat)
-    except Exception:
-        return []
-    bpp = {2: 3, 6: 4}.get(color_type, 0)
-    if bit_depth != 8 or bpp == 0:
-        return []
-    stride = width * bpp + 1
+    width, _height, bpp, rows = decoded
     out: list[tuple[float, float, float]] = []
     step = 6
-    for y in range(0, height, step):
-        row = raw[y * stride : (y + 1) * stride]
-        if len(row) < stride:
-            break
+    for y in range(0, len(rows), step):
+        row = rows[y]
         for x in range(0, width, step):
-            i = 1 + x * bpp
+            i = x * bpp
             if i + 2 >= len(row):
                 break
             out.append((float(row[i]), float(row[i + 1]), float(row[i + 2])))
-    return out or ([] if not m else [m])
+    return out
 
 
 def screenshot_slop_hint(path: Path) -> dict[str, Any]:
