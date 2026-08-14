@@ -59,6 +59,8 @@ Modelfile       baked Ollama system prompt
 | Hands (jump-fit, ghost, spatial, share) | `bin/hands.py` |
 | Look cards (immutable Three.js place) | `lib/look/` vendored to `src/look/` |
 | Craft kit (camera, punch, pool, brain) | `lib/craft/` vendored to `src/craft/` — verify `craft_kit` |
+| Body kit (player, drone, weapon, cover) | `lib/body/` vendored to `src/body/` — verify `body_kit` |
+| Engine law (vanilla Vite metres Y-up) | `lib/craft/engine.js` — verify `engine_law` |
 | Optional paid LLMs (off by default) | `bin/cloud.py` — grok / claude / openai / gemini / zoo |
 | OpenZoo x402 floor (leCore) | `bin/zoo.py` (`handle_http`) + `knowledge/openzoo.md` + `chat/` + `live/dashboard.html` |
 | Install / PATH | `install.sh` |

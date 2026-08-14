@@ -14,6 +14,8 @@ Host-side ship-rate system. Goal: **faster wall-clock** and **higher P0 pass rat
 | P1 Best-of-N | Verify-rescue flash patches if P0 still fails | `studio.pipeline_build` when `DOTLAB_BEST_OF≥2` (default 2) |
 | P0 Look kit | `src/look` applyLook + InstancedMesh | `verify.look_kit` |
 | P0 Craft kit | punch + pool + brain + camera + blob | `verify.craft_kit` |
+| P0 Body kit | makePlayer + makeEnemy + tickPose | `verify.body_kit` |
+| P0 Engine law | Vite + three vanilla + metres + Y-up | `verify.engine_law` |
 | P0 Visual / GPU | Frame variance, hue clusters; draw-call cap | `antislope.analyze_frame`, play-P0 |
 | P0 Play gate | 8s bot: runtime, canvas, restart, slop | `play_gate.evaluate_report` |
 | P1 Host floor | Genre CONFIG + pit death, no LLM | `host_floor.apply` after coder |

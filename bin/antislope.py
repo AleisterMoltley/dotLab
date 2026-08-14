@@ -30,9 +30,11 @@ from gmcommon import KNOWLEDGE, ROOT, meta_dir, run
 IMMUTABLE_PREFIXES = (
     "src/craft/",
     "src/look/",
+    "src/body/",
     "src/kits/",
     "lib/craft/",
     "lib/look/",
+    "lib/body/",
 )
 IMMUTABLE_FILES = frozenset(
     {
@@ -54,6 +56,11 @@ IMMUTABLE_FILES = frozenset(
         "src/look/index.js",
         "src/look/rig.js",
         "src/look/cards.js",
+        "src/body/player.js",
+        "src/body/enemy.js",
+        "src/body/index.js",
+        "src/craft/engine.js",
+        "src/craft/director.js",
         "src/kits/README.md",
     }
 )

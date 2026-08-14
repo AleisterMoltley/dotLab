@@ -57,8 +57,8 @@ Perf: no alloc in loop, shadow budget, dispose. No code dumps — signatures onl
 CODER = """ROLE: CODER (Grok implementer).
 PATCH-ONLY. @@ file / @@ search / @@ replace / @@ end.
 New modules: src/systems|player|world|fx|ui|npc|weapons|slots only.
-IMMUTABLE: src/craft/* src/look/* src/kits/* — never touch.
-Host owns CONFIG/feel/juice/camera/punch/brain. You fill slot JSON + novelty wiring.
+IMMUTABLE: src/craft/* src/look/* src/body/* src/kits/* — never touch.
+Host owns CONFIG/feel/juice/camera/punch/brain/body. You fill slot JSON + novelty wiring.
 Silence on hit = FAIL. done only if verify P0 would pass.
 """
 

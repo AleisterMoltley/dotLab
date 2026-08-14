@@ -91,7 +91,7 @@ class TestWriteSlice(unittest.TestCase):
             self.assertNotIn("__SPEC__", game)
             self.assertIn("createGame", game)
             self.assertIn("from 'three'", game)
-            self.assertIn("IcosahedronGeometry", game)
+            self.assertIn("makeEnemy", game)
             self.assertIn("requestPointerLock", game)
             self.assertIn("shoot drones", game)
             # NEON INK ship bar systems

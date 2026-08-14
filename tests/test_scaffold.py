@@ -44,7 +44,7 @@ class TestPixelScaffold(unittest.TestCase):
             game = (dest / "src" / "game.js").read_text(encoding="utf-8")
             self.assertIn("createGame", game)
             self.assertNotIn("Genre: arena — vertical slice", game)
-            self.assertIn("IcosahedronGeometry", game)
+            self.assertIn("makeEnemy", game)
             r = verify.evaluate(dest)
             self.assertEqual(r["p0_fail"], [], r["report"])
 

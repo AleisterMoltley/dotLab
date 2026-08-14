@@ -16,6 +16,7 @@ from gmcommon import GAME_GITIGNORE, KNOWLEDGE, ROOT, TEMPLATES, slugify_project
 
 CRAFT_LIB = ROOT / "lib" / "craft"
 LOOK_LIB = ROOT / "lib" / "look"
+BODY_LIB = ROOT / "lib" / "body"
 PIXELART_LIB = ROOT / "lib" / "pixelart"
 VINTAGE_LIB = ROOT / "lib" / "vintage"
 
@@ -457,6 +458,28 @@ def pick_look(genre: str, loop: str, props: str, prompt: str = "") -> str:
     return "dusk-coast"
 
 
+def pick_body(genre: str, loop: str, prompt: str = "") -> dict:
+    blob = f"{genre} {loop} {prompt}".lower()
+    player = "runner" if loop in ("jump", "run") else "visor"
+    enemy = "crawler" if loop == "jump" else "drone"
+    if re.search(r"captain|elite|boss", blob):
+        enemy = "captain"
+    return {"player": player, "enemy": enemy, "weapon": "pulse", "cover": "crate"}
+
+
+def pick_toy(genre: str, loop: str, prompt: str = "") -> str:
+    blob = f"{genre} {loop} {prompt}".lower()
+    if re.search(r"sticky", blob):
+        return "sticky"
+    if re.search(r"time.?gun|freeze|slow.?mo", blob):
+        return "time-gun"
+    if re.search(r"dash.?slash|melee", blob):
+        return "dash-slash"
+    if loop == "shoot" or genre in ("fps", "arena"):
+        return "ricochet"
+    return "dash-slash"
+
+
 def infer_genre(prompt: str) -> str:
     p = (prompt or "").lower()
     for rx, genre in _GENRE_RX:
@@ -550,6 +573,8 @@ def compile_prompt(
     elif loop == "shoot" or g in ("fps", "arena"):
         ship = "neon-ink"
     look = pick_look(g, loop, props, text)
+    body = pick_body(g, loop, text)
+    toy = pick_toy(g, loop, text)
     spec = {
         "prompt": text,
         "title": _title(text),
@@ -573,6 +598,8 @@ def compile_prompt(
         "juice": 0.85 if eng == "vintage" else 1.0,
         "shipBar": ship,
         "look": look,
+        "body": body,
+        "toy": toy,
     }
     if vcfg:
         spec["vintage"] = vcfg
@@ -793,6 +820,16 @@ def _slim_spec(spec: dict) -> dict:
             str(spec.get("genre") or ""),
             str(spec.get("loop") or ""),
             str(spec.get("props") or ""),
+        ),
+        "body": spec.get("body") or pick_body(
+            str(spec.get("genre") or ""),
+            str(spec.get("loop") or ""),
+            str(spec.get("prompt") or ""),
+        ),
+        "toy": spec.get("toy") or pick_toy(
+            str(spec.get("genre") or ""),
+            str(spec.get("loop") or ""),
+            str(spec.get("prompt") or ""),
         ),
     }
 
@@ -1217,6 +1254,16 @@ game.start();
             shutil.rmtree(dest_look)
         shutil.copytree(LOOK_LIB, dest_look)
         for p in dest_look.rglob("*"):
+            if p.is_file():
+                written.append(str(p.relative_to(dest)))
+    if BODY_LIB.is_dir():
+        import shutil
+
+        dest_body = dest / "src" / "body"
+        if dest_body.exists():
+            shutil.rmtree(dest_body)
+        shutil.copytree(BODY_LIB, dest_body)
+        for p in dest_body.rglob("*"):
             if p.is_file():
                 written.append(str(p.relative_to(dest)))
 

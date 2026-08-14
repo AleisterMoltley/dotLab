@@ -54,6 +54,8 @@ CHECKS_META = {
     "instanced": 3,
     "no_alloc_loop": 3,
     "craft_kit": 8,  # punch + pool + brain + camera + blob when punch.js vendored
+    "body_kit": 8,  # makePlayer / makeEnemy when src/body vendored
+    "engine_law": 8,  # vite + three vanilla + Y-up / metres
 }
 
 
@@ -479,6 +481,39 @@ def evaluate(project: Path) -> dict:
                 "craft_kit",
                 has_craft,
                 "punch+pool+brain+camera+blob" if has_craft else "craft kit unused — import punch/pool/brain/camera/blob",
+            )
+        body_p = project / "src" / "body" / "player.js"
+        if body_p.is_file():
+            gp = project / "src" / "game.js"
+            game_js = ""
+            if gp.is_file():
+                try:
+                    game_js = gp.read_text(encoding="utf-8", errors="ignore")
+                except OSError:
+                    game_js = js
+            has_body = "makePlayer" in game_js and "makeEnemy" in game_js and "tickPose" in game_js
+            add(
+                "body_kit",
+                has_body,
+                "makePlayer+makeEnemy+tickPose" if has_body else "body kit unused — import makePlayer/makeEnemy/tickPose",
+            )
+        if (project / "src" / "craft" / "engine.js").is_file():
+            pkg_txt = ""
+            try:
+                pp = project / "package.json"
+                if pp.is_file():
+                    pkg_txt = pp.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                pass
+            has_vite = "vite" in pkg_txt
+            has_three = "three" in pkg_txt
+            no_r3f = "@react-three/fiber" not in pkg_txt and "react-three" not in pkg_txt
+            has_up = "applyEngine" in js or "camera.up" in js or "SCALE" in js
+            law = has_vite and has_three and no_r3f and has_up
+            add(
+                "engine_law",
+                law,
+                "vite+three vanilla, metres, Y-up" if law else "engine law: need Vite + three vanilla + SCALE/applyEngine",
             )
         # Alloc in the hot loop — pooled vectors must live outside update/frame
         loop_body = ""

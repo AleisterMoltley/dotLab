@@ -17,6 +17,10 @@ import { makeRecoil, kickRecoil, springRecoil } from './craft/recoil.js';
 import { makeImpactPool } from './craft/impact.js';
 import { makeMarkPool } from './craft/mark.js';
 import { attachVignette } from './craft/vignette.js';
+import { ENGINE, applyEngine } from './craft/engine.js';
+import { tickDirector } from './craft/director.js';
+import { pickToy } from './craft/toys.js';
+import { pickBody, makePlayer, makeEnemy, makeWeapon, makeCover, tickPose } from './body/index.js';
 
 const SPEC = __SPEC__;
 const CONFIG = __CONFIG__;
@@ -37,6 +41,7 @@ export function createGame({ genre, title }) {
     280,
   );
   camera.position.set(0, CONFIG.eyeHeight || SCALE.eye, 8);
+  applyEngine(camera, scene);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -47,7 +52,13 @@ export function createGame({ genre, title }) {
   document.body.appendChild(renderer.domElement);
   scene.add(camera);
   const look = applyLook({ scene, renderer, camera, pal, spec: SPEC });
-  try { window.__GF_RENDERER__ = renderer; } catch { /* */ }
+  const bodySpec = pickBody(SPEC);
+  const toy = pickToy(SPEC);
+  try {
+    window.__GF_RENDERER__ = renderer;
+    window.__GF_ENGINE__ = ENGINE;
+    window.__GF_TOY__ = toy;
+  } catch { /* */ }
 
   const hud = ensureHud();
   const cross = ensureCrosshair(isFps);
@@ -92,8 +103,10 @@ export function createGame({ genre, title }) {
   if (actors.start) player.pos.set(actors.start.x, actors.start.y, actors.start.z);
   for (const e of actors.enemies) armBrain(e);
   if (actors.hunter) {
+    const hb = actors.hunter.userData && actors.hunter.userData.body;
     actors.hunterEnt = armBrain({
       mesh: actors.hunter,
+      core: hb && hb.core,
       hp: 1,
       speed: 1.6,
       baseY: actors.hunter.position.y,
@@ -252,8 +265,32 @@ export function createGame({ genre, title }) {
     const targetFov = (state.ads ? (CONFIG.adsFov || 62) : (CONFIG.fov || (isFps ? 78 : 58))) + state.fovPunch;
     kickFov(camera, targetFov, dt, 10);
 
-    player.mesh.position.set(player.pos.x, player.pos.y - (CONFIG.eyeHeight || SCALE.eye) + 0.9, player.pos.z);
+    player.mesh.position.set(player.pos.x, player.pos.y - (CONFIG.eyeHeight || SCALE.eye), player.pos.z);
     player.mesh.rotation.y = player.yaw;
+    tickPose(player, {
+      now: state.now,
+      dt,
+      moving: Math.hypot(player.vx, player.vz) > 0.4,
+      phase: 0,
+    });
+    if (state.dashT > 0 && toy === 'dash-slash') {
+      for (const e of actors.enemies) {
+        if (e.hp <= 0 || e.dashHit) continue;
+        const dd = Math.hypot(player.pos.x - e.mesh.position.x, player.pos.z - e.mesh.position.z);
+        if (dd < 1.6) {
+          e.dashHit = true;
+          e.hp -= 2;
+          punch(stack, e.hp <= 0 ? 'kill' : 'hit');
+          if (e.hp <= 0) {
+            e.popT = 0;
+            state.score += 10;
+            updateHud();
+          }
+        }
+      }
+    } else if (state.dashT <= 0) {
+      for (const e of actors.enemies) e.dashHit = false;
+    }
     playerBlob.follow(player.pos.x, player.pos.z);
     if (!grounded && SPEC.loop === 'jump') playerBlob.hide();
     else playerBlob.show();
@@ -322,6 +359,7 @@ export function createGame({ genre, title }) {
   }
 
   function tickThreat(dt) {
+    tickDirector(actors.enemies, player.pos.x, player.pos.z, { max: 3 });
     for (const e of actors.enemies) {
       if (e.hp <= 0) {
         if (e.popT != null) {
@@ -330,6 +368,14 @@ export function createGame({ genre, title }) {
         }
         marks.hide(e.mesh.id);
         continue;
+      }
+      if (e.stickyT > 0) {
+        e.stickyT -= dt;
+        if (e.stickyT <= 0) {
+          e.hp -= 1;
+          punch(stack, e.hp <= 0 ? 'kill' : 'hit');
+          if (e.hp <= 0) e.popT = 0;
+        }
       }
       tickBrain(e, player.pos.x, player.pos.z, dt, state.now, {
         aggro: e.elite ? 10 : 7,
@@ -347,6 +393,7 @@ export function createGame({ genre, title }) {
       } else {
         marks.hide(e.mesh.id);
       }
+      tickPose(e, { now: state.now, dt, phase: e.phase, moving: true });
       if (striking(e) && state.dashT <= 0 && d < 1.35) {
         hurt((e.elite ? 18 : 12) * dt * 8);
       }
@@ -520,14 +567,31 @@ export function createGame({ genre, title }) {
     _ray.setFromCamera(_ndc, camera);
     tracers.spawn(_ray.ray.origin, _ray.ray.direction, pal.grid || 0x00f0ff);
 
-    const live = actors.enemies.filter((e) => e.hp > 0).map((e) => e.mesh);
-    const hits = _ray.intersectObjects(live, false);
+    const live = actors.enemies.filter((e) => e.hp > 0).map((e) => e.core || e.mesh);
+    let hits = _ray.intersectObjects(live, true);
+    if (!hits[0] && toy === 'ricochet') {
+      _dir.copy(_ray.ray.direction);
+      _dir.x *= -1;
+      _ray.ray.direction.copy(_dir);
+      tracers.spawn(_ray.ray.origin, _dir, pal.accent || pal.grid);
+      hits = _ray.intersectObjects(live, true);
+    }
     if (hits[0]) {
-      const e = actors.enemies.find((x) => x.mesh === hits[0].object);
+      const hitObj = hits[0].object;
+      const e = actors.enemies.find((x) => {
+        let o = hitObj;
+        while (o) {
+          if (o === x.mesh || o === x.core) return true;
+          o = o.parent;
+        }
+        return false;
+      });
       if (e) {
         const dmg = CONFIG.damage || 18;
         e.hp -= dmg;
-        e.mesh.material.emissiveIntensity = 2.4;
+        if (e.core && e.core.material) e.core.material.emissiveIntensity = 2.4;
+        if (toy === 'time-gun') e.freezeT = 0.5;
+        if (toy === 'sticky') e.stickyT = 0.45;
         impacts.spawn(hits[0].point, pal.accent);
         const nx = e.mesh.position.x - player.pos.x;
         const nz = e.mesh.position.z - player.pos.z;
@@ -805,14 +869,7 @@ function buildWorld(scene, rnd, pal, SPEC) {
       [0.2, -7.6],
     ];
     for (const [x, z] of spots) {
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(1.7, 1.35, 1.15),
-        mat(pal.building, { roughness: 0.7, metalness: 0.18 }),
-      );
-      mesh.position.set(x, 0.68, z);
-      mesh.castShadow = true;
-      scene.add(mesh);
-      covers.push({ x, z, hw: 1.05, hd: 0.78, mesh });
+      covers.push(makeCover(scene, pal, { x, z }));
     }
     return { covers };
   }
@@ -840,15 +897,10 @@ function buildWorld(scene, rnd, pal, SPEC) {
 }
 
 function buildPlayer(scene, pal, CONFIG) {
-  const mesh = new THREE.Mesh(
-    new THREE.CapsuleGeometry(SCALE.capsuleR, SCALE.capsuleH, 4, 8),
-    mat(pal.player, { emissive: pal.player, emissiveIntensity: 0.22 }),
-  );
-  mesh.position.set(0, 1.2, 6);
-  mesh.castShadow = true;
-  scene.add(mesh);
+  const spec = pickBody(SPEC);
+  const body = makePlayer(scene, pal, { kind: spec.player });
   return {
-    mesh,
+    ...body,
     pos: new THREE.Vector3(0, CONFIG.eyeHeight || SCALE.eye, 6),
     vx: 0, vy: 0, vz: 0,
     yaw: 0, pitch: 0,
@@ -908,28 +960,23 @@ function buildActors(scene, rnd, pal, SPEC) {
     }
   }
 
+  const bodyKind = pickBody(SPEC);
   if (SPEC.loop !== 'race' && SPEC.loop !== 'jump' && enemyN > 0) {
     for (let i = 0; i < enemyN; i++) {
       const elite = i === enemyN - 1 && enemyN >= 4;
-      const mesh = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(elite ? SCALE.threatR * 1.45 : SCALE.threatR * 1.15, 0),
-        mat(pal.enemy, {
-          emissive: elite ? (pal.grid || pal.enemy) : pal.enemy,
-          emissiveIntensity: elite ? 1.35 : 1.05,
-          metalness: 0.45,
-        }),
-      );
+      const kind = elite ? 'captain' : bodyKind.enemy;
+      const built = makeEnemy(scene, pal, { kind, elite });
       const a = -1.05 + (i / Math.max(1, enemyN - 1)) * 2.1;
       const r = 8.5 + (i % 3) * 1.8 + rnd() * 1.2;
       const sx = Math.sin(a) * r;
       const sz = -Math.abs(Math.cos(a) * r) - 1.4;
-      mesh.position.set(sx, elite ? 1.85 : 1.55, sz);
-      scene.add(mesh);
+      const baseY = elite ? 0.15 : (kind === 'crawler' ? 0 : 1.05);
+      built.mesh.position.set(sx, baseY, sz);
       enemies.push({
-        mesh,
+        ...built,
         hp: elite ? 3 : 1,
         speed: elite ? 1.15 : 1.5 + rnd() * 1.1,
-        baseY: elite ? 1.75 : 1.45 + rnd() * 0.35,
+        baseY,
         phase: rnd() * 6,
         sx,
         sz,
@@ -941,15 +988,11 @@ function buildActors(scene, rnd, pal, SPEC) {
   if (SPEC.loop === 'jump' && enemyN > 0) {
     for (let i = 0; i < enemyN && i < platforms.length; i++) {
       const p = platforms[Math.min(platforms.length - 1, 3 + i * 2)];
-      const mesh = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(0.4, 0),
-        mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.7 }),
-      );
-      mesh.position.set(p.x - 0.6, p.top + 0.55, p.z);
-      scene.add(mesh);
+      const built = makeEnemy(scene, pal, { kind: 'crawler' });
+      built.mesh.position.set(p.x - 0.6, p.top, p.z);
       enemies.push({
-        mesh, hp: 1, speed: 1.1 + i * 0.2,
-        baseY: p.top + 0.55, phase: i, sx: p.x - 0.6, sz: p.z,
+        ...built, hp: 1, speed: 1.1 + i * 0.2,
+        baseY: p.top, phase: i, sx: p.x - 0.6, sz: p.z,
       });
     }
   }
@@ -970,13 +1013,9 @@ function buildActors(scene, rnd, pal, SPEC) {
   }
 
   if (SPEC.loop === 'talk') {
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.35, 0.7, 4, 8),
-      mat(pal.accent, { emissive: pal.accent, emissiveIntensity: 0.3 }),
-    );
-    body.position.set(3.2, 1.05, -2);
-    scene.add(body);
-    npcs.push({ mesh: body, talked: false });
+    const npc = makePlayer(scene, { ...pal, player: pal.accent }, { kind: 'visor' });
+    npc.mesh.position.set(3.2, 0, -2);
+    npcs.push({ mesh: npc.mesh, talked: false, ...npc });
     door = new THREE.Mesh(
       new THREE.BoxGeometry(SCALE.doorW, SCALE.doorH, 0.3),
       mat(pal.grid, { emissive: pal.grid, emissiveIntensity: 0.25 }),
@@ -1030,9 +1069,10 @@ function buildActors(scene, rnd, pal, SPEC) {
   }
 
   if (SPEC.loop === 'sneak') {
-    hunter = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.8, 5), mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.55 }));
-    hunter.position.set(-10, 0.9, -10);
-    scene.add(hunter);
+    const hun = makeEnemy(scene, pal, { kind: 'captain' });
+    hun.mesh.position.set(-10, 0, -10);
+    hunter = hun.mesh;
+    hunter.userData.body = hun;
     door = new THREE.Mesh(new THREE.BoxGeometry(SCALE.doorW, SCALE.doorH, 0.25), mat(pal.accent, { emissive: pal.accent, emissiveIntensity: 0.85 }));
     door.position.set(10, 1.2, -14);
     scene.add(door);
@@ -1044,13 +1084,9 @@ function buildActors(scene, rnd, pal, SPEC) {
 function spawnWave(actors, scene, rnd, pal, SPEC, wave) {
   const n = Math.min(16, 4 + wave * 2);
   while (actors.enemies.length < n) {
-    const mesh = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(SCALE.threatR, 0),
-      mat(pal.enemy, { emissive: pal.enemy, emissiveIntensity: 0.75, metalness: 0.45 }),
-    );
-    scene.add(mesh);
+    const built = makeEnemy(scene, pal, { kind: pickBody(SPEC).enemy });
     actors.enemies.push(armBrain({
-      mesh, hp: 1, speed: 1.4, baseY: 1.55, phase: rnd() * 6, sx: 0, sz: 0, elite: false,
+      ...built, hp: 1, speed: 1.4, baseY: 1.05, phase: rnd() * 6, sx: 0, sz: 0, elite: false,
     }));
   }
   const eliteIdx = wave % 3 === 0 ? actors.enemies.length - 1 : -1;
@@ -1077,30 +1113,5 @@ function spawnWave(actors, scene, rnd, pal, SPEC, wave) {
 }
 
 function buildWeapon(camera, pal) {
-  const root = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(0.12, 0.14, 0.75),
-    mat(0x1a1f2a, { metalness: 0.75, roughness: 0.28 }),
-  );
-  body.position.set(0.28, -0.28, -0.55);
-  const glow = new THREE.Mesh(
-    new THREE.BoxGeometry(0.05, 0.05, 0.22),
-    mat(pal.grid, { emissive: pal.grid, emissiveIntensity: 1.1 }),
-  );
-  glow.position.set(0.28, -0.22, -0.95);
-  root.add(body, glow);
-  root.visible = false;
-  camera.add(root);
-  return {
-    get visible() { return root.visible; },
-    set visible(v) { root.visible = v; },
-    applyRecoil(r) {
-      root.position.set(r.x, r.y, r.z);
-      root.rotation.x = r.pitch;
-    },
-    flash() {
-      glow.material.emissiveIntensity = 3.5;
-      setTimeout(() => { glow.material.emissiveIntensity = 1.1; }, 40);
-    },
-  };
+  return makeWeapon(camera, pal);
 }

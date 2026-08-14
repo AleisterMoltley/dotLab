@@ -48,7 +48,8 @@ One prompt can still open a world. The difference is what “done” means: a pr
 |----------|----------------|
 | **Playable first** | Scaffold → `npm run dev` → controls work. No empty repo ceremony. |
 | **Host quality floor** | Genre CONFIG, coyote, pit death, juice keys — applied by the host after the coder. The 30B does not own feel. |
-| **Look + craft kits** | Place is a card. Camera, punch, pools, and telegraph AI are host modules. The model calls them; verify fails a slice that skips them. |
+| **Look + craft + body kits** | Place, feel, and figures are host modules. The model picks card ids. Verify fails a slice that skips them. |
+| **Engine law** | Three.js vanilla, Vite, metres, Y-up. Not Unity. Not Z-up. |
 | **Play is the judge** | An 8s bot grades canvas, input, restart &lt;3s, stutter, screenshot slop. Verify seeing `coyoteMs` in a file is not enough. |
 | **Studio that builds** | Director → Architect (max) → recursive coder → Critic (dense). Novelty goes in `src/systems/*`, not a dump into `game.js`. |
 | **Live iteration** | The Play window stays open while files change. Five deaths on the same gap → the host shortens it. |
@@ -124,7 +125,7 @@ Click the game to capture input. Updates from the studio apply live, or queue un
 
 ## What you can make
 
-- **Web games** — Three.js vertical slices (FPS, platformer, runner, race, adventure). Place is a **look card**. Feel is the **craft kit**. The model writes the one novelty.
+- **Web games** — Three.js vanilla + Vite, metres, Y-up. Place is a **look card**. Figures are a **body card**. Feel is the **craft kit**. One **toy** per slice. The model writes the one novelty.
 - **Pixel games** — Canvas2D bake path with nearest-filter feel
 - **Vintage** — Game Boy ship bar, hard GBA ceiling
 - **Open worlds** — prompt → regions → terrain → instances
@@ -206,11 +207,11 @@ dotlab verify -p .
 ## How a build works
 
 1. **Compile the brief** into genre, loop, feel, palette, look card, and opposition counts
-2. **Scaffold a real project** — Vite files plus immutable `src/look/` and `src/craft/`
+2. **Scaffold a real project** — Vite + Three vanilla, metres, Y-up. Immutable `src/look/`, `src/craft/`, `src/body/`
 3. **Studio roles** design and structure the slice (director 8k, architect max, critic dense)
 4. **Deep coder** writes `src/systems/<novelty>.js`. The host wires the import and owns CONFIG
 5. **Host floor** injects missing feel keys, pit death, 1/1/1 slop out
-6. **Verify** grades files (`look_kit`, `craft_kit`, genre contracts). P0 fails get a verify-anchored repair (not “add inventory”)
+6. **Verify** grades files (`look_kit`, `craft_kit`, `body_kit`, `engine_law`). P0 fails get a verify-anchored repair (not “add inventory”)
 7. **Play-P0** (with `--playtest`) runs an 8s genre bot: canvas, input, restart, slop frames
 8. **Ship** (optional) pushes a private GitHub repo
 
@@ -388,9 +389,19 @@ A slice needs:
 - **juice** on every meaningful hit
 - a **fair first death** and a restart under three seconds
 
+## Engine law
+
+Three.js. Vanilla. Vite. One unit is one metre. Y is up.
+
+That is not a preference. Verify `engine_law` fails a new three-slice that pulls in React Three Fiber, skips Vite, or never sets metres / `applyEngine`. Pixel and Vintage stay 2D on purpose. Seeker is the **same** Three.js game plus a wallet button.
+
 ## Three.js that still looks designed (on Ollama)
 
-A local 30B can write a loop. It cannot reliably invent lighting, a camera that does not make you sick, juice on every hit, or enemies that telegraph and then commit. Those are **host modules**. The model picks a card and writes the novelty. It does not rewrite the kit.
+A local 30B can write a loop. It cannot reliably invent lighting, a camera that does not make you sick, juice on every hit, a readable figure, or enemies that telegraph and then commit. Those are **host modules**. The model picks card ids and writes the novelty. It does not rewrite the kit.
+
+![A neon pit slice: cyan grid, facade ring, lime drones, cover with a lit lip, pulse rifle in view](docs/readme/slice-arena.png)
+
+<p align="center"><em>A real slice (Razor Pit), not a mock. Place, bodies, cover, and a pulse rifle — Play-P0 grades this frame.</em></p>
 
 ### Look — the place
 
@@ -405,7 +416,20 @@ A local 30B can write a loop. It cannot reliably invent lighting, a camera that 
 | `rain-alley` | Tight fog, reflective ground, puddle sheen |
 | `interior-warm` | Small room, practicals, no outdoor scatter |
 
-Lights, fog = background, a landmark, **InstancedMesh** scatter, one shader. Not twenty-two individual boxes. Verify `look_kit` fails a new three-slice that skips `applyLook` or InstancedMesh. Play-P0 fails a flat / few-hue frame and a GPU call bomb (`renderer.info`).
+Lights, fog = background, a landmark, **InstancedMesh** scatter, one shader. Not twenty-two individual boxes. Each loop also gets a **room**: pit ring (shoot), canyon (jump), tunnel (run), corridor (sneak), interior (talk), rails (race). Verify `look_kit` fails a new three-slice that skips `applyLook` or InstancedMesh.
+
+### Body — the figures
+
+`src/body/` is immutable. `makePlayer` / `makeEnemy` / `makeWeapon` / `makeCover` + `tickPose`.
+
+| Card | Reads as |
+|------|----------|
+| `visor` / `runner` | Head, torso, visor — not a lone capsule |
+| `drone` / `crawler` / `captain` | Three enemy bodies. Elite is a captain |
+| `pulse` | Viewmodel with muzzle and sight |
+| `crate` | Cover with an emissive lip |
+
+Pose is procedural: breath, walk bob, windup lean, strike lunge. No mixer. Verify `body_kit` fails a slice that vendors `player.js` and still draws a raw capsule.
 
 ### Craft — the feel
 
@@ -424,10 +448,14 @@ Lights, fog = background, a landmark, **InstancedMesh** scatter, one shader. Not
 | Hurt | `attachVignette` | Damage with no flash |
 | Motion | `spinY` / `squashLand` / `popOut` | Dead pickups, instant vanish |
 | Scale | `SCALE.eye` / `doorH` / `capsuleR` | Door 0.5 m, eye 3 m |
+| Engine | `applyEngine` | Z-up, Unity, no metres |
+| Director | `tickDirector` | Five enemies strike at once |
 
-Strike is a **lock** (`lockX` / `lockZ`). Windup tracks; the commit does not. That is the fair first death.
+Strike is a **lock** (`lockX` / `lockZ`). Windup tracks; the commit does not. At most **three** attackers; the rest orbit.
 
-Verify `craft_kit` is P0 when `punch.js` is vendored: `game.js` must import punch, the tracer pool, `tickBrain`, `fpsLook`, and `attachBlob`. Studio / RLM keep the 30B off large rewrites of `src/game.js` (`DOTLAB_NOVELTY_JAIL=1`). Novelty lives in `src/systems/`.
+One **toy** per slice (`ricochet`, `dash-slash`, `sticky`, `time-gun`). The model picks the id. The host wires it.
+
+Verify `craft_kit` / `body_kit` / `engine_law` are P0 when those files are vendored. Studio / RLM keep the 30B off large rewrites of `src/game.js` (`DOTLAB_NOVELTY_JAIL=1`). Novelty lives in `src/systems/`.
 
 ## Hands in the game
 
@@ -447,7 +475,7 @@ After three look-alike slices the host stamps a **constraint** (four colors, one
 
 Feel lives in `CONFIG` numbers. The host writes them after every coder pass.
 
-`dotlab verify -p DIR` grades the tree without an LLM (`look_kit`, `craft_kit`, genre contracts). `dotlab playtest -p DIR` grades the running game: no canvas, no input, restart slower than 3s, stutter, or a near-black / green-capsule frame is a Play-P0 fail. Skill routing refuses tools the catalog cannot name.
+`dotlab verify -p DIR` grades the tree without an LLM (`look_kit`, `craft_kit`, `body_kit`, `engine_law`, genre contracts). `dotlab playtest -p DIR` grades the running game: no canvas, no input, restart slower than 3s, stutter, or a near-black / green-capsule frame is a Play-P0 fail. Skill routing refuses tools the catalog cannot name.
 
 ---
 
@@ -461,7 +489,7 @@ dotLab/
   start               Browser studio launcher
   bin/                CLI and host logic
   knowledge/          Domain packs injected by route
-  lib/                Pixel, look cards, craft kit, shared runtime
+  lib/                Pixel, look, body, craft — immutable kits
   templates/          Scaffolds and slices
   tests/              Cheap suite (no Ollama)
   chat/  live/        Browser UIs (Studio + Play)
@@ -469,7 +497,7 @@ dotLab/
   docs/readme/        GitHub shots (HTML mocks + PNGs)
 ```
 
-Working on the repo: read [AGENTS.md](AGENTS.md), then `python3 tests/run.py`. Regenerate chrome shots with `node docs/readme/capture.mjs` (needs Playwright from `playtest/`).
+Working on the repo: read [AGENTS.md](AGENTS.md), then `python3 tests/run.py`. Regenerate chrome shots with `node docs/readme/capture.mjs` (needs Playwright from `playtest/`). The arena still is a real playtest frame (`docs/readme/slice-arena.png`).
 
 ---
 

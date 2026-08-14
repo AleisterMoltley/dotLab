@@ -8,7 +8,7 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 | `ship-bar.md` | Always (core) — NEON INK quality bar local games must clear |
 | `skill-fps.md` | fps / shooter / arena — NEON INK systems recipe |
 | `grok-craft.md` | Always (core) — frontier pair decision tree, continue→patch law |
-| `grok-toolkit.md` | Always (core) — reverse-engineered pair tools + craft modules |
+| `grok-toolkit.md` | Always (core) — reverse-engineered pair tools + craft/body modules |
 | `threejs-recipes.md` | three / game — paste-ready Three.js patterns |
 | `brain.md` | Always (core) — craft law |
 | `session-loop.md` | extra loop detail (if routed) |

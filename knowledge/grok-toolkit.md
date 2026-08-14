@@ -36,6 +36,7 @@ src/main.js          boot only
 src/game.js          createGame + CONFIG + loop
 src/craft/*          IMMUTABLE — Grok feel stack (do not rewrite)
 src/look/*           IMMUTABLE — place card (do not rewrite)
+src/body/*           IMMUTABLE — figures + weapon + cover
 WIKI.md              durable facts
 DESIGN.md            future / kill list
 .gamemaster/slice.json   host-owned spec (patch mutates this)
@@ -54,6 +55,9 @@ Call these. Do not reinvent them:
 | `blob.js` | `attachBlob` | Floating capsule |
 | `recoil.js` | `kickRecoil` / `springRecoil` | Random HUD kick |
 | `vignette.js` | `attachVignette` | Hurt with no flash |
+| `engine.js` | `applyEngine` | Unity / Z-up / no metres |
+| `director.js` | `tickDirector` | Five enemies strike at once |
+| `src/body/*` | `makePlayer` / `makeEnemy` / `tickPose` | Green capsule, icosahedron drone |
 | `motion.js` | `spinY` / `bobY` / `squashLand` / `popOut` | Dead pickups, pop-off kills |
 | `scale.js` | `SCALE.*` | Door 0.5m, eye 3m |
 

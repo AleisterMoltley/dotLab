@@ -47,6 +47,7 @@ PROTECTED_MIN_LINES = 80  # below this, full replace still ok
 IMMUTABLE_PREFIXES = (
     "src/craft/",
     "src/look/",
+    "src/body/",
     "src/kits/",
 )
 
