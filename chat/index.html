@@ -484,7 +484,7 @@
     <div class="side-head">
       <div class="mark">
         <span class="word">dotLab</span>
-        <span class="tag">local</span>
+        <span class="tag" id="sideTag">local</span>
       </div>
     </div>
     <div class="side-status" id="sideStatus" title="Backend status">
@@ -526,21 +526,11 @@
       </div>
       <div class="top-r">
         <button type="button" class="btn sm" id="nowPlay" disabled title="Play (⌘P)">Play</button>
-        <button type="button" class="btn sm" id="nowShow" disabled>Folder</button>
-        <button type="button" class="btn sm" id="nowTerm" disabled title="Terminal here">Term</button>
-        <button type="button" class="btn sm" id="nowEditor" disabled title="Open in Cursor/VS Code">Editor</button>
-        <button type="button" class="btn sm" id="nowZip" disabled title="Export zip">Zip</button>
         <button type="button" class="btn sm" id="nowVerify" disabled title="Run P0 verify">Verify</button>
-        <button type="button" class="btn sm" id="nowKeep" disabled title="Keep this feel (accept)">Keep</button>
-        <button type="button" class="btn sm" id="nowTighter" disabled title="Host: tighter controls">Tighter</button>
-        <button type="button" class="btn sm" id="nowJuice" disabled title="Host: more juice">Juice</button>
         <button type="button" class="btn sm" id="nowAgent" disabled title="Deep change via agent">Deep</button>
-        <button type="button" class="btn sm" id="nowDup" disabled>Dup</button>
-        <button type="button" class="btn sm" id="nowRename" disabled>Rename</button>
-        <button type="button" class="btn sm" id="nowDel" disabled>Del</button>
+        <button type="button" class="btn sm" id="btnMore" title="More project actions">More</button>
         <button type="button" class="btn sm" id="btnPalette" title="Command palette (⌘K)">⌘K</button>
-        <button type="button" class="btn sm" id="btnSettings">Model</button>
-        <button type="button" class="btn sm" id="btnZoo" title="OpenZoo — x402 floor">OpenZoo</button>
+        <button type="button" class="btn sm" id="btnSettings" title="Backend">local $0</button>
         <button type="button" class="btn sm" id="btnGh">Ship</button>
       </div>
     </header>
@@ -595,7 +585,12 @@
         <div class="agentbox" id="agentBox">
           <div class="row" style="display:flex;gap:6px;align-items:center;justify-content:space-between">
             <b style="font:12px var(--mono);color:var(--text)">Agent</b>
-            <span id="agentState" class="badge na">idle</span>
+            <span>
+              <button type="button" class="btn sm" id="agentUndo">Undo</button>
+              <button type="button" class="btn sm" id="agentReplay">Replay</button>
+              <button type="button" class="btn sm" id="agentRecap">Recap</button>
+              <span id="agentState" class="badge na">idle</span>
+            </span>
           </div>
           <pre id="agentLog"></pre>
         </div>
@@ -750,6 +745,26 @@
     </div>
   </div>
 
+  <div class="sheet" id="moreSheet">
+    <div class="box">
+      <h3>Project</h3>
+      <p>Folder, craft, and file actions. Game loop stays in the header: Play · Verify · Deep.</p>
+      <div class="grid2">
+        <button type="button" class="btn sm" id="nowShow" disabled>Folder</button>
+        <button type="button" class="btn sm" id="nowTerm" disabled>Term</button>
+        <button type="button" class="btn sm" id="nowEditor" disabled>Editor</button>
+        <button type="button" class="btn sm" id="nowZip" disabled>Zip</button>
+        <button type="button" class="btn sm" id="nowKeep" disabled>Keep feel</button>
+        <button type="button" class="btn sm" id="nowTighter" disabled>Tighter</button>
+        <button type="button" class="btn sm" id="nowJuice" disabled>Juice</button>
+        <button type="button" class="btn sm" id="nowDup" disabled>Dup</button>
+        <button type="button" class="btn sm" id="nowRename" disabled>Rename</button>
+        <button type="button" class="btn sm" id="nowDel" disabled>Delete</button>
+      </div>
+      <div class="row"><button type="button" class="btn" id="moreClose">Close</button></div>
+    </div>
+  </div>
+
   <div class="sheet" id="settingsSheet">
     <div class="box">
       <h3>Model / cloud</h3>
@@ -778,32 +793,43 @@
   <div class="sheet" id="zooSheet">
     <div class="box wide">
       <h3>OpenZoo</h3>
-      <p>Paid floor at <a href="https://openzoo.fun/" target="_blank" rel="noopener">openzoo.fun</a>. leCore sits in front of every model. Long game trees are cheaper than buying the model direct. Short pings are marked up. No API key — you pay the 402 in yUSDCx or wTOKENx.</p>
+      <p>Paid floor at <a href="https://openzoo.fun/" target="_blank" rel="noopener">openzoo.fun</a>. leCore sits in front. Long trees are cheaper than buying direct. No API key.</p>
       <div class="pillrow">
         <span class="minipill" id="zooActivePill">local</span>
         <span class="minipill" id="zooPingPill">ping…</span>
+        <span class="minipill" id="zooSpendPill">$0 / $0.50</span>
       </div>
+      <p class="hint" id="zooGate" style="margin:6px 0">Checking whether a call can settle…</p>
       <div class="kv">
-        <span>Chat</span><div class="mono" id="zooChatUrl">https://openzoo.fun/api/v1/chat/completions</div>
         <span>Wallet</span><div class="mono" id="zooAddr">—</div>
-        <span>Balances</span><div id="zooBals">SOL — · yUSDCx — · wTOKENx —</div>
+        <span>Balances</span><div id="zooBals">—</div>
         <span>Quote</span><div id="zooQuote">—</div>
       </div>
-      <label for="zooModel">Floor model</label>
-      <select id="zooModel">
-        <option value="x-ai/grok-4.6">x-ai/grok-4.6</option>
-        <option value="google/gemini-2.5-flash">google/gemini-2.5-flash</option>
-        <option value="anthropic/claude-sonnet-4">anthropic/claude-sonnet-4</option>
-        <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
+      <div id="zooQr" style="display:none;margin:8px 0"></div>
+      <label for="zooModelSearch">Model (411 on the floor)</label>
+      <input id="zooModelSearch" type="search" placeholder="search grok, claude, kimi…" />
+      <select id="zooModel" size="4" style="margin-top:6px">
+        <option value="x-ai/grok-4.6">coder · x-ai/grok-4.6</option>
+        <option value="google/gemini-2.5-flash">flash · google/gemini-2.5-flash</option>
+        <option value="anthropic/claude-sonnet-4">critic · anthropic/claude-sonnet-4</option>
+        <option value="openai/gpt-4o-mini">cheap · openai/gpt-4o-mini</option>
       </select>
+      <div class="pillrow">
+        <button type="button" class="chip" data-zoo-preset="cheap">cheap</button>
+        <button type="button" class="chip" data-zoo-preset="coder">coder</button>
+        <button type="button" class="chip" data-zoo-preset="critic">critic</button>
+        <button type="button" class="chip" data-zoo-preset="flash">flash</button>
+      </div>
       <p class="hint" id="zooErr" style="margin-top:8px;color:var(--bad)"></p>
       <div class="grid2">
-        <button type="button" class="btn sm" id="zooWalletBtn">Create / show wallet</button>
+        <button type="button" class="btn sm" id="zooWalletBtn">Create wallet</button>
         <button type="button" class="btn sm" id="zooCopyBtn">Copy address</button>
-        <button type="button" class="btn sm" id="zooPingBtn">Ping openzoo.fun</button>
-        <button type="button" class="btn sm" id="zooQuoteBtn">Quote this model</button>
+        <button type="button" class="btn sm" id="zooWrapBtn">Wrap USDC/TOKEN</button>
+        <button type="button" class="btn sm" id="zooExportBtn">Export backup</button>
+        <button type="button" class="btn sm" id="zooPingBtn">Ping floor</button>
+        <button type="button" class="btn sm" id="zooQuoteBtn">Quote</button>
       </div>
-      <p class="hint" style="margin-top:10px">Fund the address with USDC or TOKEN, then wrap at <a href="https://x402.accrue.fund/start" target="_blank" rel="noopener">x402.accrue.fund/start</a>. Raw USDC/TOKEN will not settle. TOKEN: <a href="https://pump.fun/coin/EVULoNF4DeMBN4dGiZiDfpiiTfNZgoCvXWWgaV3epump" target="_blank" rel="noopener">pump.fun</a></p>
+      <p class="hint" style="margin-top:10px">Need ~0.001 SOL for wrap fees. Raw USDC/TOKEN will not settle. TOKEN on <a href="https://pump.fun/coin/EVULoNF4DeMBN4dGiZiDfpiiTfNZgoCvXWWgaV3epump" target="_blank" rel="noopener">pump.fun</a>.</p>
       <div class="row">
         <button type="button" class="btn" id="zooOff">Use local Ollama</button>
         <button type="button" class="btn primary" id="zooOn">Use OpenZoo</button>

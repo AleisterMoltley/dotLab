@@ -81,6 +81,106 @@ def todo_list(project: Path) -> str:
     return f"{open_n} open\n" + "\n".join(lines)
 
 
+LAST_STEP = ".gamemaster/last-step.json"
+
+
+def _step_path(project: Path) -> Path:
+    return project / LAST_STEP
+
+
+def begin_step(project: Path, prompt: str) -> None:
+    p = _step_path(project)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps(
+            {
+                "prompt": prompt,
+                "files": [],
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "undone": False,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def load_step(project: Path) -> dict:
+    p = _step_path(project)
+    if not p.is_file():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def note_file(project: Path, rel: str, before: str, after: str) -> None:
+    data = load_step(project)
+    if not data:
+        data = {"prompt": "", "files": [], "ts": datetime.now(timezone.utc).isoformat(), "undone": False}
+    files = list(data.get("files") or [])
+    files.append({"path": rel, "before": before or "", "after": after or ""})
+    data["files"] = files[-24:]
+    _step_path(project).parent.mkdir(parents=True, exist_ok=True)
+    _step_path(project).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def undo_step(project: Path) -> str:
+    data = load_step(project)
+    files = list(data.get("files") or [])
+    if not files:
+        return "ERROR: nothing to undo"
+    if data.get("undone"):
+        return "ERROR: last step already undone"
+    restored = []
+    for item in reversed(files):
+        rel = str(item.get("path") or "")
+        if not rel or ".." in rel:
+            continue
+        dest = project / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(item.get("before") or "", encoding="utf-8")
+        restored.append(rel)
+    data["undone"] = True
+    _step_path(project).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return "OK undone " + ", ".join(restored) if restored else "ERROR: no files restored"
+
+
+def last_prompt(project: Path) -> str:
+    return str(load_step(project).get("prompt") or "")
+
+
+def recap(project: Path) -> str:
+    data = load_step(project)
+    lines = ["SESSION RECAP"]
+    if data.get("prompt"):
+        lines.append("last prompt: " + str(data["prompt"])[:240])
+    files = [str(f.get("path")) for f in (data.get("files") or []) if f.get("path")]
+    if files:
+        lines.append("files: " + ", ".join(dict.fromkeys(files)))
+    if data.get("undone"):
+        lines.append("last step was undone")
+    try:
+        import verify as verifylib
+
+        ev = verifylib.evaluate(project)
+        p0 = ev.get("p0_ok")
+        if p0 is None:
+            p0 = ev.get("ok")
+        lines.append("verify P0: " + ("pass" if p0 else "FAIL"))
+    except Exception as e:
+        lines.append(f"verify: skipped ({e})")
+    open_todos = [i for i in load_todos(project) if not i.get("done")]
+    if open_todos:
+        lines.append("next: " + str(open_todos[0].get("text") or ""))
+    else:
+        lines.append("next: play 90s, then one craft (floaty / juice / too hard)")
+    return "\n".join(lines)
+
+
 def todo_add(project: Path, text: str) -> str:
     text = " ".join((text or "").split()).strip()
     if not text:
@@ -239,9 +339,16 @@ def run_kit(project: Path, action: str, args: dict | None = None) -> str:
             return f"ERROR verify: {e}"
     if a in ("pixel", "pixel_kit", "vendor_pixel"):
         return vendor_pixel(project)
+    if a in ("undo", "undo_step"):
+        return undo_step(project)
+    if a in ("replay", "last_prompt"):
+        p = last_prompt(project)
+        return p or "ERROR: no last prompt"
+    if a in ("recap", "session"):
+        return recap(project)
     return (
         "ERROR: unknown kit action. Use: todo_list, todo_add, todo_done, "
-        "wiki_add, map, art_test, feel, verify, pixel"
+        "wiki_add, map, art_test, feel, verify, pixel, undo, replay, recap"
     )
 
 
@@ -257,6 +364,9 @@ def main() -> int:
     sub.add_parser("feel", parents=[shared])
     sub.add_parser("verify", parents=[shared])
     sub.add_parser("pixel", parents=[shared])
+    sub.add_parser("undo", parents=[shared])
+    sub.add_parser("replay", parents=[shared])
+    sub.add_parser("recap", parents=[shared])
     args = ap.parse_args()
     project = Path(args.project).expanduser().resolve()
     if not project.is_dir():
@@ -278,6 +388,15 @@ def main() -> int:
         return 0
     if args.cmd == "pixel":
         print(vendor_pixel(project))
+        return 0
+    if args.cmd == "undo":
+        print(undo_step(project))
+        return 0
+    if args.cmd == "replay":
+        print(last_prompt(project) or "ERROR: no last prompt")
+        return 0
+    if args.cmd == "recap":
+        print(recap(project))
         return 0
     print(feel_audit(project))
     return 0

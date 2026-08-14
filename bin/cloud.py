@@ -272,7 +272,17 @@ def _cloud_chat(name: str, messages: list[dict], model: str, temperature: float,
     if kind == "x402":
         import zoo
 
-        return zoo.chat(messages, model=model, temperature=temperature, num_predict=num_predict)
+        try:
+            return zoo.chat(messages, model=model, temperature=temperature, num_predict=num_predict)
+        except zoo.PayError as e:
+            print(f"  ⚠ OpenZoo pay failed — falling back to local Ollama: {e}", file=sys.stderr)
+            return ollama_chat(
+                messages,
+                model or DEFAULT_MODEL,
+                temperature,
+                num_predict,
+                None,
+            )
     key = provider_key(name)
     if not key:
         raise RuntimeError(f"no API key for {name}")
@@ -529,6 +539,9 @@ def cmd_on(name: str) -> int:
         print(f"OpenZoo wallet {info['public']}")
         print(f"  chat     {zoo.SITE_CHAT}")
         print(f"  Fund + wrap: {zoo.HELP}")
+        pay = zoo.can_pay(zoo.last_billed_usd())
+        if not pay.get("ok"):
+            print(f"  ⚠ {pay.get('reason')} — studio will fall back to Ollama until funded")
     elif not provider_key(name):
         env = merged_provider(name).get("key_env") or "API_KEY"
         print(f"No key for {name}. export {env}=…  or  gamemaster cloud set {name} --key …", file=sys.stderr)

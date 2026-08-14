@@ -190,14 +190,23 @@
         led.classList.toggle("bad", !ok);
       }
       if (text) {
+        var tag = $("sideTag");
+        var chip = $("btnSettings");
         if (h && h.backend === "cloud") {
           if (h.provider === "zoo") {
-            text.textContent = "openzoo.fun · " + (h.model || "floor");
+            var spent = (h.zoo && h.zoo.spend && h.zoo.spend.spent_label) || "$0";
+            text.textContent = "openzoo.fun · " + (h.model || "floor") + " · " + spent;
+            if (tag) tag.textContent = "zoo";
+            if (chip) chip.textContent = "zoo · " + spent;
           } else {
             text.textContent = "cloud · " + (h.provider || "") + " · " + (h.model || "");
+            if (tag) tag.textContent = h.provider || "cloud";
+            if (chip) chip.textContent = h.provider || "cloud";
           }
         } else if (ok) {
           text.textContent = (h.model || "dotlab") + " · local";
+          if (tag) tag.textContent = "local";
+          if (chip) chip.textContent = "local $0";
         } else if (h && !h.ollama) {
           text.textContent = "ollama offline";
         } else {
@@ -791,6 +800,7 @@
       { id: "new", label: "New game", key: "⌘N", need: false, run: newGameMode },
       { id: "model", label: "Model / cloud", key: "", need: false, run: function () { openSheet("settingsSheet"); } },
       { id: "openzoo", label: "OpenZoo yard (openzoo.fun)", key: "", need: false, run: openZooYard },
+      { id: "more", label: "More project actions", key: "", need: false, run: function () { openSheet("moreSheet"); } },
       { id: "trash", label: "Open trash", key: "", need: false, run: showTrash },
       { id: "help", label: "Keyboard help", key: "?", need: false, run: function () { openSheet("helpSheet"); } },
     ].filter(function (c) { return !c.need || has; });
@@ -849,6 +859,20 @@
   }
 
   function startAgent(prompt) {
+    if (!current.path || !prompt) return;
+    if (health && health.provider === "zoo") {
+      fetch("/api/zoo/estimate?kind=agent").then(function (r) { return r.json(); }).then(function (d) {
+        var usd = d && d.usd;
+        var msg = "OpenZoo agent ≈ " + (d && d.calls) + " calls · " + (usd != null ? "$" + Number(usd).toFixed(4) : "?") + ". Continue?";
+        if (d && d.over_cap) msg = "Over session spend cap. " + msg;
+        if (!window.confirm(msg)) return;
+        _startAgent(prompt);
+      }).catch(function () { _startAgent(prompt); });
+      return;
+    }
+    _startAgent(prompt);
+  }
+  function _startAgent(prompt) {
     if (!current.path || !prompt) return;
     var box = $("agentBox");
     if (box) box.classList.add("show");
@@ -1211,6 +1235,25 @@
     if (!current.path) return;
     openSheet("agentSheet");
   });
+  bind("agentUndo", function () {
+    if (!current.path) return;
+    api("/api/projects/undo", { path: current.path }).then(function (d) {
+      addMsg("bot", (d && d.message) || "undo failed");
+    });
+  });
+  bind("agentReplay", function () {
+    if (!current.path) return;
+    api("/api/projects/replay", { path: current.path }).then(function (d) {
+      if (!d || !d.ok) { addMsg("bot", (d && d.error) || "nothing to replay"); return; }
+      addMsg("bot", "Replaying last agent prompt…");
+    });
+  });
+  bind("agentRecap", function () {
+    if (!current.path) return;
+    api("/api/projects/recap", { path: current.path }).then(function (d) {
+      addMsg("bot", (d && d.recap) || "no recap");
+    });
+  });
   bind("agentStart", function () {
     var ta = $("agentPrompt");
     var prompt = (ta && ta.value || "").trim();
@@ -1255,8 +1298,9 @@
       pill.textContent = active ? "ON · studio uses openzoo.fun" : "off · local Ollama";
       pill.classList.toggle("ok", active);
     }
-    setText("zooChatUrl", st.chat_url || "https://openzoo.fun/api/v1/chat/completions");
     setText("zooAddr", st.wallet || "(no wallet yet — create one)");
+    var spend = st.spend || {};
+    setText("zooSpendPill", (spend.spent_label || "$0") + " / " + (spend.cap_label || "$0.50"));
     var sel = $("zooModel");
     if (sel && st.model) {
       var found = false;
@@ -1294,10 +1338,26 @@
         return;
       }
       var t = d.tokens || {};
-      setText("zooBals", "SOL " + (d.sol_lamports || 0) + " lamports · yUSDCx " + (t.yUSDCx || 0) + " · wTOKENx " + (t.wTOKENx || 0) + " · USDC " + (t.USDC || 0));
+      var h = (d.can_pay && d.can_pay.balances) || {};
+      setText("zooBals", "yUSDCx " + (h.yUSDCx_usd != null ? "$" + Number(h.yUSDCx_usd).toFixed(4) : t.yUSDCx || 0) + " · USDC " + (h.USDC_usd != null ? "$" + Number(h.USDC_usd).toFixed(4) : t.USDC || 0) + " · wTOKENx " + (t.wTOKENx || 0));
+      var gate = $("zooGate");
+      if (gate) {
+        if (d.can_pay && d.can_pay.ok) gate.textContent = "Funded — next call can settle.";
+        else if (d.can_pay && d.can_pay.need_wrap) gate.textContent = "USDC/TOKEN is here. Wrap it or the floor will fail-open / fall back to Ollama.";
+        else gate.textContent = (d.can_pay && d.can_pay.reason) || "Not funded.";
+      }
     }).catch(function () {
       setText("zooBals", "RPC timeout");
     });
+  }
+  function loadZooQr() {
+    var box = $("zooQr");
+    if (!box) return;
+    fetch("/api/zoo/qr").then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.ok || !d.svg) { box.style.display = "none"; return; }
+      box.style.display = "block";
+      box.innerHTML = d.svg;
+    }).catch(function () { box.style.display = "none"; });
   }
   function refreshZooPing() {
     var model = ($("zooModel") && $("zooModel").value) || "";
@@ -1340,6 +1400,7 @@
       refreshZooPing();
       refreshZooBalances();
       refreshZooQuote();
+      loadZooQr();
     });
   }
   function refreshZoo() {
@@ -1350,11 +1411,20 @@
   }
   bind("btnSettings", function () {
     refreshHealth();
+    if (health && health.provider === "zoo") {
+      openZooYard();
+      return;
+    }
     refreshZoo();
     openSheet("settingsSheet");
   });
   bind("settingsClose", closeSheets);
-  bind("btnZoo", openZooYard);
+  bind("btnMore", function () { openSheet("moreSheet"); });
+  bind("moreClose", closeSheets);
+  bind("sideStatus", function () {
+    if (health && health.provider === "zoo") openZooYard();
+    else openSheet("settingsSheet");
+  });
   bind("zooOpenYard", openZooYard);
   bind("zooClose", closeSheets);
   if ($("cloudProvider")) {
@@ -1378,6 +1448,61 @@
   });
   bind("zooPingBtn", refreshZooPing);
   bind("zooQuoteBtn", refreshZooQuote);
+  bind("zooWrapBtn", function () {
+    zooErr("wrapping…");
+    api("/api/zoo", { action: "wrap", which: "auto" }).then(function (d) {
+      if (!d || !d.ok) { zooErr((d && d.error) || "wrap failed — need SOL + USDC/TOKEN"); return; }
+      zooErr("");
+      addMsg("bot", "Wrapped · " + (d.solscan || d.sig || "ok"));
+      refreshZooBalances();
+    });
+  });
+  bind("zooExportBtn", function () {
+    api("/api/zoo", { action: "export-wallet" }).then(function (d) {
+      if (!d || !d.ok) { zooErr((d && d.error) || "export failed"); return; }
+      var blob = new Blob([d.json || ""], { type: "application/json" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "dotlab-zoo-wallet.json";
+      a.click();
+      addMsg("bot", "Wallet backup downloaded. Keep it offline.");
+    });
+  });
+  if ($("zooModelSearch")) {
+    var zooSearchT = 0;
+    $("zooModelSearch").addEventListener("input", function () {
+      var q = $("zooModelSearch").value || "";
+      clearTimeout(zooSearchT);
+      zooSearchT = setTimeout(function () {
+        fetch("/api/zoo/models?q=" + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
+          var sel = $("zooModel");
+          if (!sel || !d || !d.models) return;
+          var keep = sel.value;
+          sel.innerHTML = "";
+          (d.models || []).slice(0, 40).forEach(function (m) {
+            var o = document.createElement("option");
+            o.value = m.id;
+            o.textContent = (m.label || m.id);
+            sel.appendChild(o);
+          });
+          if (keep) sel.value = keep;
+        });
+      }, 220);
+    });
+  }
+  document.querySelectorAll("[data-zoo-preset]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var preset = el.getAttribute("data-zoo-preset");
+      var map = { cheap: "openai/gpt-4o-mini", coder: "x-ai/grok-4.6", critic: "anthropic/claude-sonnet-4", flash: "google/gemini-2.5-flash" };
+      var id = map[preset];
+      if (!id || !$("zooModel")) return;
+      $("zooModel").value = id;
+      api("/api/zoo", { action: "set", model: id }).then(function (d) {
+        paintZoo(d);
+        refreshZooQuote();
+      });
+    });
+  });
   if ($("zooModel")) {
     $("zooModel").addEventListener("change", function () {
       api("/api/zoo", { action: "set", model: $("zooModel").value }).then(function (d) {
@@ -1526,8 +1651,18 @@
     }
   });
 
+  function pollZooHealth() {
+    if (!(health && health.provider === "zoo")) return;
+    fetch("/api/zoo/health?auto_off=1").then(function (r) { return r.json(); }).then(function (d) {
+      if (d && d.auto_off) {
+        addMsg("bot", "OpenZoo floor down — switched back to local Ollama.");
+        refreshHealth();
+      }
+    }).catch(function () {});
+  }
   refreshHealth();
   setInterval(refreshHealth, 20000);
+  setInterval(pollZooHealth, 60000);
   loadProjects().then(function () {
     try {
       var saved = localStorage.getItem("dl.project") || localStorage.getItem("gm.project") || "";

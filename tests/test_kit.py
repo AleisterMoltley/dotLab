@@ -54,6 +54,20 @@ class TestKit(unittest.TestCase):
             kit.run_kit(p, "todo_add", {"text": "place"})
             self.assertIn("place", kit.run_kit(p, "todo_list", {}))
 
+    def test_undo_and_recap(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            p = Path(raw)
+            (p / "src").mkdir()
+            (p / "src" / "game.js").write_text("old\n", encoding="utf-8")
+            kit.begin_step(p, "juice the jump")
+            kit.note_file(p, "src/game.js", "old\n", "new\n")
+            (p / "src" / "game.js").write_text("new\n", encoding="utf-8")
+            self.assertIn("juice the jump", kit.recap(p))
+            self.assertEqual(kit.last_prompt(p), "juice the jump")
+            msg = kit.undo_step(p)
+            self.assertTrue(msg.startswith("OK"), msg)
+            self.assertEqual((p / "src" / "game.js").read_text(encoding="utf-8"), "old\n")
+
     def test_agent_dispatches_kit(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             p = Path(raw)

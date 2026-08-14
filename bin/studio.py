@@ -1085,6 +1085,15 @@ def main() -> int:
     if args.cloud:
         os.environ["GAMEMASTER_CLOUD"] = args.cloud
     require_backend()
+    try:
+        import cloud as cloudlib
+        import zoo as zoolib
+
+        if cloudlib.active_provider() == "zoo":
+            zoolib.warn_job(args.mode)
+            os.environ["GAMEMASTER_ZOO_PROJECT"] = str(project)
+    except Exception:
+        pass
     print(f"🎮 Gamemaster STUDIO · mode={args.mode} · model={model}")
     print(f"📁 {project}")
     print(f"🎯 {brief}")

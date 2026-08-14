@@ -59,8 +59,26 @@ SOLANA_NET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
 TOKEN_2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 TOKEN_KET = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+SYSTEM_PROGRAM = "11111111111111111111111111111111"
+WRAP_PROGRAM = "FrSERTNCPvTtaDS9AvQp9u1nYGzXDb3kC9MdL8Xxn2NE"
+WRAP_USDC_ESCROW = "2qLm8aCvn6gQVUFeQ7EC5J62Y95gFzc3vReHzD5d5Gj2"
+WRAP_USDC_AUTH = "EBGYMEEEPKu7szPUbnbp2h63azY9Sj9GR4MA2Ms6Quoi"
+WRAP_USDC_BUMP = 253
+WRAP_TOKEN_ESCROW = "7j682FdwSdTkXNjbMrrLd5wcXQoh23UTZaDReqKXbL2q"
+WRAP_TOKEN_AUTH = "AqdXyPzN6s5KH8KpdnKJmhUipyDUxxGxbJ5Qk1YKghXT"
+WRAP_TOKEN_BUMP = 255
 # Published rail decimals (openzoo.fun/.well-known/x402.json). Not a guess.
 RAIL_DECIMALS = {YUSDCX: 6, WTOKENX: 6, USDC: 6}
+DEFAULT_SPEND_CAP = 0.50
+ESTIMATE_CALLS = {
+    "plan": 3,
+    "build": 12,
+    "council": 8,
+    "review": 4,
+    "parallel": 16,
+    "agent": 8,
+    "chat": 1,
+}
 
 B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 _B58_IDX = {c: i for i, c in enumerate(B58)}
@@ -69,6 +87,11 @@ ED25519_D = (-121665 * pow(121666, ED25519_P - 2, ED25519_P)) % ED25519_P
 
 CONFIG_FILE = CONFIG / "zoo.json"
 WALLET_FILE = CONFIG / "zoo-wallet.json"
+SPEND_FILE = CONFIG / "zoo-spend.json"
+
+
+class PayError(RuntimeError):
+    """Payment or spend-cap failed. Cloud should fall back to local Ollama."""
 
 
 # ── config ──────────────────────────────────────────────────────────────
@@ -91,6 +114,10 @@ def empty_config() -> dict:
         "rpc": "",
         "chat_url": "",
         "public": "",
+        "spend_cap_usd": DEFAULT_SPEND_CAP,
+        "last_model": "",
+        "project_models": {},
+        "backed_up": False,
     }
 
 
@@ -139,12 +166,20 @@ def chat_url() -> str:
     )
 
 
-def preferred_model(override: str = "") -> str:
+def preferred_model(override: str = "", project: str = "") -> str:
+    cfg = load_config()
+    proj = (project or os.environ.get("GAMEMASTER_ZOO_PROJECT") or "").strip()
+    if proj:
+        mapped = (cfg.get("project_models") or {}).get(proj) or (cfg.get("project_models") or {}).get(
+            Path(proj).name
+        )
+        if mapped:
+            return str(mapped)
     return (
         (override or "").strip()
         or os.environ.get("GAMEMASTER_CLOUD_MODEL")
         or os.environ.get("ZOO_MODEL")
-        or str(load_config().get("model") or "")
+        or str(cfg.get("model") or cfg.get("last_model") or "")
         or DEFAULT_MODEL
     )
 
@@ -784,6 +819,525 @@ def named_balances(owner: str) -> dict[str, Any]:
     }
 
 
+def fmt_usd(value: Any) -> str:
+    if value is None:
+        return "—"
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if x <= 0:
+        return "$0"
+    if x < 0.01:
+        return f"${x:.6f}".rstrip("0").rstrip(".")
+    return f"${x:.4f}"
+
+
+def raw_to_usd(raw: int, decimals: int = 6, token_usd: float = 1.0) -> float:
+    return (int(raw) / (10 ** int(decimals))) * float(token_usd or 0)
+
+
+def spend_path() -> Path:
+    override = os.environ.get("GAMEMASTER_ZOO_SPEND") or os.environ.get("DOTLAB_ZOO_SPEND")
+    return Path(override) if override else SPEND_FILE
+
+
+def empty_spend() -> dict:
+    return {
+        "started": "",
+        "cap_usd": float(load_config().get("spend_cap_usd") or DEFAULT_SPEND_CAP),
+        "spent_usd": 0.0,
+        "calls": 0,
+        "receipts": [],
+        "last_billed_usd": None,
+        "last_token_usd": {"yUSDCx": 1.0, "wTOKENx": None},
+    }
+
+
+def load_spend() -> dict:
+    path = spend_path()
+    out = empty_spend()
+    if not path.is_file():
+        return out
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return out
+    if isinstance(data, dict):
+        out.update({k: v for k, v in data.items() if v is not None})
+    return out
+
+
+def save_spend(data: dict) -> None:
+    path = spend_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def reset_spend() -> dict:
+    data = empty_spend()
+    data["started"] = _now()
+    save_spend(data)
+    return data
+
+
+def _now() -> str:
+    import datetime
+
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def record_receipt(row: dict) -> dict:
+    data = load_spend()
+    if not data.get("started"):
+        data["started"] = _now()
+    billed = float(row.get("billed_usd") or 0)
+    data["spent_usd"] = float(data.get("spent_usd") or 0) + billed
+    data["calls"] = int(data.get("calls") or 0) + 1
+    data["last_billed_usd"] = billed
+    tok = dict(data.get("last_token_usd") or {})
+    if row.get("symbol") and row.get("token_usd") is not None:
+        tok[str(row["symbol"])] = float(row["token_usd"])
+    data["last_token_usd"] = tok
+    recs = list(data.get("receipts") or [])
+    recs.append({**row, "ts": _now()})
+    data["receipts"] = recs[-80:]
+    save_spend(data)
+    return data
+
+
+def spend_cap() -> float:
+    env = os.environ.get("ZOO_SPEND_CAP")
+    if env:
+        try:
+            return float(env)
+        except ValueError:
+            pass
+    return float(load_config().get("spend_cap_usd") or DEFAULT_SPEND_CAP)
+
+
+def remaining_cap() -> float:
+    return max(0.0, spend_cap() - float(load_spend().get("spent_usd") or 0))
+
+
+def last_billed_usd() -> float:
+    v = load_spend().get("last_billed_usd")
+    if v is None:
+        return 0.0002
+    return float(v)
+
+
+def warn_job(kind: str, calls: int | None = None) -> dict:
+    """Print estimate and refuse if over cap. Does not prompt (host stays non-blocking)."""
+    est = estimate_job(kind, calls)
+    pay = can_pay(est["usd"])
+    print(
+        f"  ☁ OpenZoo estimate {kind}: ~{est['calls']} calls × {fmt_usd(est['unit_usd'])} "
+        f"≈ {fmt_usd(est['usd'])}  (session {fmt_usd(est['spent_usd'])} / {fmt_usd(est['cap_usd'])})"
+    )
+    if est.get("over_cap"):
+        print(f"  ⚠ over spend cap — raise with `dotlab zoo set --prefer yUSDCx` or reset spend", file=sys.stderr)
+    if not pay.get("ok"):
+        print(f"  ⚠ cannot settle: {pay.get('reason')} — calls will fall back to local Ollama", file=sys.stderr)
+    return {"estimate": est, "can_pay": pay}
+
+
+def estimate_job(kind: str, calls: int | None = None) -> dict:
+    n = int(calls if calls is not None else ESTIMATE_CALLS.get(kind, 8))
+    unit = last_billed_usd()
+    usd = n * unit
+    return {
+        "kind": kind,
+        "calls": n,
+        "unit_usd": unit,
+        "usd": usd,
+        "cap_usd": spend_cap(),
+        "spent_usd": float(load_spend().get("spent_usd") or 0),
+        "remaining_usd": remaining_cap(),
+        "over_cap": usd > remaining_cap(),
+    }
+
+
+def can_pay(estimate_usd: float = 0.0, *, require_wrapped: bool = True) -> dict:
+    """Honest gate: wallet, wrapped balance, spend cap. Fail-open is not 'funded'."""
+    pub = wallet_public()
+    out: dict[str, Any] = {
+        "ok": False,
+        "wallet": pub,
+        "funded": False,
+        "need_wrap": False,
+        "need_sol": False,
+        "over_cap": False,
+        "reason": "",
+        "balances": {},
+        "spend": {
+            "cap_usd": spend_cap(),
+            "spent_usd": float(load_spend().get("spent_usd") or 0),
+            "remaining_usd": remaining_cap(),
+        },
+    }
+    if not pub:
+        out["reason"] = "no wallet — create one first"
+        return out
+    try:
+        bals = named_balances(pub)
+    except Exception as e:
+        out["reason"] = f"balance RPC failed: {e}"
+        return out
+    tokens = bals.get("tokens") or {}
+    out["balances"] = {
+        "sol_lamports": bals.get("sol_lamports") or 0,
+        "yUSDCx": int(tokens.get("yUSDCx") or 0),
+        "wTOKENx": int(tokens.get("wTOKENx") or 0),
+        "USDC": int(tokens.get("USDC") or 0),
+        "TOKEN": int(tokens.get("TOKEN") or 0),
+        "yUSDCx_usd": raw_to_usd(int(tokens.get("yUSDCx") or 0)),
+        "USDC_usd": raw_to_usd(int(tokens.get("USDC") or 0)),
+    }
+    wrapped = out["balances"]["yUSDCx"] > 0 or out["balances"]["wTOKENx"] > 0
+    raw_ok = out["balances"]["USDC"] > 0 or out["balances"]["TOKEN"] > 0
+    if int(bals.get("sol_lamports") or 0) < 400_000 and raw_ok:
+        out["need_sol"] = True
+    if wrapped:
+        out["funded"] = True
+    elif raw_ok:
+        out["need_wrap"] = True
+        out["reason"] = "USDC/TOKEN present — wrap to yUSDCx/wTOKENx before the floor will settle"
+        if not require_wrapped:
+            out["ok"] = remaining_cap() >= float(estimate_usd or 0)
+            return out
+        return out
+    else:
+        out["reason"] = "wallet empty — send USDC or TOKEN, then wrap"
+        return out
+    if remaining_cap() < float(estimate_usd or 0):
+        out["over_cap"] = True
+        out["reason"] = (
+            f"session cap {fmt_usd(spend_cap())} almost used "
+            f"({fmt_usd(out['spend']['spent_usd'])} spent)"
+        )
+        return out
+    out["ok"] = True
+    return out
+
+
+def health_snapshot(model: str = "", auto_off: bool = False) -> dict:
+    ping = probe(model)
+    pay = can_pay(last_billed_usd(), require_wrapped=True)
+    import cloud
+
+    active = cloud.active_provider() == "zoo"
+    floor_ok = bool(ping.get("ok"))
+    flipped = False
+    if auto_off and active and not floor_ok:
+        cloud.cmd_off()
+        active = False
+        flipped = True
+    return {
+        "ok": floor_ok,
+        "floor": floor_ok,
+        "active": active,
+        "auto_off": flipped,
+        "can_pay": pay,
+        "spend": load_spend(),
+        "ping": ping,
+        "model": preferred_model(model),
+    }
+
+
+# ── wrap + send ─────────────────────────────────────────────────────────
+
+
+def compile_signed_tx(
+    fee_payer: str,
+    seed: bytes,
+    ixs: list[tuple[str, list[tuple[str, bool, bool]], bytes]],
+    blockhash: str,
+) -> str:
+    metas: dict[str, dict[str, bool]] = {}
+
+    def add(key: str, signer: bool, writable: bool) -> None:
+        cur = metas.get(key) or {"signer": False, "writable": False}
+        cur["signer"] = bool(cur["signer"] or signer)
+        cur["writable"] = bool(cur["writable"] or writable)
+        metas[key] = cur
+
+    add(fee_payer, True, True)
+    for prog, accs, _data in ixs:
+        for key, signer, writable in accs:
+            add(key, signer, writable)
+        add(prog, False, False)
+    writ_sig = [k for k, m in metas.items() if m["signer"] and m["writable"] and k != fee_payer]
+    read_sig = [k for k, m in metas.items() if m["signer"] and not m["writable"]]
+    writ_uns = [k for k, m in metas.items() if (not m["signer"]) and m["writable"]]
+    read_uns = [k for k, m in metas.items() if (not m["signer"]) and (not m["writable"])]
+    keys = [fee_payer] + writ_sig + read_sig + writ_uns + read_uns
+    idx = {k: i for i, k in enumerate(keys)}
+    header = (1 + len(writ_sig) + len(read_sig), len(read_sig), len(read_uns))
+    compiled = []
+    for prog, accs, data in ixs:
+        compiled.append((idx[prog], [idx[k] for k, _s, _w in accs], data))
+    message = compile_legacy_message(
+        header,
+        [b58decode(k) for k in keys],
+        b58decode(blockhash),
+        compiled,
+    )
+    sigs = [ed25519_sign(seed, message)] + [b"\x00" * 64] * (header[0] - 1)
+    # only fee_payer signs here (wrap/pay owner is fee payer)
+    return base64.b64encode(serialize_legacy_tx(sigs, message)).decode("ascii")
+
+
+def send_transaction(tx_b64: str) -> str:
+    res = rpc("sendTransaction", [tx_b64, {"encoding": "base64", "preflightCommitment": "confirmed"}])
+    if not res:
+        raise RuntimeError("RPC sendTransaction returned empty")
+    return str(res)
+
+
+def create_ata_ix(payer: str, owner: str, mint: str, token_program: str) -> tuple[str, list[tuple[str, bool, bool]], bytes]:
+    ata = associated_token_address(owner, mint, token_program)
+    accs = [
+        (payer, True, True),
+        (ata, False, True),
+        (owner, False, False),
+        (mint, False, False),
+        (SYSTEM_PROGRAM, False, False),
+        (token_program, False, False),
+    ]
+    return ATA_PROGRAM, accs, bytes([1])  # CreateIdempotent
+
+
+def wrap_ix(
+    wrapped_mint: str,
+    escrow: str,
+    mint_auth: str,
+    dest_ata: str,
+    amount: int,
+    bump: int,
+) -> tuple[str, list[tuple[str, bool, bool]], bytes]:
+    data = bytearray(10)
+    data[0] = 1
+    data[1:9] = int(amount).to_bytes(8, "little")
+    data[9] = int(bump) & 0xFF
+    accs = [
+        (escrow, False, True),
+        (wrapped_mint, False, True),
+        (dest_ata, False, True),
+        (mint_auth, False, False),
+        (TOKEN_2022, False, False),
+    ]
+    return WRAP_PROGRAM, accs, bytes(data)
+
+
+def transfer_checked_accounts(
+    source: str, mint: str, dest: str, owner: str, amount: int, decimals: int, program: str
+) -> tuple[str, list[tuple[str, bool, bool]], bytes]:
+    accs = [
+        (source, False, True),
+        (mint, False, False),
+        (dest, False, True),
+        (owner, True, False),
+    ]
+    return program, accs, transfer_checked_ix(amount, decimals)
+
+
+def wrap_tokens(which: str = "auto", amount_raw: int = 0) -> dict:
+    """Wrap USDC→yUSDCx or TOKEN→wTOKENx. Owner pays a little SOL."""
+    seed, owner = load_keypair()
+    bals = named_balances(owner)
+    tokens = bals.get("tokens") or {}
+    usdc = int(tokens.get("USDC") or 0)
+    token = int(tokens.get("TOKEN") or 0)
+    if which == "auto":
+        which = "usdc" if usdc >= token else "token"
+    which = which.lower()
+    if which in ("usdc", "yusdcx"):
+        if usdc <= 0:
+            raise RuntimeError("no USDC to wrap")
+        amt = int(amount_raw or usdc)
+        underlying, wrapped, program = USDC, YUSDCX, TOKEN_KET
+        escrow, auth, bump = WRAP_USDC_ESCROW, WRAP_USDC_AUTH, WRAP_USDC_BUMP
+    else:
+        if token <= 0:
+            raise RuntimeError("no TOKEN to wrap")
+        amt = int(amount_raw or token)
+        underlying, wrapped, program = TOKEN_CA, WTOKENX, TOKEN_2022
+        escrow, auth, bump = WRAP_TOKEN_ESCROW, WRAP_TOKEN_AUTH, WRAP_TOKEN_BUMP
+    if int(bals.get("sol_lamports") or 0) < 400_000:
+        raise RuntimeError("need ~0.001 SOL on the zoo wallet for wrap fees")
+    dest = associated_token_address(owner, wrapped, TOKEN_2022)
+    src = associated_token_address(owner, underlying, program)
+    ixs = [
+        create_ata_ix(owner, owner, wrapped, TOKEN_2022),
+        wrap_ix(wrapped, escrow, auth, dest, amt, bump),
+        transfer_checked_accounts(src, underlying, escrow, owner, amt, 6, program),
+    ]
+    tx = compile_signed_tx(owner, seed, ixs, latest_blockhash())
+    sig = send_transaction(tx)
+    return {"ok": True, "sig": sig, "amount": amt, "which": which, "solscan": f"https://solscan.io/tx/{sig}"}
+
+
+# ── QR (version 4, byte mode, ECC L) ────────────────────────────────────
+
+
+def qr_svg(text: str, scale: int = 4) -> str:
+    """Minimal QR SVG so a phone can fund the deposit address."""
+    matrix = _qr_matrix(text.encode("utf-8")[:62])
+    n = len(matrix)
+    px = n * scale
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {px} {px}" width="{px}" height="{px}" shape-rendering="crispEdges">'
+        f'<rect width="100%" height="100%" fill="#fff"/>'
+    ]
+    for y, row in enumerate(matrix):
+        for x, bit in enumerate(row):
+            if bit:
+                parts.append(f'<rect x="{x * scale}" y="{y * scale}" width="{scale}" height="{scale}" fill="#000"/>')
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _qr_matrix(data: bytes) -> list[list[int]]:
+    # Version 4, 33×33, ECC L. Enough for a Solana address.
+    size = 33
+    # Reed-Solomon + full QR is long; draw a scannable-enough byte QR via a compact encoder.
+    return _qr_v4_byte(data)
+
+
+def _gf_mul(a: int, b: int) -> int:
+    p = 0
+    for _ in range(8):
+        if b & 1:
+            p ^= a
+        hi = a & 0x80
+        a = (a << 1) & 0xFF
+        if hi:
+            a ^= 0x11D
+        b >>= 1
+    return p
+
+
+def _rs_encode(data: list[int], nsym: int) -> list[int]:
+    gen = [1]
+    for i in range(nsym):
+        gen = _gf_poly_mul(gen, [1, _gf_pow(2, i)])
+    out = data + [0] * nsym
+    for i in range(len(data)):
+        coef = out[i]
+        if coef == 0:
+            continue
+        for j in range(1, len(gen)):
+            out[i + j] ^= _gf_mul(gen[j], coef)
+    return out[-nsym:]
+
+
+def _gf_pow(a: int, n: int) -> int:
+    out = 1
+    for _ in range(n):
+        out = _gf_mul(out, a)
+    return out
+
+
+def _gf_poly_mul(p: list[int], q: list[int]) -> list[int]:
+    r = [0] * (len(p) + len(q) - 1)
+    for i, a in enumerate(p):
+        for j, b in enumerate(q):
+            r[i + j] ^= _gf_mul(a, b)
+    return r
+
+
+def _qr_v4_byte(data: bytes) -> list[list[int]]:
+    """Version 4-L: 80 data codewords, 20 ECC. Capacity 62 data bytes + headers."""
+    size = 33
+    payload = list(data[:62])
+    bits = [0, 1, 0, 0]  # byte mode
+    n = len(payload)
+    bits.extend((n >> (7 - i)) & 1 for i in range(8))
+    for b in payload:
+        bits.extend((b >> (7 - i)) & 1 for i in range(8))
+    bits.extend([0, 0, 0, 0])  # terminator
+    while len(bits) % 8:
+        bits.append(0)
+    pad = [0xEC, 0x11]
+    while len(bits) < 80 * 8:
+        p = pad[(len(bits) // 8) % 2]
+        bits.extend((p >> (7 - i)) & 1 for i in range(8))
+    bits = bits[: 80 * 8]
+    blocks = [int("".join(str(b) for b in bits[i : i + 8]), 2) for i in range(0, len(bits), 8)]
+    ecc = _rs_encode(blocks, 20)
+    code = blocks + ecc
+    # place
+    m = [[None] * size for _ in range(size)]
+
+    def reserved(x: int, y: int) -> bool:
+        if x < 9 and y < 9:
+            return True
+        if x >= size - 8 and y < 9:
+            return True
+        if x < 9 and y >= size - 8:
+            return True
+        if y == 6 or x == 6:
+            return True
+        # alignment at (26,26) version 4
+        if 24 <= x <= 28 and 24 <= y <= 28:
+            return True
+        if y in (0, 1, 2, 3, 4, 5) and 9 <= x < size - 8:
+            return True  # format/timing already
+        return False
+
+    # finders
+    def finder(ox: int, oy: int) -> None:
+        for y in range(7):
+            for x in range(7):
+                edge = x in (0, 6) or y in (0, 6)
+                inner = 2 <= x <= 4 and 2 <= y <= 4
+                m[oy + y][ox + x] = 1 if edge or inner else 0
+        for y in range(-1, 8):
+            for x in range(-1, 8):
+                xx, yy = ox + x, oy + y
+                if 0 <= xx < size and 0 <= yy < size and m[yy][xx] is None:
+                    m[yy][xx] = 0
+
+    finder(0, 0)
+    finder(size - 7, 0)
+    finder(0, size - 7)
+    for i in range(size):
+        if m[6][i] is None:
+            m[6][i] = i % 2 == 0
+        if m[i][6] is None:
+            m[i][6] = i % 2 == 0
+    # alignment
+    for y in range(5):
+        for x in range(5):
+            edge = x in (0, 4) or y in (0, 4)
+            m[24 + y][24 + x] = 1 if edge or (x == 2 and y == 2) else 0
+    # data bits zig-zag
+    bitstream = []
+    for b in code:
+        bitstream.extend((b >> (7 - i)) & 1 for i in range(8))
+    dirs = -1
+    col = size - 1
+    bi = 0
+    while col > 0:
+        if col == 6:
+            col -= 1
+        for row in range(size)[::dirs]:
+            for c in (col, col - 1):
+                if m[row][c] is None:
+                    bit = bitstream[bi] if bi < len(bitstream) else 0
+                    mask = (row + c) % 2 == 0  # mask 0
+                    m[row][c] = bit ^ (1 if mask else 0)
+                    bi += 1
+        dirs *= -1
+        col -= 2
+    return [[1 if cell else 0 for cell in row] for row in m]
+
+
 # ── chat ────────────────────────────────────────────────────────────────
 
 
@@ -841,6 +1395,9 @@ def chat(
     use_model = preferred_model(model)
     if use_model in ("gamemaster", "gamemaster-dense", "dotlab", "dotlab-dense") or use_model.startswith("qwen"):
         use_model = preferred_model("")
+    gate = can_pay(last_billed_usd())
+    if not gate["ok"]:
+        raise PayError(gate.get("reason") or "cannot pay OpenZoo")
     body = {
         "model": use_model,
         "messages": [
@@ -852,16 +1409,26 @@ def chat(
     url = chat_url()
     code, _, raw = http("POST", url, payload=body, timeout=180.0)
     if code == 200:
+        record_receipt(
+            {
+                "model": use_model,
+                "billed_usd": 0.0,
+                "pricing": "cached-or-failopen",
+                "fail_open": True,
+                "symbol": "",
+                "amount": "0",
+            }
+        )
         return extract_text(json.loads(raw.decode("utf-8")))
     if code != 402:
-        raise RuntimeError(f"OpenZoo HTTP {code} {url}: {raw[:400].decode('utf-8', 'replace')}")
+        raise PayError(f"OpenZoo HTTP {code} {url}: {raw[:400].decode('utf-8', 'replace')}")
     req = parse_402(raw)
     try:
         seed, owner = load_keypair()
-    except FileNotFoundError:
-        raise RuntimeError(
+    except FileNotFoundError as e:
+        raise PayError(
             f"OpenZoo needs a wallet. Run: dotlab zoo wallet  then wrap USDC/TOKEN at {HELP}"
-        ) from None
+        ) from e
     bals = {}
     try:
         named = named_balances(owner)["tokens"]
@@ -869,7 +1436,11 @@ def chat(
     except Exception:
         bals = {}
     accept = pick_accept(req["accepts"], balances=bals)
-    header = pay_header(accept, owner, seed)
+    extra = summarize_accept(accept)
+    try:
+        header = pay_header(accept, owner, seed)
+    except Exception as e:
+        raise PayError(f"could not build X-PAYMENT: {e}") from e
     code2, _, raw2 = http(
         "POST",
         url,
@@ -878,12 +1449,27 @@ def chat(
         timeout=180.0,
     )
     if code2 != 200:
-        extra = summarize_accept(accept)
-        raise RuntimeError(
+        raise PayError(
             f"OpenZoo pay failed HTTP {code2} {extra.get('symbol')} "
             f"amount={extra.get('amount')} pricing={extra.get('pricing')}: "
             f"{raw2[:360].decode('utf-8', 'replace')}"
         )
+    funded = int(bals.get(extra.get("symbol") or "yUSDCx") or 0) > 0
+    record_receipt(
+        {
+            "model": use_model,
+            "billed_usd": float(extra.get("billedUsd") or 0),
+            "pricing": extra.get("pricing") or "",
+            "saves": extra.get("savesVsDirect"),
+            "symbol": extra.get("symbol") or "",
+            "amount": extra.get("amount") or "",
+            "token_usd": extra.get("tokenUsd"),
+            "fail_open": not funded,
+        }
+    )
+    cfg = load_config()
+    cfg["last_model"] = use_model
+    save_config(cfg)
     return extract_text(json.loads(raw2.decode("utf-8")))
 
 
@@ -905,6 +1491,21 @@ def status_dict() -> dict:
         "pump": PUMP,
         "token_ca": TOKEN_CA,
         "featured": list(FEATURED),
+        "presets": {
+            "cheap": "openai/gpt-4o-mini",
+            "coder": "x-ai/grok-4.6",
+            "critic": "anthropic/claude-sonnet-4",
+            "flash": "google/gemini-2.5-flash",
+        },
+        "spend": {
+            "cap_usd": spend_cap(),
+            "spent_usd": float(load_spend().get("spent_usd") or 0),
+            "remaining_usd": remaining_cap(),
+            "calls": int(load_spend().get("calls") or 0),
+            "spent_label": fmt_usd(load_spend().get("spent_usd") or 0),
+            "cap_label": fmt_usd(spend_cap()),
+        },
+        "backed_up": bool(cfg.get("backed_up")),
         "rails": {
             "yUSDCx": YUSDCX,
             "wTOKENx": WTOKENX,
@@ -952,7 +1553,24 @@ def handle_http(method: str, path: str, body: dict | None = None) -> tuple[int, 
                 if not wallet_path().is_file():
                     return 200, {"ok": True, "has_wallet": False, "tokens": {}, "sol_lamports": 0}
                 _, pub = load_keypair()
-                return 200, {"ok": True, "has_wallet": True, **named_balances(pub)}
+                bals = named_balances(pub)
+                pay = can_pay(last_billed_usd())
+                return 200, {"ok": True, "has_wallet": True, **bals, "can_pay": pay, "human": pay.get("balances")}
+            if path == "/api/zoo/spend":
+                data = load_spend()
+                return 200, {"ok": True, **data, "cap_usd": spend_cap(), "remaining_usd": remaining_cap()}
+            if path == "/api/zoo/health":
+                return 200, health_snapshot(model, auto_off=bool(body.get("auto_off")))
+            if path == "/api/zoo/can-pay":
+                return 200, can_pay(float(body.get("usd") or last_billed_usd() or 0))
+            if path == "/api/zoo/estimate":
+                return 200, {"ok": True, **estimate_job(str(body.get("kind") or "chat"))}
+            if path == "/api/zoo/qr":
+                pub = wallet_public()
+                if not pub:
+                    return 400, {"ok": False, "error": "no wallet"}
+                svg = qr_svg(pub)
+                return 200, {"ok": True, "svg": svg, "address": pub, "uri": f"solana:{pub}"}
             return 404, {"ok": False, "error": "unknown zoo route"}
 
         action = str(body.get("action") or "").lower()
@@ -975,13 +1593,42 @@ def handle_http(method: str, path: str, body: dict | None = None) -> tuple[int, 
             cfg = load_config()
             if body.get("model"):
                 cfg["model"] = str(body["model"]).strip()
+                cfg["last_model"] = cfg["model"]
             if body.get("prefer"):
                 cfg["prefer"] = str(body["prefer"]).strip()
+            if body.get("spend_cap_usd") not in (None, ""):
+                cfg["spend_cap_usd"] = float(body["spend_cap_usd"])
+            if body.get("project") and body.get("model"):
+                slot = dict(cfg.get("project_models") or {})
+                slot[str(body["project"])] = str(body["model"]).strip()
+                cfg["project_models"] = slot
             save_config(cfg)
             return 200, {"ok": True, **http_status()}
         if action == "ping":
             return 200, probe(model)
-        return 400, {"ok": False, "error": "action wallet|on|off|set|ping"}
+        if action == "wrap":
+            return 200, wrap_tokens(str(body.get("which") or "auto"), int(body.get("amount") or 0))
+        if action == "reset-spend":
+            return 200, {"ok": True, **reset_spend()}
+        if action == "export-wallet":
+            raw = wallet_path().read_text(encoding="utf-8") if wallet_path().is_file() else ""
+            if not raw:
+                return 400, {"ok": False, "error": "no wallet"}
+            cfg = load_config()
+            cfg["backed_up"] = True
+            save_config(cfg)
+            dest = str(body.get("path") or "")
+            if dest:
+                Path(dest).expanduser().write_text(raw, encoding="utf-8")
+            return 200, {
+                "ok": True,
+                "public": wallet_public(),
+                "json": raw,
+                "hint": "Save this JSON offline. Anyone with it can spend your zoo funds.",
+            }
+        if action == "health":
+            return 200, health_snapshot(model, auto_off=bool(body.get("auto_off", True)))
+        return 400, {"ok": False, "error": "action wallet|on|off|set|ping|wrap|reset-spend|export-wallet|health"}
     except Exception as e:
         return 502, {"ok": False, "error": str(e)}
 
@@ -1009,8 +1656,44 @@ def cmd_status() -> int:
         print("  wallet  (none)  →  dotlab zoo wallet")
     print(f"  fund    send USDC or TOKEN, then wrap at {HELP}")
     print(f"  token   {TOKEN_CA}")
+    print(f"  spend   {fmt_usd(load_spend().get('spent_usd') or 0)} / {fmt_usd(spend_cap())}  ({load_spend().get('calls') or 0} calls)")
     print("  opt in  dotlab cloud on zoo")
     return 0
+
+
+def cmd_spend(reset: bool) -> int:
+    if reset:
+        reset_spend()
+    data = load_spend()
+    print(f"spent  {fmt_usd(data.get('spent_usd'))} / {fmt_usd(spend_cap())}")
+    print(f"calls  {data.get('calls') or 0}  since {data.get('started') or '—'}")
+    for rec in (data.get("receipts") or [])[-12:]:
+        print(
+            f"  {rec.get('ts', '')[:19]}  {rec.get('model')}  "
+            f"{rec.get('pricing')}  {fmt_usd(rec.get('billed_usd'))}  "
+            f"{rec.get('symbol')} {rec.get('amount')}"
+            f"{'  FAIL-OPEN' if rec.get('fail_open') else ''}"
+        )
+    return 0
+
+
+def cmd_wrap(which: str) -> int:
+    try:
+        out = wrap_tokens(which or "auto")
+    except Exception as e:
+        print(f"wrap failed: {e}", file=sys.stderr)
+        return 1
+    print(f"wrapped {out.get('which')} {out.get('amount')}  {out.get('solscan')}")
+    return 0
+
+
+def cmd_health() -> int:
+    h = health_snapshot(auto_off=False)
+    print(f"floor   {'ok' if h.get('floor') else 'DOWN'}  active={h.get('active')}")
+    pay = h.get("can_pay") or {}
+    print(f"can_pay {pay.get('ok')}  {pay.get('reason') or 'ready'}")
+    print(f"spend   {fmt_usd((h.get('spend') or {}).get('spent_usd'))} / {fmt_usd(spend_cap())}")
+    return 0 if h.get("floor") else 1
 
 
 def cmd_models(query: str, limit: int) -> int:
@@ -1098,6 +1781,10 @@ def cmd_balance() -> int:
     print(f"SOL     {data['sol_lamports']} lamports")
     for name, amt in (data.get("tokens") or {}).items():
         print(f"{name:8} {amt}")
+    pay = can_pay(last_billed_usd())
+    human = pay.get("balances") or {}
+    print(f"yUSDCx  {fmt_usd(human.get('yUSDCx_usd'))}  USDC {fmt_usd(human.get('USDC_usd'))}")
+    print(f"can_pay {pay.get('ok')}  {pay.get('reason') or 'ready'}")
     print(f"wrap    {HELP}")
     return 0
 
@@ -1183,6 +1870,11 @@ def main() -> int:
     p_w = sub.add_parser("wallet")
     p_w.add_argument("--new", action="store_true")
     sub.add_parser("balance")
+    p_sp = sub.add_parser("spend")
+    p_sp.add_argument("--reset", action="store_true")
+    p_wr = sub.add_parser("wrap")
+    p_wr.add_argument("which", nargs="?", default="auto", help="auto|usdc|token")
+    sub.add_parser("health")
     p_e = sub.add_parser("extra")
     p_e.add_argument("--model", default="")
     p_s = sub.add_parser("stall")
@@ -1217,6 +1909,12 @@ def main() -> int:
         return cmd_wallet(args.new)
     if args.cmd == "balance":
         return cmd_balance()
+    if args.cmd == "spend":
+        return cmd_spend(args.reset)
+    if args.cmd == "wrap":
+        return cmd_wrap(args.which)
+    if args.cmd == "health":
+        return cmd_health()
     if args.cmd == "extra":
         return cmd_extra(args.model)
     if args.cmd == "stall":

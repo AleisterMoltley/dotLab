@@ -287,6 +287,13 @@ def tool_write(project: Path, path: str, content: str) -> str:
         except Exception:
             pass
     # Patch-only gate: block full replace of large protected files
+    before = ""
+    try:
+        src = safe_path(project, rel)
+        if src.is_file():
+            before = src.read_text(encoding="utf-8")
+    except Exception:
+        before = ""
     try:
         import quality as qualitylib
 
@@ -304,6 +311,12 @@ def tool_write(project: Path, path: str, content: str) -> str:
             bak = f.with_suffix(f.suffix + ".bak")
             bak.write_bytes(f.read_bytes())
         f.write_text(content, encoding="utf-8")
+    try:
+        import kit as kitlib
+
+        kitlib.note_file(project, rel, before, content or "")
+    except Exception:
+        pass
     seclib.audit(
         project,
         "write_file",
@@ -360,6 +373,12 @@ def tool_apply_patch(project: Path, path: str, search: str, replace: str) -> str
         if not res.get("ok"):
             return f"ERROR: {res.get('error')}"
         after = qualitylib.snapshot_file(project, path)
+        try:
+            import kit as kitlib
+
+            kitlib.note_file(project, rel, before, after)
+        except Exception:
+            pass
         seclib.audit(
             project,
             "apply_patch",
@@ -657,6 +676,21 @@ def main() -> int:
         os.environ["GAMEMASTER_CLOUD"] = args.cloud
     require_backend()
     task = " ".join(args.prompt)
+    try:
+        import cloud as cloudlib
+        import zoo as zoolib
+
+        if cloudlib.active_provider() == "zoo":
+            zoolib.warn_job("agent")
+            os.environ["GAMEMASTER_ZOO_PROJECT"] = str(project)
+    except Exception:
+        pass
+    try:
+        import kit as kitlib
+
+        kitlib.begin_step(project, task)
+    except Exception:
+        pass
 
     # Instant craft first — many agent tasks are feel/count/palette
     try:

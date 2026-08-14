@@ -222,6 +222,29 @@ class TestWalletAndCloud(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertFalse(data.get("active"))
 
+    def test_spend_ledger_and_cap(self) -> None:
+        zoo.reset_spend()
+        zoo.record_receipt({"model": "x-ai/grok-4.6", "billed_usd": 0.01, "pricing": "markup"})
+        data = zoo.load_spend()
+        self.assertAlmostEqual(data["spent_usd"], 0.01, places=6)
+        self.assertEqual(data["calls"], 1)
+        est = zoo.estimate_job("build", calls=10)
+        self.assertEqual(est["calls"], 10)
+        self.assertGreater(est["usd"], 0)
+
+    def test_can_pay_without_wallet(self) -> None:
+        gate = zoo.can_pay(0.01)
+        self.assertFalse(gate["ok"])
+        self.assertIn("wallet", (gate.get("reason") or "").lower())
+
+    def test_payerror_fallback_in_cloud(self) -> None:
+        os.environ["GAMEMASTER_CLOUD"] = "zoo"
+        with mock.patch.object(zoo, "chat", side_effect=zoo.PayError("empty")):
+            with mock.patch.object(cloud, "ollama_chat", return_value="local-ok") as ollama:
+                text = cloud.chat([{"role": "user", "content": "hi"}], model="x-ai/grok-4.6")
+        self.assertEqual(text, "local-ok")
+        ollama.assert_called_once()
+
     def test_handle_http_ping_uses_official_url(self) -> None:
         fake = json.dumps(SAMPLE_402).encode()
         with mock.patch.object(zoo, "http", return_value=(402, {}, fake)):
@@ -255,8 +278,9 @@ class TestCatalogHooks(unittest.TestCase):
         dash = (root / "live" / "dashboard.html").read_text(encoding="utf-8")
         self.assertIn("https://openzoo.fun/", readme)
         self.assertIn("dotlab zoo ping", readme)
-        self.assertIn("id=\"zooModal\"", dash)
-        self.assertIn("https://openzoo.fun/api/v1/chat/completions", dash)
+        self.assertIn("id=\"zooPill\"", dash)
+        self.assertNotIn("id=\"zooModal\"", dash)
+        self.assertIn("openzoo.fun", dash)
 
     def test_turbo_routes_openzoo_pack(self) -> None:
         kn = turbo.select_knowledge("openzoo x402 stall", max_chars=14000)

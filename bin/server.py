@@ -589,6 +589,31 @@ class Handler(SimpleHTTPRequestHandler):
             if not prompt:
                 return self._json(400, {"ok": False, "error": "prompt required"})
             return self._json(200, ops.start_agent(target, prompt, model=str(body.get("model") or "")))
+        if path.endswith("/undo"):
+            if not target.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            import kit as kitlib
+
+            msg = kitlib.undo_step(target)
+            return self._json(200, {"ok": msg.startswith("OK"), "message": msg})
+        if path.endswith("/recap"):
+            if not target.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            import kit as kitlib
+
+            return self._json(
+                200,
+                {"ok": True, "recap": kitlib.recap(target), "prompt": kitlib.last_prompt(target)},
+            )
+        if path.endswith("/replay"):
+            if not target.is_dir():
+                return self._json(400, {"ok": False, "error": "not a folder"})
+            import kit as kitlib
+
+            prompt = kitlib.last_prompt(target)
+            if not prompt:
+                return self._json(400, {"ok": False, "error": "no last prompt"})
+            return self._json(200, ops.start_agent(target, prompt, model=str(body.get("model") or "")))
         if path.endswith("/repair") or path.endswith("/auto-repair"):
             if not target.is_dir() or not looks_like_game(target):
                 return self._json(400, {"ok": False, "error": "not a game folder"})

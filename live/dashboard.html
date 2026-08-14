@@ -187,42 +187,10 @@
       <button type="button" id="btn-auto" class="active" title="Auto-apply updates while building">Auto-update: ON</button>
       <button type="button" id="btn-log" class="ghost">AI log</button>
       <button type="button" id="btn-newtab" class="ghost">Pop-out game</button>
-      <button type="button" id="btn-zoo" class="zoo">OpenZoo</button>
+      <span class="pill" id="zooPill" title="Backend — manage in studio">local</span>
       <button type="button" id="btn-gh" class="gh">GitHub</button>
     </div>
   </header>
-
-  <div class="modal-bg" id="zooModal">
-    <div class="modal wide">
-      <h2>OpenZoo</h2>
-      <p>Use the <a href="https://openzoo.fun/" target="_blank" rel="noopener" style="color:var(--accent)">openzoo.fun</a> floor while you play. leCore in front — long context is cheaper than buying the model direct. No API key.</p>
-      <p id="zooLead">Local Ollama is the default. Turn OpenZoo on to route studio/agent through the 402.</p>
-      <div class="kv">
-        <span>Status</span><div id="zooState">…</div>
-        <span>Chat</span><div class="mono" id="zooUrl">https://openzoo.fun/api/v1/chat/completions</div>
-        <span>Wallet</span><div class="mono" id="zooAddr">—</div>
-        <span>Balances</span><div id="zooBals">—</div>
-        <span>Quote</span><div id="zooQuote">—</div>
-      </div>
-      <label style="display:block;font-size:11px;color:var(--muted);margin:0 0 4px">Floor model</label>
-      <select id="zooModel" style="width:100%;margin:0 0 8px;background:#0a0a10;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font:inherit;font-size:12px">
-        <option value="x-ai/grok-4.6">x-ai/grok-4.6</option>
-        <option value="google/gemini-2.5-flash">google/gemini-2.5-flash</option>
-        <option value="anthropic/claude-sonnet-4">anthropic/claude-sonnet-4</option>
-        <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
-      </select>
-      <div class="err" id="zooErr"></div>
-      <div class="row">
-        <button type="button" id="zooWallet">Wallet</button>
-        <button type="button" id="zooCopy">Copy</button>
-        <button type="button" id="zooPing">Ping</button>
-        <button type="button" id="zooOn" class="primary">Use OpenZoo</button>
-        <button type="button" class="ghost" id="zooOff">Local</button>
-        <button type="button" class="ghost" id="zooClose">Close</button>
-      </div>
-      <p style="margin-top:10px">Wrap USDC → yUSDCx or TOKEN → wTOKENx at <a href="https://x402.accrue.fund/start" target="_blank" rel="noopener" style="color:var(--accent)">x402.accrue.fund/start</a>.</p>
-    </div>
-  </div>
 
   <div class="modal-bg" id="ghModal">
     <div class="modal">
@@ -433,7 +401,7 @@
           phaseEl.textContent = data.phase;
           phaseEl.className = 'pill ' + (data.phase === 'done' || data.phase === 'ready' || data.phase === 'idle' ? 'ok' : 'busy');
         }
-        if (data.zoo) paintZooBtn(data.zoo);
+        if (data.zoo) paintZooPill(data.zoo);
         if (data.headline) headline.textContent = data.headline;
         if (data.detail) subhead.textContent = data.detail;
         if (typeof data.last_event_id === 'number' && data.last_event_id > lastEventId) {
@@ -564,91 +532,20 @@
 
     refreshGh();
 
-    const zooModal = document.getElementById('zooModal');
-    const zooBtn = document.getElementById('btn-zoo');
-    const zooErr = document.getElementById('zooErr');
-    function paintZooBtn(st) {
-      if (!zooBtn || !st) return;
+    function paintZooPill(st) {
+      const pill = document.getElementById('zooPill');
+      if (!pill || !st) return;
       if (st.active) {
-        zooBtn.textContent = 'OpenZoo ON';
-        zooBtn.classList.add('on');
+        const spent = (st.spend && st.spend.spent_label) || '$0';
+        pill.textContent = 'zoo · ' + (st.model || 'floor') + ' · ' + spent;
+        pill.classList.add('ok');
+        pill.title = 'Coding via openzoo.fun — manage wallet in studio (./start)';
       } else {
-        zooBtn.textContent = 'OpenZoo';
-        zooBtn.classList.remove('on');
+        pill.textContent = 'local';
+        pill.classList.remove('ok');
+        pill.title = 'Local Ollama — manage OpenZoo in studio';
       }
     }
-    function paintZoo(st) {
-      if (!st) return;
-      paintZooBtn(st);
-      document.getElementById('zooState').textContent = st.active
-        ? ('ON · ' + (st.model || 'floor'))
-        : 'off · local Ollama';
-      document.getElementById('zooUrl').textContent = st.chat_url || 'https://openzoo.fun/api/v1/chat/completions';
-      document.getElementById('zooAddr').textContent = st.wallet || '(no wallet yet)';
-      const sel = document.getElementById('zooModel');
-      if (sel && st.model) sel.value = st.model;
-      document.getElementById('zooLead').textContent = st.active
-        ? 'Studio and agent calls go to openzoo.fun. Keep this window open and keep playing.'
-        : 'Local Ollama is the default. Turn OpenZoo on to route studio/agent through the 402.';
-    }
-    async function loadZoo() {
-      zooErr.textContent = '';
-      try {
-        const d = await fetch('/api/zoo').then((r) => r.json());
-        paintZoo(d);
-        const b = await fetch('/api/zoo/balance').then((r) => r.json()).catch(() => ({}));
-        if (b.has_wallet) {
-          const t = b.tokens || {};
-          document.getElementById('zooBals').textContent =
-            'yUSDCx ' + (t.yUSDCx || 0) + ' · wTOKENx ' + (t.wTOKENx || 0) + ' · USDC ' + (t.USDC || 0);
-        } else {
-          document.getElementById('zooBals').textContent = 'create a wallet first';
-        }
-        const model = document.getElementById('zooModel').value;
-        const q = await fetch('/api/zoo/quote?model=' + encodeURIComponent(model)).then((r) => r.json()).catch(() => ({}));
-        if (q.billedUsd != null) {
-          document.getElementById('zooQuote').textContent =
-            (q.model || model) + ' · ' + (q.pricing || '') + ' · $' + q.billedUsd;
-        }
-      } catch (e) {
-        zooErr.textContent = String(e && e.message ? e.message : e);
-      }
-    }
-    zooBtn.onclick = () => { zooModal.classList.add('show'); loadZoo(); };
-    document.getElementById('zooClose').onclick = () => zooModal.classList.remove('show');
-    document.getElementById('zooWallet').onclick = async () => {
-      zooErr.textContent = '';
-      const d = await fetch('/api/zoo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'wallet' }) }).then((r) => r.json());
-      if (!d.ok) { zooErr.textContent = d.error || 'wallet failed'; return; }
-      paintZoo(d);
-      loadZoo();
-    };
-    document.getElementById('zooCopy').onclick = () => {
-      const addr = document.getElementById('zooAddr').textContent;
-      if (addr && addr[0] !== '(' && navigator.clipboard) navigator.clipboard.writeText(addr);
-    };
-    document.getElementById('zooPing').onclick = async () => {
-      const model = document.getElementById('zooModel').value;
-      const d = await fetch('/api/zoo/ping?model=' + encodeURIComponent(model)).then((r) => r.json());
-      document.getElementById('zooQuote').textContent = d.ok
-        ? ('live HTTP ' + d.status + ' · ' + (d.url || 'openzoo.fun'))
-        : (d.error || 'ping failed');
-    };
-    document.getElementById('zooOn').onclick = async () => {
-      zooErr.textContent = '';
-      const d = await fetch('/api/zoo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'on' }) }).then((r) => r.json());
-      if (!d.ok) { zooErr.textContent = d.error || 'enable failed'; return; }
-      paintZoo(d);
-    };
-    document.getElementById('zooOff').onclick = async () => {
-      await fetch('/api/zoo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'off' }) });
-      loadZoo();
-    };
-    document.getElementById('zooModel').onchange = async () => {
-      const model = document.getElementById('zooModel').value;
-      await fetch('/api/zoo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set', model }) });
-      loadZoo();
-    };
 
     setInterval(poll, 700);
     poll();

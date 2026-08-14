@@ -185,11 +185,15 @@ dotlab cloud off
 dotlab zoo ping
 dotlab zoo quote --model x-ai/grok-4.6
 dotlab zoo wallet
+dotlab zoo wrap              # USDC→yUSDCx or TOKEN→wTOKENx
+dotlab zoo spend             # session receipts + cap
 dotlab cloud on zoo
 dotlab --cloud zoo "Tighten coyote time"
+dotlab kit undo -p DIR       # restore last agent step
+dotlab kit recap -p DIR
 ```
 
-`./start` is the same CLI with a browser UI. Open **OpenZoo** in the studio header (or Play dashboard) to create a wallet, ping the floor, quote a model, and switch the backend.
+`./start` is the same CLI with a browser UI. The header status chip (`local $0` / `zoo · $0.01`) opens the yard: wallet, QR, wrap, model search, spend. Play dashboard only *shows* who is coding — manage money in studio. **More** holds Folder / Term / Zip / Rename.
 
 ---
 
@@ -217,6 +221,8 @@ You get HTTP **402**. Pick yUSDCx or wTOKENx, sign one Token-2022 transfer, retr
 Default floor model: `x-ai/grok-4.6`. Featured also: Gemini 2.5 Flash, Claude Sonnet 4, GPT-4o-mini. Hundreds more via `dotlab zoo models`. TOKEN mint: `EVULoNF4DeMBN4dGiZiDfpiiTfNZgoCvXWWgaV3epump`.
 
 When zoo is on, the host sends **more** project, not less. A tiny ping pays markup. A full tree is the cheap path.
+
+Session spend is capped at **$0.50** by default (`ZOO_SPEND_CAP` or `dotlab zoo set`). If a call cannot settle, the studio **falls back to local Ollama** instead of dying mid-build. Fail-open replies (200 with an empty wallet) are labeled in `dotlab zoo spend` — do not treat them as “paid and working”.
 
 Do not use `lecore-front.fly.dev`. Memory is already in front of the floor. Wallet files stay in `config/zoo-wallet.json` (gitignored).
 

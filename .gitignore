@@ -21,6 +21,7 @@ config/worlds.json
 config/cloud.json
 config/zoo.json
 config/zoo-wallet.json
+config/zoo-spend.json
 knowledge/live/*
 !knowledge/live/LATEST.md
 .gamemaster/
