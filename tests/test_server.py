@@ -43,6 +43,8 @@ class TestHealth(unittest.TestCase):
         self.assertNotIn('id="statusText">starting…</span>', html)
         self.assertIn('id="composer"', html)
         self.assertIn("DL.bootSend", html)
+        self.assertIn("OpenZoo", html)
+        self.assertIn("https://openzoo.fun/", html)
         self.assertTrue((server.CHAT_DIR / "app.js").is_file())
 
     def test_projects_root_in_payload(self) -> None:

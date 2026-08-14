@@ -34,6 +34,7 @@ One prompt can still open a world. The difference is what “done” means: a pr
 | **Skill routing** | The agent asks the catalog what exists. Unknown tools do not invent themselves. |
 | **Worlds from a sentence** | Regions, height field, instances — walkable Three.js you can keep editing. |
 | **$0 local path** | Game-tuned models on Ollama. Cloud is opt-in, never ambient. |
+| **OpenZoo option** | [openzoo.fun](https://openzoo.fun/) paid floor: leCore in front, x402, no API key. Long trees cheaper than buying the model direct. |
 | **Ship path** | Private GitHub repo in one command when you are ready. |
 
 ---
@@ -180,14 +181,44 @@ dotlab cloud on grok
 dotlab --cloud claude "Tighten coyote time"
 dotlab cloud off
 
-# OpenZoo — x402 floor, leCore in front (no API key)
-dotlab zoo status
+# OpenZoo — official floor at openzoo.fun
+dotlab zoo ping
+dotlab zoo quote --model x-ai/grok-4.6
 dotlab zoo wallet
 dotlab cloud on zoo
 dotlab --cloud zoo "Tighten coyote time"
 ```
 
-`./start` is the same CLI with a browser UI.
+`./start` is the same CLI with a browser UI. Open **OpenZoo** in the studio header (or Play dashboard) to create a wallet, ping the floor, quote a model, and switch the backend.
+
+---
+
+## OpenZoo ([openzoo.fun](https://openzoo.fun/))
+
+OpenZoo is an optional **paid model yard**, not a zoo game. Every floor model has [leCore](https://github.com/AnOversizedMooseWithSocks/leCore) in front: the body is spilled and retrieved so a long game tree costs about a tenth of buying that same body direct. Short pings with nothing to spill are marked up (today ×3). Fail-open: if their sidecar is down they still serve, billed at direct — never extra for their outage.
+
+There is **no API key**. You `POST` a normal OpenAI chat body to the official option:
+
+```
+https://openzoo.fun/api/v1/chat/completions
+```
+
+You get HTTP **402**. Pick yUSDCx or wTOKENx, sign one Token-2022 transfer, retry the **same URL** with `X-PAYMENT`. That is what the stall on openzoo.fun does; that is what `dotlab cloud on zoo` does.
+
+| You want | Do this |
+|----------|---------|
+| See that the floor is live | `dotlab zoo ping` or **OpenZoo → Ping** in the UI |
+| Price a model | `dotlab zoo quote --model x-ai/grok-4.6` |
+| Get a deposit address | `dotlab zoo wallet` or **Create / show wallet** |
+| Pay | Send USDC or TOKEN to that address, then wrap at [x402.accrue.fund/start](https://x402.accrue.fund/start) (raw USDC/TOKEN will not settle) |
+| Route the studio through it | `dotlab cloud on zoo` or **Use OpenZoo** in the yard |
+| Back to $0 local | `dotlab cloud off` or **Use local Ollama** |
+
+Default floor model: `x-ai/grok-4.6`. Featured also: Gemini 2.5 Flash, Claude Sonnet 4, GPT-4o-mini. Hundreds more via `dotlab zoo models`. TOKEN mint: `EVULoNF4DeMBN4dGiZiDfpiiTfNZgoCvXWWgaV3epump`.
+
+When zoo is on, the host sends **more** project, not less. A tiny ping pays markup. A full tree is the cheap path.
+
+Do not use `lecore-front.fly.dev`. Memory is already in front of the floor. Wallet files stay in `config/zoo-wallet.json` (gitignored).
 
 ---
 
@@ -259,7 +290,7 @@ Editor endpoint: `http://127.0.0.1:11434/v1` · key `ollama` · model `dotlab`. 
 
 MIT — [LICENSE](LICENSE). Copyright 2026 AleisterMoltley.
 
-Runtime: [Ollama](https://ollama.com), Qwen coder weights, [Three.js](https://threejs.org). Optional cloud APIs are yours to enable.
+Runtime: [Ollama](https://ollama.com), Qwen coder weights, [Three.js](https://threejs.org). Optional cloud APIs and the [OpenZoo](https://openzoo.fun/) x402 floor are yours to enable.
 
 ---
 

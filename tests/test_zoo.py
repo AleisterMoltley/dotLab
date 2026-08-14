@@ -199,6 +199,37 @@ class TestWalletAndCloud(unittest.TestCase):
         self.assertEqual(st["providers"]["zoo"]["kind"], "x402")
         self.assertTrue(self.wallet.is_file())
 
+    def test_handle_http_status_is_official(self) -> None:
+        code, data = zoo.handle_http("GET", "/api/zoo", {})
+        self.assertEqual(code, 200)
+        self.assertTrue(data["ok"])
+        self.assertTrue(str(data.get("chat_url") or "").startswith("https://openzoo.fun/"))
+        self.assertFalse(data.get("active"))
+
+    def test_handle_http_unknown_route(self) -> None:
+        code, data = zoo.handle_http("GET", "/api/zoo/nope", {})
+        self.assertEqual(code, 404)
+        self.assertFalse(data["ok"])
+
+    def test_handle_http_wallet_and_on(self) -> None:
+        code, data = zoo.handle_http("POST", "/api/zoo", {"action": "wallet"})
+        self.assertEqual(code, 200, data)
+        self.assertTrue(data.get("wallet") or data.get("public"))
+        code, data = zoo.handle_http("POST", "/api/zoo", {"action": "on"})
+        self.assertEqual(code, 200, data)
+        self.assertTrue(data.get("active"))
+        code, data = zoo.handle_http("POST", "/api/zoo", {"action": "off"})
+        self.assertEqual(code, 200)
+        self.assertFalse(data.get("active"))
+
+    def test_handle_http_ping_uses_official_url(self) -> None:
+        fake = json.dumps(SAMPLE_402).encode()
+        with mock.patch.object(zoo, "http", return_value=(402, {}, fake)):
+            code, data = zoo.handle_http("GET", "/api/zoo/ping", {"model": "openai/gpt-4o-mini"})
+        self.assertEqual(code, 200)
+        self.assertTrue(data["ok"])
+        self.assertTrue(str(data.get("url") or "").startswith("https://openzoo.fun/"))
+
     def test_cloud_chat_routes_to_zoo(self) -> None:
         os.environ["GAMEMASTER_CLOUD"] = "zoo"
         with mock.patch.object(zoo, "chat", return_value="ok-from-floor") as mocked:
@@ -217,6 +248,15 @@ class TestCatalogHooks(unittest.TestCase):
     def test_skill_check_still_clean(self) -> None:
         r = skills.check()
         self.assertTrue(r["ok"], r.get("errors"))
+
+    def test_readme_and_dashboard_name_official_site(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        dash = (root / "live" / "dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("https://openzoo.fun/", readme)
+        self.assertIn("dotlab zoo ping", readme)
+        self.assertIn("id=\"zooModal\"", dash)
+        self.assertIn("https://openzoo.fun/api/v1/chat/completions", dash)
 
     def test_turbo_routes_openzoo_pack(self) -> None:
         kn = turbo.select_knowledge("openzoo x402 stall", max_chars=14000)

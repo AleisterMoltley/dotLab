@@ -188,18 +188,25 @@ def health_payload() -> dict:
     """Instant. Never talks to Ollama — tags are cached at process start."""
     cloud = cloudlib.status_dict()
     if cloud.get("enabled"):
+        provider = cloud.get("provider") or ""
+        model = cloud.get("model") or ""
+        extra = {}
+        if provider == "zoo":
+            extra["zoo"] = zoolib.status_dict()
+            model = extra["zoo"].get("model") or model
         return {
             "ok": True,
             "product": PRODUCT,
             "backend": "cloud",
-            "provider": cloud.get("provider") or "",
-            "model": cloud.get("model") or "",
+            "provider": provider,
+            "model": model,
             "ollama": False,
             "has_model": True,
             "cloud": cloud,
             "projects_root": str(projects_root()),
             "local": False,
             "error": "",
+            **extra,
         }
     names = list(_TAGS.get("names") or [])
     model = resolve_model_name(names, MODEL, MODEL_FALLBACKS) or MODEL
@@ -384,41 +391,18 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(code, data)
 
     def _zoo_get(self, path: str) -> None:
-        try:
-            if path.rstrip("/") in ("/api/zoo", "/api/zoo/status"):
-                return self._json(200, {"ok": True, **zoolib.status_dict()})
-            if path.rstrip("/") == "/api/zoo/listings":
-                return self._json(200, {"ok": True, "listings": zoolib.listings()})
-            if path.startswith("/api/zoo/models"):
-                qs = parse_qs(urlparse(self.path).query)
-                q = (qs.get("q") or qs.get("query") or [""])[0]
-                return self._json(200, {"ok": True, "models": zoolib.models(q)})
-            if path.startswith("/api/zoo/quote"):
-                qs = parse_qs(urlparse(self.path).query)
-                model = (qs.get("model") or [""])[0]
-                return self._json(200, {"ok": True, **zoolib.quote(model)})
-            return self._json(404, {"ok": False, "error": "unknown zoo route"})
-        except Exception as e:
-            return self._json(502, {"ok": False, "error": str(e)})
+        qs = parse_qs(urlparse(self.path).query)
+        body = {k: (v[0] if v else "") for k, v in qs.items()}
+        code, data = zoolib.handle_http("GET", path, body)
+        return self._json(code, data)
 
     def _zoo_post(self, path: str, raw: bytes) -> None:
         try:
             payload = json.loads(raw.decode() or "{}")
         except json.JSONDecodeError:
             payload = {}
-        action = str(payload.get("action") or "").lower()
-        try:
-            if path.rstrip("/") == "/api/zoo/wallet" or action in ("wallet", "wallet-new"):
-                info = zoolib.ensure_wallet()
-                return self._json(200, {"ok": True, **info, **zoolib.status_dict()})
-            if action == "on":
-                code = cloudlib.cmd_on("zoo")
-                if code != 0:
-                    return self._json(400, {"ok": False, "error": "cloud on zoo failed"})
-                return self._json(200, {"ok": True, **cloudlib.status_dict(), "zoo": zoolib.status_dict()})
-            return self._json(400, {"ok": False, "error": "action wallet|on"})
-        except Exception as e:
-            return self._json(500, {"ok": False, "error": str(e)})
+        code, data = zoolib.handle_http("POST", path, payload)
+        return self._json(code, data)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(204)

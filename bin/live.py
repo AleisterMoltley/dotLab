@@ -38,7 +38,9 @@ from queue import Empty, Queue
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+import cloud as cloudlib  # noqa: E402
 import github as githublib  # noqa: E402
+import zoo as zoolib  # noqa: E402
 from gmcommon import LIVE_DIR, ROOT
 DEFAULT_LIVE_PORT = int(os.environ.get("GAMEMASTER_LIVE_PORT", "8767"))
 DEFAULT_GAME_PORT = int(os.environ.get("GAMEMASTER_GAME_PORT", "5173"))
@@ -146,7 +148,7 @@ class LiveSession:
 
     def status_dict(self) -> dict:
         with self._lock:
-            return {
+            data = {
                 "project": str(self.project),
                 "phase": self.phase,
                 "headline": self.headline,
@@ -157,6 +159,13 @@ class LiveSession:
                 "reload_seq": self.reload_seq,
                 "foot": f"Game: {self.game_url} · keep this window open to play while AI works",
             }
+        try:
+            data["cloud"] = cloudlib.active_provider()
+            data["zoo"] = zoolib.http_status()
+        except Exception:
+            data["cloud"] = ""
+            data["zoo"] = {"ok": False}
+        return data
 
     def subscribe(self) -> Queue:
         q: Queue = Queue()
@@ -296,6 +305,32 @@ class LiveSession:
                             headline="Pushed to GitHub",
                         )
                     return
+                if parsed.path.startswith("/api/zoo") or parsed.path == "/api/cloud":
+                    length = int(self.headers.get("Content-Length", 0))
+                    raw = self.rfile.read(length) if length else b"{}"
+                    try:
+                        payload = json.loads(raw.decode() or "{}")
+                    except json.JSONDecodeError:
+                        payload = {}
+                    if parsed.path == "/api/cloud":
+                        action = str(payload.get("action") or "").lower()
+                        if action == "off":
+                            cloudlib.cmd_off()
+                            self._json(200, {"ok": True, **cloudlib.status_dict()})
+                            return
+                        if action == "on":
+                            name = str(payload.get("provider") or "zoo")
+                            code = cloudlib.cmd_on(name)
+                            if code != 0:
+                                self._json(400, {"ok": False, "error": f"cloud on {name} failed"})
+                                return
+                            self._json(200, {"ok": True, **cloudlib.status_dict(), "zoo": zoolib.http_status()})
+                            return
+                        self._json(400, {"ok": False, "error": "action on|off"})
+                        return
+                    code, out = zoolib.handle_http("POST", parsed.path, payload)
+                    self._json(code, out)
+                    return
                 if parsed.path == "/api/emit":
                     length = int(self.headers.get("Content-Length", 0))
                     raw = self.rfile.read(length) if length else b"{}"
@@ -384,6 +419,12 @@ class LiveSession:
                     qs = parse_qs(parsed.query)
                     body = {"project": (qs.get("project") or [str(session.project)])[0]}
                     code, payload = githublib.handle_http("GET", path, body, session.project)
+                    self._json(code, payload)
+                    return
+                if path.startswith("/api/zoo"):
+                    qs = parse_qs(parsed.query)
+                    body = {k: (v[0] if v else "") for k, v in qs.items()}
+                    code, payload = zoolib.handle_http("GET", path, body)
                     self._json(code, payload)
                     return
                 self.send_error(404)

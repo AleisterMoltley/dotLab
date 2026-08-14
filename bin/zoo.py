@@ -916,6 +916,76 @@ def status_dict() -> dict:
     }
 
 
+def http_status() -> dict:
+    """Status for chat + live dashboard. Includes whether zoo is the active backend."""
+    import cloud
+
+    st = status_dict()
+    cloud_st = cloud.status_dict()
+    st["ok"] = True
+    st["cloud"] = cloud_st
+    st["active"] = cloud.active_provider() == "zoo"
+    return st
+
+
+def handle_http(method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
+    """Single HTTP API used by chat (`server.py`) and the Play dashboard (`live.py`)."""
+    method = (method or "GET").upper()
+    path = (path or "").split("?")[0].rstrip("/") or "/api/zoo"
+    body = body if isinstance(body, dict) else {}
+    q = str(body.get("q") or body.get("query") or "")
+    model = str(body.get("model") or "")
+    try:
+        if method == "GET":
+            if path in ("/api/zoo", "/api/zoo/status"):
+                return 200, http_status()
+            if path == "/api/zoo/listings":
+                return 200, {"ok": True, "listings": listings()}
+            if path == "/api/zoo/models":
+                return 200, {"ok": True, "models": models(q)}
+            if path == "/api/zoo/quote":
+                return 200, {"ok": True, **quote(model)}
+            if path == "/api/zoo/ping":
+                p = probe(model)
+                return 200, p
+            if path == "/api/zoo/balance":
+                if not wallet_path().is_file():
+                    return 200, {"ok": True, "has_wallet": False, "tokens": {}, "sol_lamports": 0}
+                _, pub = load_keypair()
+                return 200, {"ok": True, "has_wallet": True, **named_balances(pub)}
+            return 404, {"ok": False, "error": "unknown zoo route"}
+
+        action = str(body.get("action") or "").lower()
+        if path == "/api/zoo/wallet" or action in ("wallet", "wallet-new"):
+            info = ensure_wallet()
+            return 200, {"ok": True, **info, **http_status()}
+        if action == "on" or path.endswith("/on"):
+            import cloud
+
+            code = cloud.cmd_on("zoo")
+            if code != 0:
+                return 400, {"ok": False, "error": "cloud on zoo failed"}
+            return 200, {"ok": True, **http_status()}
+        if action == "off" or path.endswith("/off"):
+            import cloud
+
+            cloud.cmd_off()
+            return 200, {"ok": True, **http_status()}
+        if action == "set":
+            cfg = load_config()
+            if body.get("model"):
+                cfg["model"] = str(body["model"]).strip()
+            if body.get("prefer"):
+                cfg["prefer"] = str(body["prefer"]).strip()
+            save_config(cfg)
+            return 200, {"ok": True, **http_status()}
+        if action == "ping":
+            return 200, probe(model)
+        return 400, {"ok": False, "error": "action wallet|on|off|set|ping"}
+    except Exception as e:
+        return 502, {"ok": False, "error": str(e)}
+
+
 # ── CLI ─────────────────────────────────────────────────────────────────
 
 

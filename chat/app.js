@@ -191,7 +191,11 @@
       }
       if (text) {
         if (h && h.backend === "cloud") {
-          text.textContent = "cloud · " + (h.provider || "") + " · " + (h.model || "");
+          if (h.provider === "zoo") {
+            text.textContent = "openzoo.fun · " + (h.model || "floor");
+          } else {
+            text.textContent = "cloud · " + (h.provider || "") + " · " + (h.model || "");
+          }
         } else if (ok) {
           text.textContent = (h.model || "dotlab") + " · local";
         } else if (h && !h.ollama) {
@@ -207,7 +211,11 @@
       var ss = $("settingsStatus");
       if (ss && h) {
         if (h.backend === "cloud") {
-          ss.textContent = "Cloud ON · " + (h.provider || "") + " · " + (h.model || "") + " (paid)";
+          if (h.provider === "zoo") {
+            ss.textContent = "OpenZoo ON · " + (h.model || "") + " · openzoo.fun";
+          } else {
+            ss.textContent = "Cloud ON · " + (h.provider || "") + " · " + (h.model || "") + " (paid)";
+          }
         } else {
           ss.textContent = "Local · " + (h.model || "dotlab") + " · $0";
         }
@@ -782,6 +790,7 @@
       { id: "del", label: "Move to trash", key: "", need: true, run: function () { deletePath(current.path, current.name); } },
       { id: "new", label: "New game", key: "⌘N", need: false, run: newGameMode },
       { id: "model", label: "Model / cloud", key: "", need: false, run: function () { openSheet("settingsSheet"); } },
+      { id: "openzoo", label: "OpenZoo yard (openzoo.fun)", key: "", need: false, run: openZooYard },
       { id: "trash", label: "Open trash", key: "", need: false, run: showTrash },
       { id: "help", label: "Keyboard help", key: "?", need: false, run: function () { openSheet("helpSheet"); } },
     ].filter(function (c) { return !c.need || has; });
@@ -1231,25 +1240,113 @@
   bind("toolsClose", closeSheets);
   bind("btnHelp", function () { openSheet("helpSheet"); });
   bind("helpClose", closeSheets);
-  function fillZooPanel(z) {
-    var panel = $("zooPanel");
-    var el = $("zooWallet");
-    if (!panel) return;
-    if (!z || !z.wallet) {
-      panel.style.display = "none";
-      return;
+  function setText(id, t) {
+    var el = $(id);
+    if (el) el.textContent = t;
+  }
+  function zooErr(msg) {
+    setText("zooErr", msg || "");
+  }
+  function paintZoo(st) {
+    if (!st) return;
+    var active = !!st.active;
+    var pill = $("zooActivePill");
+    if (pill) {
+      pill.textContent = active ? "ON · studio uses openzoo.fun" : "off · local Ollama";
+      pill.classList.toggle("ok", active);
     }
-    panel.style.display = "block";
-    if (el) el.textContent = z.wallet;
+    setText("zooChatUrl", st.chat_url || "https://openzoo.fun/api/v1/chat/completions");
+    setText("zooAddr", st.wallet || "(no wallet yet — create one)");
+    var sel = $("zooModel");
+    if (sel && st.model) {
+      var found = false;
+      for (var i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === st.model) { found = true; break; }
+      }
+      if (!found) {
+        var opt = document.createElement("option");
+        opt.value = st.model;
+        opt.textContent = st.model;
+        sel.appendChild(opt);
+      }
+      sel.value = st.model;
+    }
+    var panel = $("zooPanel");
+    if (panel) panel.style.display = (($("cloudProvider") && $("cloudProvider").value) === "zoo") ? "block" : "none";
+  }
+  function loadZooYard() {
+    zooErr("");
+    return fetch("/api/zoo").then(function (r) { return r.json(); }).then(function (d) {
+      paintZoo(d);
+      return d;
+    }).catch(function (e) {
+      zooErr(String(e && e.message ? e.message : e));
+    });
+  }
+  function refreshZooBalances() {
+    fetch("/api/zoo/balance").then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.ok) {
+        setText("zooBals", (d && d.error) || "balance unavailable");
+        return;
+      }
+      if (!d.has_wallet) {
+        setText("zooBals", "create a wallet first");
+        return;
+      }
+      var t = d.tokens || {};
+      setText("zooBals", "SOL " + (d.sol_lamports || 0) + " lamports · yUSDCx " + (t.yUSDCx || 0) + " · wTOKENx " + (t.wTOKENx || 0) + " · USDC " + (t.USDC || 0));
+    }).catch(function () {
+      setText("zooBals", "RPC timeout");
+    });
+  }
+  function refreshZooPing() {
+    var model = ($("zooModel") && $("zooModel").value) || "";
+    setText("zooPingPill", "ping…");
+    fetch("/api/zoo/ping?model=" + encodeURIComponent(model)).then(function (r) { return r.json(); }).then(function (d) {
+      var pill = $("zooPingPill");
+      if (!pill) return;
+      if (d && d.ok && d.status === 402) {
+        pill.textContent = "live 402 · " + ((d.accepts && d.accepts[0] && d.accepts[0].symbol) || "yUSDCx");
+        pill.classList.add("ok");
+      } else if (d && d.ok) {
+        pill.textContent = "live HTTP " + d.status;
+        pill.classList.add("ok");
+      } else {
+        pill.textContent = "ping failed";
+        pill.classList.remove("ok");
+        zooErr((d && d.error) || "openzoo.fun did not 402");
+      }
+    }).catch(function () {
+      setText("zooPingPill", "ping failed");
+    });
+  }
+  function refreshZooQuote() {
+    var model = ($("zooModel") && $("zooModel").value) || "";
+    setText("zooQuote", "quoting…");
+    fetch("/api/zoo/quote?model=" + encodeURIComponent(model)).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.ok) {
+        setText("zooQuote", (d && d.error) || "quote failed");
+        return;
+      }
+      var first = (d.accepts || [])[0] || {};
+      setText("zooQuote", (d.model || model) + " · " + (d.pricing || "") + " · billed $" + (d.billedUsd != null ? d.billedUsd : "—") + " · " + (first.symbol || "") + " " + (first.grossRaw || ""));
+    }).catch(function () {
+      setText("zooQuote", "quote failed");
+    });
+  }
+  function openZooYard() {
+    openSheet("zooSheet");
+    loadZooYard().then(function () {
+      refreshZooPing();
+      refreshZooBalances();
+      refreshZooQuote();
+    });
   }
   function refreshZoo() {
     var p = ($("cloudProvider") && $("cloudProvider").value) || "";
     var panel = $("zooPanel");
     if (panel) panel.style.display = p === "zoo" ? "block" : "none";
-    if (p !== "zoo") return;
-    fetch("/api/zoo").then(function (r) { return r.json(); }).then(function (d) {
-      fillZooPanel(d);
-    }).catch(function () {});
+    if (p === "zoo") loadZooYard();
   }
   bind("btnSettings", function () {
     refreshHealth();
@@ -1257,32 +1354,73 @@
     openSheet("settingsSheet");
   });
   bind("settingsClose", closeSheets);
+  bind("btnZoo", openZooYard);
+  bind("zooOpenYard", openZooYard);
+  bind("zooClose", closeSheets);
   if ($("cloudProvider")) {
     $("cloudProvider").addEventListener("change", refreshZoo);
   }
+  bind("zooWalletBtn", function () {
+    zooErr("");
+    api("/api/zoo", { action: "wallet" }).then(function (d) {
+      if (!d || !d.ok) { zooErr((d && d.error) || "wallet failed"); return; }
+      paintZoo(d);
+      refreshZooBalances();
+      addMsg("bot", "OpenZoo wallet " + (d.wallet || d.public || "") + " — fund USDC/TOKEN then wrap.");
+    });
+  });
+  bind("zooCopyBtn", function () {
+    var addr = ($("zooAddr") && $("zooAddr").textContent) || "";
+    if (!addr || addr.indexOf("(") === 0) { zooErr("No wallet yet"); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(addr).then(function () { zooErr(""); addMsg("bot", "Copied " + addr); });
+    }
+  });
+  bind("zooPingBtn", refreshZooPing);
+  bind("zooQuoteBtn", refreshZooQuote);
+  if ($("zooModel")) {
+    $("zooModel").addEventListener("change", function () {
+      api("/api/zoo", { action: "set", model: $("zooModel").value }).then(function (d) {
+        paintZoo(d);
+        refreshZooQuote();
+      });
+    });
+  }
+  bind("zooOn", function () {
+    zooErr("");
+    api("/api/zoo", { action: "on" }).then(function (d) {
+      if (!d || !d.ok) { zooErr((d && d.error) || "could not enable"); return; }
+      paintZoo(d);
+      refreshHealth();
+      addMsg("bot", "OpenZoo on · " + (d.model || "") + " · " + (d.chat_url || "openzoo.fun") + (d.wallet ? " · fund " + d.wallet : ""));
+    });
+  });
+  bind("zooOff", function () {
+    api("/api/zoo", { action: "off" }).then(function () {
+      loadZooYard();
+      refreshHealth();
+      addMsg("bot", "Cloud off · local Ollama");
+    });
+  });
   bind("cloudOff", function () {
     api("/api/cloud", { action: "off" }).then(function () {
       refreshHealth();
+      loadZooYard();
       addMsg("bot", "Cloud off · local Ollama");
     });
   });
   bind("cloudOn", function () {
     var p = ($("cloudProvider") && $("cloudProvider").value) || "grok";
+    if (p === "zoo") {
+      openZooYard();
+      return;
+    }
     api("/api/cloud", { action: "on", provider: p }).then(function (d) {
       if (!d || !d.ok) {
-        var hint = p === "zoo"
-          ? "OpenZoo wallet failed — `dotlab zoo wallet`"
-          : "set key: export XAI_API_KEY=… then `dotlab cloud on " + p + "`";
-        addMsg("bot", "Cloud on failed — " + hint);
+        addMsg("bot", "Cloud on failed — set key: export XAI_API_KEY=… then `dotlab cloud on " + p + "`");
         return;
       }
       refreshHealth();
-      if (p === "zoo") {
-        fillZooPanel(d.zoo);
-        var w = (d.zoo && d.zoo.wallet) || "";
-        addMsg("bot", "Cloud on · OpenZoo x402" + (w ? " · fund " + w : "") + " (wrap USDC/TOKEN first)");
-        return;
-      }
       addMsg("bot", "Cloud on · " + p + " (paid)");
     });
   });
