@@ -504,6 +504,18 @@ class LiveSession:
                         phase=self.phase,
                         reload=True,
                     )
+                    try:
+                        import play_gate as pgl
+
+                        sense = pgl.ingest_play_log(self.project)
+                        if sense.get("applied"):
+                            self.emit(
+                                "Play sensor: death spam → shorter gap",
+                                role="system",
+                                phase=self.phase,
+                            )
+                    except Exception:
+                        pass
                 self._watcher_stop.wait(0.7)
 
         self._watcher = threading.Thread(target=watch, daemon=True)

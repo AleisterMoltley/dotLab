@@ -9,6 +9,7 @@ verify P0. No LLM.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -359,6 +360,132 @@ def _trim_teacher() -> None:
             TEACHER_FILE.write_text("\n".join(lines[-MAX_TEACHER:]) + "\n", encoding="utf-8")
     except OSError:
         pass
+
+
+def jail_on() -> bool:
+    v = os.environ.get("DOTLAB_NOVELTY_JAIL", "0").strip().lower()
+    return v in ("1", "true", "on", "yes")
+
+
+JAIL_WRITE_PREFIXES = ("src/systems/",)
+_SMALL_PATCH = 800
+
+
+def jail_write_ok(rel: str, *, kind: str = "write", search: str = "", replace: str = "") -> tuple[bool, str]:
+    """When the novelty jail is on, the model only writes systems + small wires."""
+    if not jail_on():
+        return True, ""
+    rel = (rel or "").strip().lstrip("./")
+    if rel.startswith(JAIL_WRITE_PREFIXES):
+        return True, ""
+    if kind in ("game_ops", "kit", "run"):
+        return True, ""
+    if kind == "patch" and rel in ("src/game.js", "src/main.js"):
+        blob = (replace or "") + "\n" + (search or "")
+        if "systems/" in blob or "src/systems" in blob:
+            return True, ""
+        if len(search or "") <= _SMALL_PATCH and len(replace or "") <= _SMALL_PATCH:
+            return True, ""
+        return (
+            False,
+            "novelty jail: large game.js patches blocked — write src/systems/<name>.js "
+            "or a small wire-up import",
+        )
+    if kind == "write":
+        return (
+            False,
+            "novelty jail: write_file only under src/systems/ — apply_patch a small wire or game_ops",
+        )
+    return True, ""
+
+
+def wire_systems(project: Path) -> list[str]:
+    """Import src/systems/*.js from game.js and call tick if the loop exists."""
+    project = Path(project)
+    sysdir = project / "src" / "systems"
+    game = project / "src" / "game.js"
+    if not sysdir.is_dir() or not game.is_file():
+        return []
+    try:
+        js = game.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    mods = sorted(p.stem for p in sysdir.glob("*.js") if p.stem != "index")
+    applied: list[str] = []
+    orig = js
+    for name in mods[:8]:
+        if f"systems/{name}" in js:
+            continue
+        ident = re.sub(r"[^A-Za-z0-9_]", "_", name)
+        line = f"import * as sys_{ident} from './systems/{name}.js';\n"
+        im = list(re.finditer(r"^import .+$", js, re.M))
+        if im:
+            at = im[-1].end()
+            js = js[:at] + "\n" + line + js[at:]
+        else:
+            js = line + js
+        applied.append(f"import:{name}")
+    if applied and "host-systems-tick" not in js:
+        m = re.search(r"function\s+(tick|loop|update)\s*\(([^)]*)\)\s*\{", js)
+        if m:
+            args = m.group(2) or "dt"
+            first = (args.split(",")[0] or "dt").strip() or "dt"
+            calls = " ".join(
+                f"try {{ sys_{re.sub(r'[^A-Za-z0-9_]', '_', n)}.tick?.({first}, state); }} catch {{}}"
+                for n in mods[:8]
+            )
+            insert = f"\n    // host-systems-tick\n    {calls}\n"
+            js = js[: m.end()] + insert + js[m.end() :]
+            applied.append("tick-wire")
+    if js != orig:
+        try:
+            game.write_text(js, encoding="utf-8")
+        except OSError:
+            return []
+    return applied
+
+
+def score_pitch(text: str) -> dict[str, Any]:
+    """Host vote for council — play-shaped briefs beat laundry lists."""
+    t = text or ""
+    s = 0
+    why: list[str] = []
+    if re.search(r"\bverb\b|t\s*=\s*8|t=8s", t, re.I):
+        s += 3
+        why.append("verb/t8")
+    if re.search(r"gravity|coyote|feel|jumpForce|hitstop", t, re.I):
+        s += 2
+        why.append("feel")
+    if re.search(r"non[- ]goal|kill list|we cut", t, re.I):
+        s += 2
+        why.append("cut")
+    if re.search(r"first death|restart|fair", t, re.I):
+        s += 1
+        why.append("fair")
+    if re.search(r"one novelty|single novelty|the fun is", t, re.I):
+        s += 2
+        why.append("novelty")
+    ands = len(re.findall(r"\band\b", t, re.I))
+    if ands > 14:
+        s -= 2
+        why.append("laundry")
+    if len(t) < 80:
+        s -= 1
+    return {"score": s, "why": why}
+
+
+def pick_pitch(pitches: list[str]) -> dict[str, Any]:
+    scored = [(score_pitch(p), i, p) for i, p in enumerate(pitches)]
+    scored.sort(key=lambda x: x[0]["score"], reverse=True)
+    best = scored[0]
+    tied = [x for x in scored if x[0]["score"] == best[0]["score"]]
+    return {
+        "winner": best[1],
+        "score": best[0]["score"],
+        "why": best[0]["why"],
+        "tie": len(tied) > 1,
+        "ranks": [{"i": i, "score": sc["score"], "why": sc["why"]} for sc, i, _ in scored],
+    }
 
 
 def teacher_block(query: str = "", k: int = 2, max_chars: int = 1600) -> str:

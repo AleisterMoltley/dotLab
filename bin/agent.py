@@ -51,6 +51,7 @@ Tools:
 Efficiency: Prefer game_ops for feel/counts/palette/room/flags. MAP/WIKI first · surgical apply_patch for code.
 Host owns craft/juice — do not rewrite CONFIG wholesale; use set_feel ops.
 Unknown tools do not exist. If HOST ROUTE says abstain, do not invent a skill.
+JSON is also accepted: {"tool":"apply_patch","path":"src/systems/flag.js","search":"…","replace":"…"}
 """
 
 
@@ -142,8 +143,78 @@ def parse_tool_body(body: str) -> dict:
     return data
 
 
+_JSON_TOOLS = frozenset(
+    {
+        "list_dir",
+        "read_file",
+        "write_file",
+        "apply_patch",
+        "patch",
+        "game_ops",
+        "ops",
+        "search",
+        "run",
+        "kit",
+        "skills",
+        "skill",
+        "done",
+    }
+)
+
+
+def _tool_from_json(data: Any) -> tuple[str, dict] | None:
+    if not isinstance(data, dict):
+        return None
+    blob = data
+    inner = data.get("tool_call")
+    if isinstance(inner, dict):
+        blob = {**data, **inner}
+    name = str(blob.get("tool") or blob.get("name") or "").strip().lower()
+    if name not in _JSON_TOOLS:
+        return None
+    args: dict[str, str] = {}
+    for k, v in blob.items():
+        if k in ("tool", "name", "tool_call"):
+            continue
+        if v is None:
+            continue
+        if k in ("events", "ops", "json") and not isinstance(v, str):
+            args[k] = json.dumps(v)
+        else:
+            args[str(k)] = v if isinstance(v, str) else json.dumps(v)
+    return name, args
+
+
+def parse_json_tools(text: str) -> list[tuple[str, dict]]:
+    """Accept a JSON tool object/array — local models waste turns on prose otherwise."""
+    blobs: list[str] = []
+    for m in re.finditer(r"```json\s*([\s\S]*?)```", text or ""):
+        blobs.append(m.group(1).strip())
+    raw = (text or "").strip()
+    if raw.startswith("{") or raw.startswith("["):
+        blobs.append(raw)
+    else:
+        m = re.search(r"(\{[\s\S]*\"tool\"[\s\S]*\})", text or "")
+        if m:
+            blobs.append(m.group(1))
+    out: list[tuple[str, dict]] = []
+    for blob in blobs:
+        try:
+            data = json.loads(blob)
+        except Exception:
+            continue
+        rows = data if isinstance(data, list) else [data]
+        for row in rows:
+            parsed = _tool_from_json(row)
+            if parsed:
+                out.append(parsed)
+        if out:
+            return out
+    return out
+
+
 def parse_tools(text: str) -> list[tuple[str, dict]]:
-    """Extract all tool calls from a model reply (fenced or bare)."""
+    """Extract all tool calls from a model reply (fenced, bare, or JSON)."""
     tools: list[tuple[str, dict]] = []
     # Fenced blocks: ``` ... tool call NAME\n ... ```
     for m in re.finditer(
@@ -162,7 +233,58 @@ def parse_tools(text: str) -> list[tuple[str, dict]]:
         if not m:
             continue
         tools.append((m.group(1).strip().lower(), parse_tool_body(m.group(2))))
-    return tools
+    if tools:
+        return tools
+    return parse_json_tools(text)
+
+
+def compact_tool_result(name: str, result: str) -> str:
+    """Drop raw file bodies from history — keep path + hash so 16k stays useful."""
+    text = result or ""
+    if name == "read_file":
+        path = ""
+        m = re.match(r"\[path:\s*(\S+)\]", text)
+        if m:
+            path = m.group(1)
+        span = ""
+        sm = re.search(r"lines\s+(\d+-\d+\s*/\s*\d+)", text)
+        if sm:
+            span = sm.group(1)
+        h = hex(abs(hash(text)) & 0xFFFFFFFF)[2:]
+        return f"TOOL RESULT [read_file]: {path or '?'} {span} hash={h} ({len(text)} chars). Re-read if you need the body."
+    if name == "list_dir":
+        lines = text.splitlines()
+        if len(lines) > 40:
+            return "TOOL RESULT [list_dir]:\n" + "\n".join(lines[:40]) + f"\n…({len(lines)} entries)"
+        return f"TOOL RESULT [list_dir]:\n{text}"
+    if len(text) > 1400:
+        return f"TOOL RESULT [{name}]:\n{text[:900]}\n…[{len(text)} chars compacted]"
+    return f"TOOL RESULT [{name}]:\n{text}"
+
+
+def compact_messages(messages: list[dict], *, keep_tail: int = 4) -> list[dict]:
+    """Older tool dumps become hashes. System + first task stay intact."""
+    if len(messages) <= 3 + keep_tail:
+        return messages
+    head = messages[:2]
+    mid = messages[2:-keep_tail]
+    tail = messages[-keep_tail:]
+    slim: list[dict] = []
+    for m in mid:
+        role = m.get("role")
+        content = m.get("content") or ""
+        if role == "user" and "TOOL RESULT" in content and "hash=" not in content[:200]:
+            content = re.sub(
+                r"(TOOL RESULT \[read_file\]:)[\s\S]*?(?=\nTOOL RESULT|\Z)",
+                lambda mm: mm.group(1) + " (compacted)\n",
+                content,
+            )
+            if len(content) > 1600:
+                content = content[:1200] + "\n…[history compacted]"
+        elif role == "assistant" and len(content) > 2500:
+            content = content[:1800] + "\n…[assistant compacted]"
+        slim.append({**m, "content": content})
+    return head + slim + tail
 
 
 def safe_path(project: Path, rel: str) -> Path:
@@ -254,6 +376,14 @@ def tool_write(project: Path, path: str, content: str) -> str:
     if not ok:
         seclib.audit(project, "write_denied", {"path": rel, "error": err})
         return f"ERROR: {err}"
+    try:
+        import host_floor as floor
+
+        jok, jerr = floor.jail_write_ok(rel, kind="write")
+        if not jok:
+            return f"ERROR: {jerr}"
+    except Exception:
+        pass
     try:
         import engine_ops as eops
 
@@ -358,6 +488,14 @@ def tool_apply_patch(project: Path, path: str, search: str, replace: str) -> str
     ok, err = seclib.write_allowed(project, rel)
     if not ok:
         return f"ERROR: {err}"
+    try:
+        import host_floor as floor
+
+        jok, jerr = floor.jail_write_ok(rel, kind="patch", search=search or "", replace=replace or "")
+        if not jok:
+            return f"ERROR: {jerr}"
+    except Exception:
+        pass
     hits = seclib.scan_secrets(replace or "", path=rel)
     if hits:
         return f"ERROR: secret-like content blocked ({hits[0].get('kind')})"
@@ -856,6 +994,7 @@ def main() -> int:
                     import host_floor as floor
 
                     floor.apply(project)
+                    floor.wire_systems(project)
                 except Exception:
                     pass
                 try:
@@ -889,6 +1028,19 @@ def main() -> int:
                             rp = verifylib.repair_prompt(vr)
                         result_chunks.append(rp + ("\n\n" + bank_ctx if bank_ctx else ""))
                         break
+                    try:
+                        import play_gate as pgl
+
+                        pr = pgl.evaluate_report(pgl.load_report(project), family=pgl.family_of(project))
+                        if not pr.get("skipped"):
+                            print(pr["report"])
+                            if pr.get("p0_fail") and not verify_repair_used:
+                                verify_repair_used = True
+                                pgl.apply_metric_fixes(project, pr)
+                                result_chunks.append(pgl.repair_task(pr))
+                                break
+                    except Exception:
+                        pass
                 except Exception as e:
                     print(f"  ⚠ verify skipped: {e}")
                 print("\n" + "═" * 48)
@@ -913,7 +1065,7 @@ def main() -> int:
             if len(result) > MAX_TOOL_OUT:
                 result = result[:MAX_TOOL_OUT] + "\n…[truncated]"
             print(f"↳ {result[:500]}{'…' if len(result) > 500 else ''}")
-            result_chunks.append(f"TOOL RESULT [{name}]:\n{result}")
+            result_chunks.append(compact_tool_result(name, result))
 
         if finished:
             return 0
@@ -925,6 +1077,7 @@ def main() -> int:
                 + "\n\nContinue (more tools or done). Task must be complete.",
             }
         )
+        messages = compact_messages(messages)
 
     print("\n⚠ Max steps reached. Check last state.")
     return 0

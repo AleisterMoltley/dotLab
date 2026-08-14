@@ -132,12 +132,14 @@ def stop_server(p: subprocess.Popen | None) -> None:
             pass
 
 
-def run_runner(url: str, out: Path, duration: int, actions: str) -> int:
+def run_runner(url: str, out: Path, duration: int, actions: str, genre: str = "") -> int:
     env = os.environ.copy()
     env["PLAYTEST_URL"] = url
     env["PLAYTEST_OUT"] = str(out)
     env["PLAYTEST_DURATION_MS"] = str(int(duration * 1000))
     env["PLAYTEST_ACTIONS"] = actions
+    if genre:
+        env["PLAYTEST_GENRE"] = genre
     r = subprocess.run(
         ["node", str(PLAYTEST_DIR / "runner.mjs")],
         cwd=str(PLAYTEST_DIR),
@@ -229,7 +231,16 @@ def main() -> int:
             print(f"→ using existing server {url}")
 
         print(f"→ playtest {args.duration}s…")
-        code = run_runner(url, out, args.duration, args.actions)
+        fam = ""
+        try:
+            import play_gate as pgl
+
+            fam = pgl.family_of(project)
+            if args.actions == "jump,wasd,click":
+                args.actions = pgl.actions_for(fam)
+        except Exception:
+            pass
+        code = run_runner(url, out, args.duration, args.actions, genre=fam)
         report_path = out / "report.json"
         if report_path.exists():
             rep = json.loads(report_path.read_text())
@@ -238,6 +249,16 @@ def main() -> int:
             print(f"  rubric={json.dumps(rep.get('rubricHints'), ensure_ascii=False)}")
             if rep.get("metrics"):
                 print(f"  metrics keys={list(rep['metrics'].keys())[:12]}")
+            try:
+                import play_gate as pgl
+
+                pr = pgl.evaluate_report(rep, family=pgl.family_of(project))
+                print(pr.get("report") or "")
+                (out / "play-p0.txt").write_text(pr.get("report") or "", encoding="utf-8")
+                if pr.get("p0_fail"):
+                    pgl.apply_metric_fixes(project, pr)
+            except Exception as e:
+                print(f"  ⚠ play-p0: {e}")
         else:
             print("⚠ no report.json")
 

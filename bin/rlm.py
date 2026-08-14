@@ -470,7 +470,8 @@ Rules:
 - First peek the loop (tickShoot / tickJump / tickRace / createGame). Never guess file contents.
 - Each sub() is ONE pillar. Context for that sub is ONLY the files you name.
 - Opposition is mandatory. A plaza with one hoop is a fail.
-- Prefer game_ops for feel numbers. Prefer apply_patch-shaped subs for code.
+- Prefer game_ops for feel numbers. Prefer write_file src/systems/<pillar>.js for code.
+- Do not dump a new game.js. Host owns place/body/feel.
 - When depth+verify are green, FINAL(summary) or done("…").
 """
 
@@ -494,6 +495,7 @@ replace:
 new lines
 ```
 or tool call write_file for a NEW src/systems/*.js.
+Do NOT rewrite src/game.js. Novelty jail: systems files only; host wires the import.
 Then stop. The root will verify.
 """
 
@@ -518,6 +520,25 @@ def _load_snippets(project: Path, files_csv: str, fallback: str = "src/game.js")
     return "\n\n".join(chunks)[:16_000]
 
 
+def _systems_target(project: Path, task: str, files_csv: str) -> str:
+    """Force novelty into src/systems/<slug>.js; create a stub if missing."""
+    slug = re.sub(r"[^a-z0-9]+", "-", (task or "novelty").lower()).strip("-")[:24] or "novelty"
+    rel = f"src/systems/{slug}.js"
+    named = [p.strip() for p in (files_csv or "").split(",") if p.strip()]
+    for n in named:
+        if n.startswith("src/systems/"):
+            rel = n
+            break
+    dest = project / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if not dest.is_file():
+        dest.write_text(
+            f"// {task[:80]}\nexport function tick(dt, ctx) {{}}\nexport function apply(game) {{}}\n",
+            encoding="utf-8",
+        )
+    return rel
+
+
 def run_sub(
     project: Path,
     task: str,
@@ -530,6 +551,10 @@ def run_sub(
     """Isolated LM call. Context = named files only. No knowledge dump."""
     if depth > max_depth:
         return "ERROR: max RLM depth — implement here or done"
+    old_jail = os.environ.get("DOTLAB_NOVELTY_JAIL")
+    os.environ["DOTLAB_NOVELTY_JAIL"] = "1"
+    target = _systems_target(project, task, files_csv)
+    files_csv = target + ("," + files_csv if files_csv else "")
     snippets = _load_snippets(project, files_csv)
     messages = [
         {"role": "system", "content": _sub_system(task, snippets)},
@@ -538,31 +563,39 @@ def run_sub(
     import agent as agentlib
 
     logs: list[str] = []
-    for step in range(1, MAX_STEPS_SUB + 1):
-        try:
-            reply = _chat(messages, model)
-        except Exception as e:
-            return f"ERROR sub chat: {e}"
-        messages.append({"role": "assistant", "content": reply})
-        tools = agentlib.parse_tools(reply)
-        if not tools:
-            logs.append(reply[:400])
-            break
-        chunks: list[str] = []
-        for name, targs in tools:
-            if name == "done":
-                logs.append(targs.get("summary") or "sub done")
-                return "\n".join(logs)
-            if name == "sub":
-                chunks.append("ERROR: nested sub blocked at this depth")
-                continue
-            result = agentlib.run_tool(project, name, targs)
-            chunks.append(f"TOOL [{name}]: {result[:1500]}")
-            logs.append(f"sub:{name} → {result[:200]}")
-        messages.append({"role": "user", "content": "\n".join(chunks) + "\nStop after this if the task is in."})
-        if step >= 3:
-            break
-    return "\n".join(logs) or "sub: no tool"
+    try:
+        for step in range(1, MAX_STEPS_SUB + 1):
+            try:
+                reply = _chat(messages, model)
+            except Exception as e:
+                return f"ERROR sub chat: {e}"
+            messages.append({"role": "assistant", "content": reply})
+            tools = agentlib.parse_tools(reply)
+            if not tools:
+                logs.append(reply[:400])
+                break
+            chunks: list[str] = []
+            for name, targs in tools:
+                if name == "done":
+                    logs.append(targs.get("summary") or "sub done")
+                    return "\n".join(logs)
+                if name == "sub":
+                    chunks.append("ERROR: nested sub blocked at this depth")
+                    continue
+                result = agentlib.run_tool(project, name, targs)
+                chunks.append(f"TOOL [{name}]: {result[:1500]}")
+                logs.append(f"sub:{name} → {result[:200]}")
+            messages.append(
+                {"role": "user", "content": "\n".join(chunks) + "\nStop after this if the task is in."}
+            )
+            if step >= 3:
+                break
+        return "\n".join(logs) or "sub: no tool"
+    finally:
+        if old_jail is None:
+            os.environ.pop("DOTLAB_NOVELTY_JAIL", None)
+        else:
+            os.environ["DOTLAB_NOVELTY_JAIL"] = old_jail
 
 
 def run(

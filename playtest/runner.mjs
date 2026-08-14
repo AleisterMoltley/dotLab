@@ -19,6 +19,7 @@ const DURATION = Number(process.env.PLAYTEST_DURATION_MS || 20000);
 const W = Number(process.env.PLAYTEST_WIDTH || 390);
 const H = Number(process.env.PLAYTEST_HEIGHT || 844);
 const ACTIONS = (process.env.PLAYTEST_ACTIONS || 'jump,wasd,click').split(',').map((s) => s.trim());
+const GENRE = (process.env.PLAYTEST_GENRE || '').toLowerCase();
 
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -190,13 +191,16 @@ async function main() {
         } else {
           await page.mouse.click(W * 0.5, H * 0.5);
         }
-        await page.evaluate(() => window.__GF_PLAYTEST__?.recordJump?.());
       }
       if (ACTIONS.includes('jump')) {
         await page.keyboard.down('Space');
         await page.waitForTimeout(80);
         await page.keyboard.up('Space');
-        await page.evaluate(() => window.__GF_PLAYTEST__?.recordJump?.());
+      }
+      if (ACTIONS.includes('right') || GENRE === 'platformer' || GENRE === 'runner') {
+        await page.keyboard.down('KeyD');
+        await page.waitForTimeout(160);
+        await page.keyboard.up('KeyD');
       }
       if (ACTIONS.includes('wasd')) {
         const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
@@ -209,7 +213,6 @@ async function main() {
       if (tick % 8 === 0) {
         await page.keyboard.press('KeyR');
         await page.keyboard.press('Enter');
-        await page.evaluate(() => window.__GF_PLAYTEST__?.recordRestart?.());
       }
     } catch (e) {
       report.notes.push(`action error: ${e.message}`);

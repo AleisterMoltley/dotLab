@@ -12,7 +12,9 @@ Host-side ship-rate system. Goal: **faster wall-clock** and **higher P0 pass rat
 | P0 Dual warm | flash + max resident | `turbo.warmup`, `start`, `quality.ensure_dual_warmup` |
 | P0 Draft→max | Host speculative: flash drafts, max refines | `quality.draft_then_max` (+ optional Ollama `draft` field) |
 | P1 Best-of-N | Verify-rescue flash patches if P0 still fails | `studio.pipeline_build` when `DOTLAB_BEST_OF≥2` (default 2) |
+| P0 Play gate | 8s bot: runtime, canvas, restart, slop | `play_gate.evaluate_report` |
 | P1 Host floor | Genre CONFIG + pit death, no LLM | `host_floor.apply` after coder |
+| P1 Novelty jail | Studio/RLM writes `src/systems/*` only | `host_floor.jail_write_ok` |
 | P1 Few-shots | Golden @@ patches instead of 4k law | `host_floor.fewshot_block` |
 | P0 Fuzzy patch | Whitespace / line-stripped search rescue | `quality.find_search_span` |
 | P1 Auto-critic | One critic + one repair max | `quality.auto_critic_and_repair` |

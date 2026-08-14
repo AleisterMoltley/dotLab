@@ -48,6 +48,7 @@ dotLab — local Three.js game studio (Ollama, $0)
   gamemaster skills list|suggest|route|card|check
   gamemaster rlm -p DIR "deepen the slice"
   gamemaster verify -p DIR
+  gamemaster eval-briefs [--engine three|pixel|vintage]
   gamemaster cloud status|on|off|set   # optional paid Grok/Claude/OpenAI/Gemini/zoo
   gamemaster zoo status|ping|models|quote|wallet|stall   # OpenZoo (openzoo.fun)
 
@@ -376,6 +377,10 @@ if [[ $# -gt 0 ]]; then
     verify|score)
       shift
       exec python3 "$ROOT/bin/verify.py" "$@"
+      ;;
+    eval-briefs|eval)
+      shift
+      exec python3 "$ROOT/bin/eval_briefs.py" "$@"
       ;;
     ship)
       shift

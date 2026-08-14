@@ -511,6 +511,7 @@ def run_coder_agent(project: Path, task: str, model: str, steps: int = 16) -> st
     env = os.environ.copy()
     env["GAMEMASTER_LIVE"] = "1"
     env["GAMEMASTER_LIVE_PROJECT"] = str(project)
+    env.setdefault("DOTLAB_NOVELTY_JAIL", "1")
     print(f"  💻 Coder agent starting…")
     try:
         import live as livelib  # type: ignore
@@ -763,6 +764,9 @@ def pipeline_build(
         import host_floor as floor
 
         fr = floor.apply(project)
+        wired = floor.wire_systems(project)
+        if wired:
+            fr.setdefault("applied", []).extend(wired)
         if fr.get("applied"):
             print("  ✓ host floor: " + ", ".join(fr["applied"][:8]))
             write_session(project, "03a-host-floor.json", json.dumps(fr, indent=2) + "\n")
@@ -874,6 +878,16 @@ def pipeline_build(
 
     if do_playtest:
         run_playtest(project, model, with_critic=True)
+        try:
+            import play_gate as pgl
+
+            pr = pgl.evaluate_report(pgl.load_report(project), family=pgl.family_of(project))
+            print(pr.get("report") or "")
+            write_session(project, "03d-play-p0.txt", pr.get("report") or "")
+            if pr.get("p0_fail"):
+                pgl.apply_metric_fixes(project, pr)
+        except Exception as e:
+            print(f"  ⚠ play-p0: {e}")
 
     banner("✅ STUDIO BUILD COMPLETE")
     try:
@@ -925,7 +939,23 @@ def pipeline_council(
         write_session(project, f"council-pitch-{i+1}.md", p)
 
     banner("🗳️ VOTE")
-    vote = role_council_vote(brief, pitches, model)
+    host_pick = None
+    try:
+        import host_floor as floor
+
+        host_pick = floor.pick_pitch(pitches)
+        print(f"  host ranks: {host_pick.get('ranks')}")
+    except Exception:
+        host_pick = None
+    if host_pick and not host_pick.get("tie"):
+        w = int(host_pick["winner"])
+        vote = (
+            f"WINNER: {w + 1}\n"
+            f"WHY: host score {host_pick.get('score')} ({', '.join(host_pick.get('why') or [])})\n"
+            f"FINAL BRIEF: {pitches[w][:1200]}\n"
+        )
+    else:
+        vote = role_council_vote(brief, pitches, model)
     print(vote)
     write_session(project, "council-vote.md", vote)
     update_design_md(project, "Council Winner", vote)

@@ -73,6 +73,7 @@ def run_eval(engine: str | None = None) -> dict:
                         "p0_fail": vr.get("p0_fail"),
                         "min_score": min_s,
                         "genre": spec.get("genre"),
+                        "play_skipped": True,
                     }
                 )
     # Also run fixed multi-engine matrix (short list)
@@ -102,6 +103,7 @@ def run_eval(engine: str | None = None) -> dict:
                         "min_score": mins,
                         "genre": genre,
                         "matrix": True,
+                        "play_skipped": True,
                     }
                 )
 
@@ -117,14 +119,23 @@ def run_eval(engine: str | None = None) -> dict:
         v["ship_rate"] = (
             round(100 * v["passed"] / v["total"], 1) if v["total"] else 0
         )
-    return {
+    report = {
         "ok": passed == len(rows) and len(rows) > 0,
         "passed": passed,
         "total": len(rows),
         "ship_rate": round(100 * passed / len(rows), 1) if rows else 0,
         "by_engine": by_eng,
         "cases": rows,
+        "play_note": "compile-only; pass --play to add Playwright P0 when installed",
     }
+    try:
+        from gmcommon import CONFIG
+
+        CONFIG.mkdir(parents=True, exist_ok=True)
+        (CONFIG / "eval-latest.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+    return report
 
 
 def write_promptfoo_yaml() -> Path:

@@ -13,6 +13,7 @@ venv/
 config/user-prefs.json
 config/github.json
 config/bench-latest.json
+config/eval-latest.json
 config/warmup.log
 config/warmup.err
 config/active-profile.json

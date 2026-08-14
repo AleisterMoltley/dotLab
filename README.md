@@ -47,9 +47,10 @@ One prompt can still open a world. The difference is what “done” means: a pr
 | Strength | What you feel |
 |----------|----------------|
 | **Playable first** | Scaffold → `npm run dev` → controls work. No empty repo ceremony. |
-| **Host quality floor** | Place, body, verb, opposition, juice. Missing a pillar fails the slice. |
-| **Studio that builds** | Director → Architect → recursive coder → Critic. Not a single dump into `game.js`. |
-| **Live iteration** | The Play window stays open while files change. Test while the agent works. |
+| **Host quality floor** | Genre CONFIG, coyote, pit death, juice keys — applied by the host after the coder. The 30B does not own feel. |
+| **Play is the judge** | An 8s bot grades canvas, input, restart &lt;3s, stutter, screenshot slop. Verify seeing `coyoteMs` in a file is not enough. |
+| **Studio that builds** | Director → Architect (max) → recursive coder → Critic (dense). Novelty goes in `src/systems/*`, not a dump into `game.js`. |
+| **Live iteration** | The Play window stays open while files change. Five deaths on the same gap → the host shortens it. |
 | **Deterministic verify** | `verify` grades structure and genre contracts without calling a model. P0 fail blocks “done”. |
 | **Skill routing** | The agent asks the catalog what exists. Unknown tools do not invent themselves. |
 | **Worlds from a sentence** | Regions, height field, instances — walkable Three.js you can keep editing. |
@@ -64,14 +65,14 @@ One prompt can still open a world. The difference is what “done” means: a pr
 ```
 describe a verb  →  real project  →  studio build  →  play while it writes
                                               ↓
-                                    verify (no LLM)  →  ship
+                         verify (files) + play-P0 (8s bot)  →  ship
 ```
 
 1. You write what the player does at t=8s.
 2. The host scaffolds a Vite project (not a chat attachment).
-3. Studio roles design the slice, then a deep coder peeks the tree and patches one pillar at a time.
+3. Studio roles design the slice. Architect and critic stay off the 7B. The coder writes novelty under `src/systems/*`.
 4. Play stays open. Auto-update reloads the game. You jump the gap while gravity changes.
-5. `dotlab verify -p .` grades place / body / verb / opposition / juice. P0 fail = not done.
+5. `dotlab verify -p .` grades the files. `dotlab playtest -p .` grades the bot run. Either P0 fail = not done.
 6. `dotlab ship` pushes a private GitHub repo when you want it off the laptop.
 
 Undo a bad agent step with `dotlab kit undo -p DIR`. Recap the session with `dotlab kit recap -p DIR`.
@@ -116,7 +117,7 @@ This window is for **playing**, not configuring models.
 | **local** / **zoo** pill | Who is coding. Read-only. There is **no wallet modal** here. |
 | **GitHub** | Ship this game. |
 
-Click the game to capture input. Updates from the studio apply live, or queue until you hit Apply. Manage OpenZoo in Studio — Play only shows the pill so you know whether the coder is local or paid.
+Click the game to capture input. Updates from the studio apply live, or queue until you hit Apply. Five deaths in the play log and the host pulls the next ledge closer — no model. Manage OpenZoo in Studio — Play only shows the pill so you know whether the coder is local or paid.
 
 ---
 
@@ -159,8 +160,8 @@ chmod +x install.sh start bin/*
 
 | Profile | Models | When |
 |---------|--------|------|
-| `--dual` | 30B MoE + 32B dense + 7B flash | Best quality |
-| `--max` | 30B MoE + 7B | Strong coding, lighter critic |
+| `--dual` | 30B MoE + 32B dense + 14B flash (7B if no 14B) | Best quality |
+| `--max` | 30B MoE + 14B/7B flash | Strong coding, lighter critic |
 | `--14b` | qwen2.5-coder:14b | 16–24 GB machines |
 | `--7b` | qwen2.5-coder:7b | Laptops |
 
@@ -197,7 +198,7 @@ dotlab studio build -p . "one fair first death and clearer juice" --live
 dotlab verify -p .
 ```
 
-`--live` keeps the Play window open while the studio works.
+`--live` keeps the Play window open while the studio works. `--playtest` adds the 8s Play-P0 bot after the build.
 
 ---
 
@@ -205,13 +206,14 @@ dotlab verify -p .
 
 1. **Compile the brief** into genre, loop, feel, palette, and opposition counts
 2. **Scaffold a real project** — not a chat attachment
-3. **Studio roles** design and structure the slice
-4. **Deep coder** peeks the tree, patches one pillar at a time, does not dump the whole game into context
-5. **Verify** grades the result; P0 fails block “done”
-6. **Playtest** (optional) runs headless metrics and screenshots
-7. **Ship** (optional) pushes a private GitHub repo
+3. **Studio roles** design and structure the slice (director 8k, architect max, critic dense)
+4. **Deep coder** writes `src/systems/<novelty>.js`. The host wires the import and owns CONFIG
+5. **Host floor** injects missing feel keys, pit death, 1/1/1 slop out
+6. **Verify** grades files; P0 fails get a verify-anchored repair (not “add inventory”)
+7. **Play-P0** (with `--playtest`) runs an 8s genre bot: canvas, input, restart, slop frames
+8. **Ship** (optional) pushes a private GitHub repo
 
-The host applies feel, locks, and events. The model proposes. Invalid ops do not crash the game.
+The host applies feel, locks, and events. The model proposes. Invalid ops do not crash the game. Council picks a pitch by host score (verb, t=8s, feel, kill list) — LLM only on a tie.
 
 ### Studio modes
 
@@ -330,10 +332,11 @@ dotlab -p ./Skyjump --agent "Add collectibles and a score HUD"
 
 # Measure
 dotlab live -p DIR
-dotlab playtest -p DIR
+dotlab playtest -p DIR            # 8s bot + Play-P0 report
 dotlab verify -p DIR
 dotlab skills route "juice the jump"
 dotlab rlm -p DIR "deepen opposition and juice"
+dotlab eval-briefs                # host slice ship-rate (no Ollama)
 
 # Memory & ship
 dotlab prefs set like "tight jumps"
@@ -343,8 +346,9 @@ dotlab ship -p ./Wilds -m "vertical slice"
 dotlab kit undo -p DIR
 dotlab kit recap -p DIR
 
-# Local speed
+# Local speed / stronger flash
 dotlab turbo warmup
+dotlab intervene                  # bake flash FROM 14B when installed
 dotlab update --modelfile
 
 # Optional paid model (off until you opt in)
@@ -380,7 +384,11 @@ A slice needs:
 - **juice** on every meaningful hit
 - a **fair first death** and a restart under three seconds
 
-Feel lives in `CONFIG` numbers. `dotlab verify -p DIR` grades without an LLM. Skill routing refuses tools the catalog cannot name.
+Feel lives in `CONFIG` numbers. The host writes them after every coder pass.
+
+`dotlab verify -p DIR` grades the tree without an LLM. `dotlab playtest -p DIR` grades the running game: no canvas, no input, restart slower than 3s, stutter, or a near-black / green-capsule frame is a Play-P0 fail. Skill routing refuses tools the catalog cannot name.
+
+Studio / RLM keep the 30B off `src/game.js` for large rewrites (`DOTLAB_NOVELTY_JAIL=1` there). CLI agent stays free to patch.
 
 ---
 
@@ -398,7 +406,7 @@ dotLab/
   templates/          Scaffolds and slices
   tests/              Cheap suite (no Ollama)
   chat/  live/        Browser UIs (Studio + Play)
-  playtest/           Headless runner
+  playtest/           Headless 8s bot (Play-P0)
   docs/readme/        GitHub shots (HTML mocks + PNGs)
 ```
 
@@ -410,9 +418,11 @@ Working on the repo: read [AGENTS.md](AGENTS.md), then `python3 tests/run.py`. R
 
 | Tier | Default | Role |
 |------|---------|------|
-| **flash** | 7B | Short Q&A |
-| **max** | `dotlab` | Coding |
-| **dense** | dense critic | Hard refactors / review |
+| **flash** | 14B if installed and RAM ≥16 GB, else 7B | Drafts, short QA — never final game files |
+| **max** | `dotlab` (Qwen3-Coder 30B MoE) | Coding + architect |
+| **dense** | 32B when present | Critic / hard repair |
+
+`ollama pull qwen2.5-coder:14b` then `dotlab intervene` to bake the stronger flash. Do not swap in a 70B “because bigger”.
 
 Editor endpoint: `http://127.0.0.1:11434/v1` · key `ollama` · model `dotlab`. See `config/README-editor.md`.
 
