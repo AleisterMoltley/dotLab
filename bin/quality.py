@@ -1333,6 +1333,42 @@ def draft_then_max(
     flash = flash_model or draft_model_tag()
     target = max_model or DEFAULT_MODEL
     fmt = "json" if mode == "json" else None
+
+    # Kernel prefill: an assistant seed already decided. Skip flash; max refines.
+    seed_txt = ""
+    for msg in reversed(messages):
+        if msg.get("role") == "assistant":
+            seed_txt = str(msg.get("content") or "")
+            break
+    if seed_txt and mode == "json":
+        data = extract_json_object(seed_txt)
+        ok, _, _ = validate_director_json(data)
+        if ok:
+            # Host seed is legal director JSON — polish with max only when speculative.
+            if not use_speculative() or flash == target:
+                return seed_txt
+            refine = [
+                *messages,
+                {
+                    "role": "user",
+                    "content": (
+                        "Host seed above is locked for feel/genre/engine. "
+                        "Sharpen pitch/t8s/novelty only. Output the FINAL JSON object only."
+                    ),
+                },
+            ]
+            polished = llm_chat(
+                refine,
+                model=target,
+                temperature=temperature,
+                num_predict=min(num_predict, 1800),
+                num_ctx=min(num_ctx, 8192),
+                response_format=fmt,
+            )
+            pdata = extract_json_object(polished)
+            pok, _, _ = validate_director_json(pdata)
+            return polished if pok else seed_txt
+
     if not use_speculative() or flash == target:
         return llm_chat(
             messages,

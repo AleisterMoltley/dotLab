@@ -40,7 +40,8 @@ Modelfile       baked Ollama system prompt
 | Prompt → playable slice | `bin/slice.py` + `templates/web-slice/game.js` |
 | Instant continue (feel/counts/palette) | `bin/patch.py` — no LLM |
 | Install Grok into Ollama | `bin/intervene.py` · `gamemaster intervene` |
-| **Grok identity (single source)** | `bin/identity.py` + `knowledge/identity.md` |
+| **Grok pairing kernel (executable)** | `bin/grok.py` — session / complain / route / pack / prefill / traces / harvest |
+| **Grok identity (roles + Modelfile)** | `bin/identity.py` + `knowledge/identity.md` (CORE = `grok.LAW`) |
 | Ship bar (NEON INK) | `knowledge/ship-bar.md` + `lib/craft/` |
 | Skill FPS recipe | `knowledge/skill-fps.md` |
 | Grok decision tree | `knowledge/grok-craft.md` (core pack) |

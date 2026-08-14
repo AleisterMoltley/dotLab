@@ -737,6 +737,14 @@ def load_knowledge(project: Path | None = None, task: str = "") -> str:
             tb = floor.teacher_block(task, k=2, max_chars=1400)
             if tb:
                 chunks.append(tb)
+            try:
+                import grok as groklib
+
+                kb = groklib.kernel_block(task, k=2, max_chars=1000, project=project)
+                if kb:
+                    chunks.insert(0, kb)
+            except Exception:
+                pass
         except Exception:
             pass
     except Exception:
@@ -940,6 +948,17 @@ def main() -> int:
         else "read_file path: src/game.js — then apply_patch. Avoid list_dir. done when P0-safe."
     )
 
+    host_sess = None
+    host_txt = ""
+    try:
+        import grok as groklib
+
+        host_sess = groklib.session_for(project, task)
+        host_txt = groklib.host_block(host_sess)
+    except Exception:
+        host_sess = None
+        host_txt = ""
+
     messages = [
         {"role": "system", "content": system},
         {
@@ -947,9 +966,17 @@ def main() -> int:
             "content": (
                 f"Project: (root hidden — use relative paths)\n\nTask:\n{task}\n\n"
                 f"{start_hint}"
+                + (f"\n\n{host_txt}" if host_txt else "")
             ),
         },
     ]
+    if host_sess is not None:
+        try:
+            import grok as groklib
+
+            messages = groklib.attach_prefill(messages, host_sess, role="coder")
+        except Exception:
+            pass
 
     print(f"🤖 MAX Agent · model={model} · ctx={num_ctx} · steps≤{step_budget} · turbo knowledge")
     print(f"📁 {project}")

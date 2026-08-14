@@ -104,15 +104,49 @@ def export_sft(out_path: Path | None = None, limit: int = 500) -> dict[str, Any]
     }
 
 
+def harvest_kernel(limit: int = 500) -> dict[str, Any]:
+    """Write SFT rows from the Grok kernel trace log (no model, no train)."""
+    try:
+        import grok as groklib
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "rows": 0}
+    rows = groklib.harvest_pairs(limit=limit)
+    dest = PAIRS / "export-kernel.jsonl"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with dest.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return {
+        "ok": True,
+        "path": str(dest),
+        "rows": len(rows),
+        "ready": len(rows) >= MIN_TRAIN_PAIRS,
+        "min_pairs": MIN_TRAIN_PAIRS,
+        "source": "grok-kernel",
+    }
+
+
 def stats() -> dict[str, Any]:
     pairs = iter_pairs()
     kinds: dict[str, int] = {}
     for p in pairs:
         k = str(p.get("kind") or "unknown")
         kinds[k] = kinds.get(k, 0) + 1
+    kernel_n = 0
+    try:
+        import grok as groklib
+
+        traces = groklib.load_kernel_traces()
+        kernel_n = len(traces)
+        for row in traces:
+            k = str(row.get("kind") or "grok")
+            kinds[k] = kinds.get(k, 0) + 1
+    except Exception:
+        kernel_n = 0
     n = len(pairs)
     return {
         "count": n,
+        "kernel_traces": kernel_n,
         "kinds": kinds,
         "dir": str(PAIRS),
         "ready": n >= MIN_TRAIN_PAIRS,
@@ -127,12 +161,17 @@ def main() -> int:
     e = sub.add_parser("export")
     e.add_argument("--out", default="")
     e.add_argument("--limit", type=int, default=500)
+    h = sub.add_parser("harvest")
+    h.add_argument("--limit", type=int, default=500)
     args = ap.parse_args()
     if args.cmd == "stats":
         print(json.dumps(stats(), indent=2))
         return 0
     if args.cmd == "export":
         print(json.dumps(export_sft(Path(args.out) if args.out else None, limit=args.limit), indent=2))
+        return 0
+    if args.cmd == "harvest":
+        print(json.dumps(harvest_kernel(limit=getattr(args, "limit", 500) or 500), indent=2))
         return 0
     ap.print_help()
     return 0

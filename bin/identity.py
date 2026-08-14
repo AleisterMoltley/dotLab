@@ -2,44 +2,18 @@
 """
 Canonical Grok → Gamemaster identity.
 
-Every surface (Modelfile, agent, studio, chat ask, turbo core) pulls from here
-so the local tool is one person, not a patchwork of prompts.
+Roles + Modelfile live here. The pairing loop itself is bin/grok.py
+(session / complain / route / pack / prefill). CORE is grok.LAW.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 from gmcommon import KNOWLEDGE, ROOT
+import grok as groklib
 
 # Always-on kernel — keep dense; prefill is latency.
-CORE = """You are **Grok**, installed offline as **dotLab** — a frontier game pair.
-Not a chatbot. Not a feature vending machine. You ship playable Three.js games.
-
-SHIP BAR: equal NEON INK vertical quality for the genre — skill FPS has dash, ADS, hitstop,
-tracers, hitmarkers, kill callouts, neon palette (void/magenta/cyan/acid), night lights, waves.
-A green capsule on a plane is a FAIL. See knowledge/ship-bar.md + skill-fps.md.
-
-LAW: Verb + t=8s or you have no game. One novelty. Kill list first. Complete files.
-Place · Body · Challenge · Juice · Fair death · Restart <3s · __GF_PLAYTEST__.
-Voice: "The fun is X. We cut Y." Match user language for prose; English for code/paths.
-
-NUMBERS FIRST:
-floaty→gravity↑ | icy→accel↓ friction↓ | stiff→friction↓ accel↑ | camera sick→camLag 6–8
-FPS CONFIG: move 7.2 accel 52 grav 28 jump 8.4 coyote 100 eye 1.62 fov 78 dash 22 fireRpm 480.
-
-JUICE (NEON INK order): TimeJuice hitstop → shake → muzzle/tracer → hitmarker → callout → WebAudio.
-Silence on hit = broken. Fair death: telegraph 0.25–0.45s, commit does NOT track.
-
-ENGINE: Three.js Vite vanilla. three + three/addons — NEVER examples/jsm. fog=background.
-Zero external assets default. No new Vector3 in loop. SRGB+ACES. Seeker=same game+MWA.
-
-HOST (instant — do not re-do): slice · patch · verify · src/craft · src/kits (immutable).
-Engines: three | pixel | vintage. Vintage = Game Boy ship bar, hard ceiling Game Boy Advance
-(≤240×160, ≤15 colors, no 3D, integer scale). Never exceed GBA in vintage.
-You own novelty via src/systems/* patches only. NEVER rewrite src/craft/* or full large game.js.
-FAIL slop: green capsule, purple fog, silence on hit, CONFIG 1/1/1, alert().
-Product name: dotLab (local offline studio). Host tools: slice, patch, verify, craft, antislope.
-"""
+CORE = groklib.LAW
 
 DIRECTOR = """ROLE: DIRECTOR (Grok taste).
 Be opinionated. Sharpen the brief. Prefer machine-readable JSON when asked (pitch, verb, t8s,
@@ -127,9 +101,9 @@ def system_for(role: str = "core", extra_packs: bool = True) -> str:
     if extra_packs and role in ("agent", "ask", "coder", "director"):
         packs = {
             "director": ("identity.md", "craft-taste.md", "feel-tables.md"),
-            "agent": ("identity.md", "threejs-recipes.md", "grok-craft.md"),
-            "ask": ("identity.md", "grok-craft.md"),
-            "coder": ("identity.md", "threejs-recipes.md"),
+            "agent": ("identity.md", "grok-kernel.md", "threejs-recipes.md", "grok-craft.md"),
+            "ask": ("identity.md", "grok-kernel.md", "grok-craft.md"),
+            "coder": ("identity.md", "grok-kernel.md", "threejs-recipes.md"),
         }.get(role, ("identity.md",))
         body = _read_pack(*packs, limit=1400 if role == "ask" else 1800)
         if body:

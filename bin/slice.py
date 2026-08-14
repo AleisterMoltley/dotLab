@@ -527,6 +527,16 @@ def _title(prompt: str) -> str:
     return " ".join(w.capitalize() for w in words[:5])
 
 
+def _persist_grok_session(dest: Path, spec: dict) -> None:
+    try:
+        import grok as groklib
+
+        sess = spec.get("grok") if isinstance(spec.get("grok"), dict) else groklib.session_from_spec(spec)
+        groklib.persist(dest, sess)
+    except Exception:
+        pass
+
+
 def compile_prompt(
     prompt: str,
     genre: str | None = None,
@@ -613,6 +623,12 @@ def compile_prompt(
         import hands as handslib
 
         spec = handslib.apply_sameness(spec)
+    except Exception:
+        pass
+    try:
+        import grok as groklib
+
+        spec = groklib.stamp_spec(spec)
     except Exception:
         pass
     return spec
@@ -1009,6 +1025,7 @@ game.start();
     spec_out["palette"] = dict(vcfg.get("palette") or spec.get("palette") or {})
     (meta / "slice.json").write_text(json.dumps(spec_out, indent=2) + "\n", encoding="utf-8")
     written.append(str((meta / "slice.json").relative_to(dest)))
+    _persist_grok_session(dest, spec_out)
 
     prof = vcfg.get("profile") or "gb"
     put(
@@ -1143,6 +1160,7 @@ game.start();
     meta.mkdir(parents=True, exist_ok=True)
     (meta / "slice.json").write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")
     written.append(str((meta / "slice.json").relative_to(dest)))
+    _persist_grok_session(dest, spec)
     put(
         "WIKI.md",
         f"""# {name}
@@ -1381,6 +1399,7 @@ npm run dev
     meta = meta_dir(dest)
     meta.mkdir(parents=True, exist_ok=True)
     (meta / "slice.json").write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")
+    _persist_grok_session(dest, spec)
     return written
 
 
@@ -1409,9 +1428,18 @@ def ask_system(project: Path | None, user_text: str) -> str:
         packs = turbo.select_knowledge(user_text, max_chars=1400)
     except Exception:
         packs = ""
+    host = ""
+    try:
+        import grok as groklib
+
+        sess = groklib.session_for(project, user_text) if project else None
+        host = groklib.host_block(sess)
+    except Exception:
+        host = ""
     return (
         f"{craft}\n\n"
         f"PLAYER: {user_text}\n\n"
+        f"{host}\n\n"
         f"SLICE:\n{spec_txt}\n\n"
         f"WIKI:\n{wiki}\n\n"
         f"{packs}\n"

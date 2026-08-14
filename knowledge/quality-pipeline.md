@@ -28,6 +28,7 @@ Host-side ship-rate system. Goal: **faster wall-clock** and **higher P0 pass rat
 | P2 Play auto-repair | play.log → diagnose → one repair | `quality.play_error_auto_repair`, `POST …/repair` |
 | P2 Slice RAG | Embeddings/keyword over successful projects | `rag.py` |
 | P3 Accept pairs | Log patches for future LoRA | `.dotlab/lora-pairs/`, `config/lora-pairs/` |
+| P3 Kernel traces | Grok open/complain/refuse → teacher + LoRA | `bin/grok.py` `record_decision`, `lora harvest` |
 | P3 Prefix cache | Client hash of system prefix | `quality.prefix_cache_*` |
 
 ## Env knobs

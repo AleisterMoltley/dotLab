@@ -588,4 +588,13 @@ def teacher_block(query: str = "", k: int = 2, max_chars: int = 1600) -> str:
             break
         parts.append(block)
         used += len(block)
-    return "\n".join(parts) if len(parts) > 1 else ""
+    body = "\n".join(parts) if len(parts) > 1 else ""
+    try:
+        import grok as groklib
+
+        extra = groklib.kernel_block(query, k=1, max_chars=max(400, max_chars // 3))
+        if extra:
+            body = (body + "\n\n" + extra) if body else extra
+    except Exception:
+        pass
+    return body

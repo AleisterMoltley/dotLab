@@ -610,12 +610,12 @@ def screenshot_slop_hint(path: Path) -> dict[str, Any]:
 # ── Slot-JSON only contract text ────────────────────────────────────────
 
 SLOT_JSON_ONLY = """
-SLOT-JSON CONTRACT (anti-slop):
-- Do NOT rewrite src/craft/* or host kits.
-- Prefer emit JSON only for content:
+SLOT-JSON CONTRACT (anti-slop, host-enforced):
+- Emit ONE JSON object for content, or one apply_patch under src/systems/* or src/slots/*.
   {"novelty_id":"…","bark_lines":["…"],"enemy_count":8,"room_notes":"…"}
-- Novelty implementation: only src/systems/* or src/slots/* via apply_patch.
-- Host owns feel, juice, palette, camera, loop machine.
+- Illegal: rewrite src/game.js, src/craft/*, src/look/*, src/body/*, invent lights, capsule hero, CONFIG.
+- Host owns feel, juice, palette, camera, taste, loop. Do not emit gravity/moveSpeed/camLag.
+- Honor HOST SESSION JSON. Do not re-pitch.
 """.strip()
 
 

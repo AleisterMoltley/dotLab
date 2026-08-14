@@ -74,6 +74,19 @@ Primitives + locked 8-hex palette beat missing GLBs.
 Pixel path: bakeCanvas → nearest spriteMesh (kit pixel).
 Base mesh first; variants recolor — never reroll the hero.
 
+## Pairing kernel (`bin/grok.py`)
+
+This is Grok 4.6 as host code. The 30B does not get to reopen the session.
+
+| Function | Effect |
+|----------|--------|
+| `session_open` | verb · t=8s · look/body/toy · kill list |
+| `complain` | player words → feel ops |
+| `route` | patch / rebuild / refuse / LLM |
+| `prefill` | first assistant turn is already a decision |
+
+`.dotlab/grok.json` is the locked session. `HOST SESSION` in the prompt is that file.
+
 ## Continue routing (host law)
 
 | User says | Host | LLM |

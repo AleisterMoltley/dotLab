@@ -40,6 +40,7 @@ dotLab — local Three.js game studio (Ollama, $0)
   gamemaster bank show|prompt|record -p DIR
   gamemaster redteam | bullshit "…" | live-docs refresh | lora export
   gamemaster intervene [--status|--warmup|--modelfile-only]
+  gamemaster grok open|route|complain|pack|whoami|harvest|traces
   gamemaster update [--quick|--knowledge|--modelfile]
   gamemaster github login|status|logout|commit|push|ship -p DIR
   gamemaster ship -p DIR -m "vertical slice"
@@ -339,6 +340,10 @@ if [[ $# -gt 0 ]]; then
     intervene|install-local|grok-local)
       shift
       exec python3 "$ROOT/bin/intervene.py" "$@"
+      ;;
+    grok|kernel)
+      shift
+      exec python3 "$ROOT/bin/grok.py" "$@"
       ;;
     identity|whoami)
       shift

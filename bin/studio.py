@@ -222,11 +222,31 @@ def role_director(
         + qualitylib.DIRECTOR_JSON_INSTRUCTION
         + "\nIf Solana Seeker: same Three.js game + MWA; loop offline.\n"
     )
+    host_sess = None
+    host_txt = ""
+    try:
+        import grok as groklib
+
+        host_sess = groklib.session_open(brief, genre=genre_hint or None)
+        host_txt = groklib.host_block(host_sess)
+        if project is not None:
+            groklib.persist(project, host_sess)
+    except Exception:
+        host_sess = None
+        host_txt = ""
     user = (
         f"Brief:\n{brief}\n\nGenre-Note: {genre_hint or 'auto'}\n\n"
+        f"{host_txt}\n\n"
         f"{prefs}\n\n{knowledge}"
     )
     messages = [{"role": "system", "content": sys_p}, {"role": "user", "content": user}]
+    if host_sess is not None:
+        try:
+            import grok as groklib
+
+            messages = groklib.attach_prefill(messages, host_sess, role="director")
+        except Exception:
+            pass
     # Host speculative: flash drafts JSON, max refines when needed
     try:
         raw = qualitylib.draft_then_max(
@@ -242,6 +262,16 @@ def role_director(
 
     data = qualitylib.extract_json_object(raw)
     ok, errs, norm = qualitylib.validate_director_json(data)
+    if not ok and host_sess is not None:
+        try:
+            import grok as groklib
+
+            seed = groklib.director_seed(host_sess)
+            ok2, _errs2, norm2 = qualitylib.validate_director_json(seed)
+            if ok2:
+                ok, errs, norm = True, [], norm2
+        except Exception:
+            pass
     if ok:
         md = qualitylib.director_json_to_markdown(norm)
         # persist machine-readable next to markdown

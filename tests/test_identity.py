@@ -7,11 +7,15 @@ import identity as identitylib
 
 class TestIdentity(unittest.TestCase):
     def test_core_is_grok_not_chatbot(self) -> None:
+        import grok as groklib
+
         s = identitylib.system_for("modelfile")
+        self.assertIs(identitylib.CORE, groklib.LAW)
         self.assertIn("Grok", s)
         self.assertTrue("dotLab" in s or "Gamemaster" in s)
         self.assertIn("t=8s", s)
         self.assertIn("HOST", s)
+        self.assertIn("HOST SESSION", s)
         self.assertNotIn("Sure! I can help", s)
 
     def test_roles_differ(self) -> None:

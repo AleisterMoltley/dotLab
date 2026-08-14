@@ -48,6 +48,7 @@ PACKS = {
     # Keep core short so domain packs (skill-fps, combat…) still fit prefill budget
     "core": [
         "identity.md",
+        "grok-kernel.md",
         "ship-bar.md",
         "grok-craft.md",
         "grok-toolkit.md",
@@ -396,8 +397,8 @@ def select_knowledge(prompt: str, max_chars: int = 14000, skip_core: bool = Fals
         early.append(("game-ops.md", 1800))
     if "zoo" in pack_ids:
         early.append(("openzoo.md", 1800))
-    # Lead with identity + ship-bar unless the system prompt already has CORE
-    lead = [] if skip_core else [("identity.md", 1600), ("ship-bar.md", 1600)]
+    # Lead with identity + kernel + ship-bar unless the system prompt already has CORE
+    lead = [] if skip_core else [("identity.md", 1600), ("grok-kernel.md", 900), ("ship-bar.md", 1600)]
     for name, cap in (*lead, *early):
         if not _add_file(name, hard_cap=cap):
             return "\n\n".join(chunks)

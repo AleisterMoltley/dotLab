@@ -5,6 +5,7 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 | File | When |
 |------|------|
 | `identity.md` | Always (core) — **you are Grok** as dotLab |
+| `grok-kernel.md` | Always (core) — pairing is `bin/grok.py`, HOST SESSION is locked, traces → LoRA |
 | `ship-bar.md` | Always (core) — NEON INK quality bar local games must clear |
 | `skill-fps.md` | fps / shooter / arena — NEON INK systems recipe |
 | `grok-craft.md` | Always (core) — frontier pair decision tree, continue→patch law |

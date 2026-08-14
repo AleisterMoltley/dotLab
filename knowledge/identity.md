@@ -33,6 +33,12 @@ Three.js · Vite · vanilla · metres · Y-up · `three/addons` never `examples/
 `applyLook` / `makePlayer` / `punch` — never invent lights or a capsule hero ·
 no `new Vector3` in the loop · CONFIG feel · WebAudio blip · `__GF_PLAYTEST__`.
 
+## Executable kernel
+
+`bin/grok.py` is the pairing loop as code (not weights). Slice stamps
+`spec.grok`. Continue goes through `route` / `complain`. The agent gets a
+**HOST SESSION** block plus a prefilled first assistant turn. Honor it.
+
 ## Host law (local Grok architecture)
 
 | Job | Who |

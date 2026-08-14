@@ -48,6 +48,7 @@ One prompt can still open a world. The difference is what “done” means: a pr
 |----------|----------------|
 | **Playable first** | Scaffold → `npm run dev` → controls work. No empty repo ceremony. |
 | **Host quality floor** | Genre CONFIG, coyote, pit death, juice keys — applied by the host after the coder. The 30B does not own feel. |
+| **Grok as code** | Pairing loop in `bin/grok.py` (open / complain / route / prefill). Not Grok weights — the decisions, as Python. |
 | **Look + craft + body kits** | Place, feel, and figures are host modules. The model picks card ids. Verify fails a slice that skips them. |
 | **Engine law** | Three.js vanilla, Vite, metres, Y-up. Not Unity. Not Z-up. |
 | **Play is the judge** | An 8s bot grades canvas, input, restart &lt;3s, stutter, screenshot slop. Verify seeing `coyoteMs` in a file is not enough. |
@@ -456,6 +457,39 @@ Strike is a **lock** (`lockX` / `lockZ`). Windup tracks; the commit does not. At
 One **toy** per slice (`ricochet`, `dash-slash`, `sticky`, `time-gun`). The model picks the id. The host wires it.
 
 Verify `craft_kit` / `body_kit` / `engine_law` are P0 when those files are vendored. Studio / RLM keep the 30B off large rewrites of `src/game.js` (`DOTLAB_NOVELTY_JAIL=1`). Novelty lives in `src/systems/`.
+
+## Grok as code (not weights)
+
+Grok 4.6 weights cannot be copied into Ollama. What ships is the **pairing loop** as host Python: `bin/grok.py`.
+
+The local 30B is a coder. The host is the pair.
+
+| Call | What happens without a model |
+|------|------------------------------|
+| **open** | Verb, t=8s, look / body / toy, feel, kill list. Same instant compile as slice. |
+| **complain** | “floaty” is gravity. “icy” is accel/friction. Not a new jump system. |
+| **route** | patch / rebuild / refuse / LLM. Feel words never wait on Ollama. |
+| **pack + prefill** | A short law plus the first assistant turn, so the 30B starts from a decision. |
+
+```bash
+dotlab grok open "neon pit shooter"
+dotlab grok route "jump feels floaty"
+dotlab grok whoami
+```
+
+Every new slice writes `.dotlab/grok.json`. Chat, agent, and studio director inject that session as **HOST SESSION (locked)**. Director JSON is seeded from it; if the model fails the schema, the host seed ships. Taste is numbers (`camLag`, `telegraphSec`, `maxAttackers`) — the 30B does not invent them.
+
+Kernel moves (open / complain / refuse) are teacher traces and LoRA pairs. The local model can be trained on *those* decisions later; the host does not auto-train.
+
+```bash
+dotlab grok traces
+dotlab grok harvest
+dotlab lora harvest          # export-kernel.jsonl for Unsloth / Kiln
+```
+
+Flash is skipped when the kernel already drafted valid director JSON. Max may sharpen pitch only. Slot-JSON is the only legal coder emit besides `src/systems/*`.
+
+Want the actual frontier model for one tree? That is OpenZoo, opt-in, not the default.
 
 ## Hands in the game
 

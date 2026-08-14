@@ -12,67 +12,15 @@ import re
 from pathlib import Path
 from typing import Any
 
+import grok as groklib
 import slice as slicelib
 
-# (regex, handler name) — first match wins for multi; we accumulate simple tweaks
-_FEEL_OPS: list[tuple[str, str, float]] = [
-    (r"floaty|schwammig|schwebt|moon.?jump|too high hang", "gravity", 1.15),
-    (r"stiff|stocksteif|zu steif|zu fest", "gravity", 0.9),
-    (r"faster|schneller|zu langsam|too slow", "moveSpeed", 1.18),
-    (r"slower|langsamer|zu schnell|too fast", "moveSpeed", 0.85),
-    (r"jump higher|höher spring|higher jump|mehr jump", "jumpForce", 1.15),
-    (r"jump lower|weniger jump|lower jump", "jumpForce", 0.88),
-    (r"icy|rutschig|slippery", "icy", 0),
-    (r"snappy|knackig|tight control", "snappy", 0),
-    (r"more juice|mehr juice|mehr feedback|screen.?shake", "juice", 1.35),
-    (r"less juice|weniger juice|calm", "juice", 0.75),
-    (r"more health|mehr leben|mehr hp|\+hp|extra life", "hp", 1),
-    (r"less health|weniger leben|glass.?cannon", "hp", -1),
-    (r"harder|schwerer|schwieriger|more difficult", "harder", 0),
-    (r"easier|leichter|einfacher", "easier", 0),
-    (r"more enem|mehr gegner|mehr drohnen|more drone|mehr feinde", "enemies", 3),
-    (r"fewer enem|weniger gegner|less enem|weniger drohnen", "enemies", -2),
-    (r"more coin|mehr münz|mehr collect", "coins", 2),
-    (r"fov wider|wider fov|mehr fov", "fov", 1.08),
-    (r"fov narrower|less fov|cinematic fov", "fov", 0.92),
-    (r"mouse sens|empfindlichkeit|sens higher|höhere sens", "mouseSens", 1.2),
-    (r"lower sens|weniger sens|sens lower", "mouseSens", 0.85),
-]
-
-_PALETTE_WORDS = {
-    "neon": (r"neon|cyber|synth|futur|sci-?fi|cyberpunk|tron", "neon city", "neon"),
-    "forest": (r"forest|grove|woods|wald|jungle|trees?", "pine grove", "forest"),
-    "desert": (r"desert|dune|sand|wüste", "sun dunes", "desert"),
-    "ice": (r"ice|snow|frost|eis|schnee|arctic", "ice field", "ice"),
-    "dungeon": (r"dungeon|castle|crypt|horror.?dark|kerker|burg", "stone keep", "dungeon"),
-    "village": (r"village|dorf|town|markt", "dusk village", "village"),
-}
-
-_GENRE_FORCE = [
-    (r"\b(fps|ego.?shooter|first[- ]person)\b", "fps"),
-    (r"\b(shooter|baller|schie(ss|ß))\b", "fps"),
-    (r"\b(platformer?|jump.?game|plattform)\b", "platformer"),
-    (r"\b(runner|endless)\b", "runner"),
-    (r"\b(racing|racer|fahr.?spiel)\b", "racing"),
-    (r"\b(horror|stealth|grusel)\b", "horror"),
-    (r"\b(adventure|abenteuer|dorf.?spiel)\b", "adventure"),
-    (r"\b(arena|twin.?stick)\b", "arena"),
-    (r"\b(rpg)\b", "rpg"),
-]
-
-_LLM_ONLY = re.compile(
-    r"(?i)\b("
-    r"inventory|invent|skill.?tree|dialogue tree|dialog.?baum|quest.?log|"
-    r"ragdoll|rapier|shader|glsl|raymarch|multiplayer|netcode|save.?system|"
-    r"refactor|rewrite all|architecture|bug|crash|error|stack.?trace|"
-    r"gltf|mixamo|animation.?mixer|particle system|postprocess|"
-    r"wallet|solana|seeker"
-    r")\b"
-)
-
-_REBUILD = re.compile(
-    r"(?i)\b(rebuild|from scratch|neu bauen|komplett neu|start over|nochmal neu)\b"
-)
+# Kernel owns the tables — keep the private aliases so callers/tests stay put.
+_FEEL_OPS = groklib.FEEL_OPS
+_PALETTE_WORDS = groklib.PALETTE_WORDS
+_GENRE_FORCE = groklib.GENRE_FORCE
+_LLM_ONLY = groklib.LLM_ONLY
+_REBUILD = groklib.REBUILD
 
 
 def load_spec(project: Path) -> dict | None:
@@ -180,15 +128,7 @@ def _force_palette(text: str) -> tuple[str, str] | None:
 
 
 def needs_llm(text: str) -> bool:
-    t = (text or "").strip()
-    if not t:
-        return False
-    if _LLM_ONLY.search(t):
-        # still allow pure feel if short and mixed
-        if len(t) < 60 and any(re.search(rx, t, re.I) for rx, _, _ in _FEEL_OPS):
-            return False
-        return True
-    return False
+    return groklib.needs_llm(text)
 
 
 def try_patch(project: Path, text: str) -> dict[str, Any] | None:
@@ -203,7 +143,26 @@ def try_patch(project: Path, text: str) -> dict[str, Any] | None:
     t = (text or "").strip()
     if not t:
         return None
-    if needs_llm(t):
+    decision = groklib.route(t)
+    if decision.get("kind") == "refuse":
+        try:
+            groklib.record_decision(
+                kind="refuse",
+                instruction=t,
+                session=groklib.load(project),
+                decision=decision,
+                project=project,
+            )
+        except Exception:
+            pass
+        return {
+            "ok": True,
+            "mode": "refuse",
+            "summary": decision.get("reason") or "refused by grok kernel",
+            "written": [],
+            "notes": [decision.get("reason") or "refuse"],
+        }
+    if decision.get("kind") == "llm":
         return None
 
     spec = load_spec(project)
@@ -238,6 +197,10 @@ def try_patch(project: Path, text: str) -> dict[str, Any] | None:
                 new_spec["vintage"] = spec["vintage"]
         _ensure_counts(new_spec)
         written = slicelib.write_slice(project, new_spec)
+        try:
+            groklib.persist(project, groklib.session_from_spec(new_spec))
+        except Exception:
+            pass
         return {
             "ok": True,
             "mode": "rebuild",
@@ -339,6 +302,18 @@ def try_patch(project: Path, text: str) -> dict[str, Any] | None:
 
     # Always preserve engine on rewrite
     written = slicelib.write_slice(project, spec)
+    try:
+        sess = groklib.session_from_spec(spec)
+        groklib.persist(project, sess, record=False)
+        groklib.record_decision(
+            kind="complain",
+            instruction=t,
+            session=sess,
+            decision={"notes": notes, "route": decision, "feel": sess.get("feel")},
+            project=project,
+        )
+    except Exception:
+        pass
     summary = (
         "Instant craft (no model wait):\n- "
         + "\n- ".join(notes)
