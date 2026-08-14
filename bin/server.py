@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import cloud as cloudlib  # noqa: E402
+import zoo as zoolib  # noqa: E402
 import github as githublib  # noqa: E402
 import patch as patchlib  # noqa: E402
 import slice as slicelib  # noqa: E402
@@ -382,6 +383,43 @@ class Handler(SimpleHTTPRequestHandler):
             code, data = 500, {"ok": False, "error": str(e)}
         self._json(code, data)
 
+    def _zoo_get(self, path: str) -> None:
+        try:
+            if path.rstrip("/") in ("/api/zoo", "/api/zoo/status"):
+                return self._json(200, {"ok": True, **zoolib.status_dict()})
+            if path.rstrip("/") == "/api/zoo/listings":
+                return self._json(200, {"ok": True, "listings": zoolib.listings()})
+            if path.startswith("/api/zoo/models"):
+                qs = parse_qs(urlparse(self.path).query)
+                q = (qs.get("q") or qs.get("query") or [""])[0]
+                return self._json(200, {"ok": True, "models": zoolib.models(q)})
+            if path.startswith("/api/zoo/quote"):
+                qs = parse_qs(urlparse(self.path).query)
+                model = (qs.get("model") or [""])[0]
+                return self._json(200, {"ok": True, **zoolib.quote(model)})
+            return self._json(404, {"ok": False, "error": "unknown zoo route"})
+        except Exception as e:
+            return self._json(502, {"ok": False, "error": str(e)})
+
+    def _zoo_post(self, path: str, raw: bytes) -> None:
+        try:
+            payload = json.loads(raw.decode() or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        action = str(payload.get("action") or "").lower()
+        try:
+            if path.rstrip("/") == "/api/zoo/wallet" or action in ("wallet", "wallet-new"):
+                info = zoolib.ensure_wallet()
+                return self._json(200, {"ok": True, **info, **zoolib.status_dict()})
+            if action == "on":
+                code = cloudlib.cmd_on("zoo")
+                if code != 0:
+                    return self._json(400, {"ok": False, "error": "cloud on zoo failed"})
+                return self._json(200, {"ok": True, **cloudlib.status_dict(), "zoo": zoolib.status_dict()})
+            return self._json(400, {"ok": False, "error": "action wallet|on"})
+        except Exception as e:
+            return self._json(500, {"ok": False, "error": str(e)})
+
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -471,6 +509,8 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/health":
                 return self._json(200, health_payload())
             return self._json(200, cloudlib.status_dict())
+        if path == "/api/zoo" or path.startswith("/api/zoo/"):
+            return self._zoo_get(path)
         if path.startswith("/api/tags"):
             if cloudlib.active_provider():
                 st = cloudlib.status_dict()
@@ -793,12 +833,18 @@ class Handler(SimpleHTTPRequestHandler):
                     name = str(payload.get("provider") or "grok")
                     code = cloudlib.cmd_on(name)
                     if code != 0:
-                        return self._json(400, {"ok": False, "error": f"cloud on {name} failed (key?)"})
+                        hint = "wallet?" if cloudlib.canon(name) == "zoo" else "key?"
+                        return self._json(400, {"ok": False, "error": f"cloud on {name} failed ({hint})"})
                 else:
                     return self._json(400, {"ok": False, "error": "action on|off"})
-                return self._json(200, {"ok": True, **cloudlib.status_dict()})
+                extra = {}
+                if cloudlib.active_provider() == "zoo":
+                    extra["zoo"] = zoolib.status_dict()
+                return self._json(200, {"ok": True, **cloudlib.status_dict(), **extra})
             except Exception as e:
                 return self._json(500, {"ok": False, "error": str(e)})
+        if path == "/api/zoo" or path.startswith("/api/zoo/"):
+            return self._zoo_post(path, body)
         if path == "/api/ask":
             try:
                 payload = json.loads(body.decode() or "{}")

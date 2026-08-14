@@ -76,6 +76,7 @@ PACKS = {
     "anim": ["threejs-animation.md"],
     "art": ["asset-core.md", "tiles-ui.md", "pixel-kit.md", "live/pixel-api.md"],
     "seeker": ["solana-seeker.md"],
+    "zoo": ["openzoo.md", "solana-seeker.md"],
     "agent": ["agent-protocol.md"],
     "playtest": ["playtest-harness.md", "prefs-and-playtest.md", "pair-partner.md"],
     "live": ["live/LATEST.md", "live/three-api.md", "live/pixel-api.md"],
@@ -93,6 +94,7 @@ ROUTES = [
     (r"worldclaw|open.?world|terrain|biome|heightfield|village|region|landmark|explorable", ["world", "physics", "three", "core"]),
     (r"mixer|gltf|skinned|mixamo|crossfade|root motion|ik\b|animation clip", ["anim", "art", "three", "core"]),
     (r"sprite|tileset|atlas|pixel.?art|pixel kit|bakeCanvas|layeredRect|nearest.?filter|icon set|art-test|texture", ["art", "anim", "core"]),
+    (r"openzoo|open.?zoo|x402|lecore|yusdcx|wtokenx|zoo stall", ["zoo", "seeker", "core"]),
     (r"seeker|solana|mwa|wallet|seed.?vault|spl-token|anchor|dapp", ["seeker", "core", "game", "three"]),
     (r"playtest|metric|screenshot|critic|feel|coyote|juice|shake|hitstop", ["playtest", "combat", "game", "core"]),
     (r"slop|capsule|purple fog|silence on hit|generic|ai style", ["antislope", "core", "game"]),
@@ -310,7 +312,7 @@ def select_knowledge(prompt: str, max_chars: int = 14000) -> str:
         pack_ids.extend(["world", "physics", "dialogue", "anim", "shader", "systems"])
     # always core first, then high-signal packs (ops/local_llm), then routed domain, then systems/live
     ordered: list[str] = []
-    priority = [p for p in ("ops", "local_llm", "antislope", "vintage") if p in pack_ids]
+    priority = [p for p in ("ops", "local_llm", "antislope", "vintage", "zoo") if p in pack_ids]
     for pid in ["core"] + priority + pack_ids + ["systems", "live"]:
         if pid not in ordered:
             ordered.append(pid)
@@ -350,6 +352,8 @@ def select_knowledge(prompt: str, max_chars: int = 14000) -> str:
         early.append(("local-llm-stack.md", 2200))
     if "ops" in pack_ids:
         early.append(("game-ops.md", 1800))
+    if "zoo" in pack_ids:
+        early.append(("openzoo.md", 1800))
     # always lead with identity + ship-bar
     for name, cap in (("identity.md", 1600), ("ship-bar.md", 1600), *early):
         if not _add_file(name, hard_cap=cap):

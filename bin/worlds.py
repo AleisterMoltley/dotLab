@@ -946,7 +946,7 @@ def main() -> int:
     p_gen.add_argument("--no-refine", action="store_true")
     p_gen.add_argument("--live", action="store_true")
     p_gen.add_argument("--offline", action="store_true", help="heuristic plan (no LLM)")
-    p_gen.add_argument("--cloud", default="", help="Optional paid provider: grok|claude|openai|gemini")
+    p_gen.add_argument("--cloud", default="", help="Optional paid provider: grok|claude|openai|gemini|zoo")
     p_gen.set_defaults(func=cmd_generate)
 
     p_plan = sub.add_parser("plan", help="F_plan only — write spec JSON")

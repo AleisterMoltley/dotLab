@@ -748,17 +748,22 @@
       <p id="settingsStatus">Local Ollama by default.</p>
       <label for="cloudProvider">Paid provider (optional)</label>
       <select id="cloudProvider">
+        <option value="zoo">openzoo (x402)</option>
         <option value="grok">grok</option>
         <option value="claude">claude</option>
         <option value="openai">openai</option>
         <option value="gemini">gemini</option>
       </select>
+      <div id="zooPanel" class="hint" style="margin-top:10px;display:none">
+        <div>Deposit <span id="zooWallet">—</span></div>
+        <div>Wrap USDC → yUSDCx or TOKEN → wTOKENx at x402.accrue.fund/start</div>
+      </div>
       <div class="row" style="margin-top:10px">
         <button type="button" class="btn" id="cloudOff">Local</button>
         <button type="button" class="btn primary" id="cloudOn">Cloud on</button>
         <button type="button" class="btn" id="settingsClose">Close</button>
       </div>
-      <p class="hint" style="margin-top:10px" id="settingsHint">Keys via env (XAI_API_KEY …) or `dotlab cloud set`.</p>
+      <p class="hint" style="margin-top:10px" id="settingsHint">Keys via env (XAI_API_KEY …) or `dotlab cloud set`. Zoo uses a local Solana wallet, no API key.</p>
     </div>
   </div>
 

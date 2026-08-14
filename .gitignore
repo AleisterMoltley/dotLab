@@ -19,6 +19,8 @@ config/active-profile.json
 config/worldclaw.json
 config/worlds.json
 config/cloud.json
+config/zoo.json
+config/zoo-wallet.json
 knowledge/live/*
 !knowledge/live/LATEST.md
 .gamemaster/

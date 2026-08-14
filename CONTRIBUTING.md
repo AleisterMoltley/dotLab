@@ -16,7 +16,7 @@ python3 tests/run.py
 python3 -m py_compile bin/*.py
 ```
 
-Do not commit `node_modules`, user prefs, `config/github.json`, `config/cloud.json`, or bench logs.
+Do not commit `node_modules`, user prefs, `config/github.json`, `config/cloud.json`, `config/zoo.json`, `config/zoo-wallet.json`, or bench logs.
 
 ## Style
 

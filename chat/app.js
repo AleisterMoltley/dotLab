@@ -1231,11 +1231,35 @@
   bind("toolsClose", closeSheets);
   bind("btnHelp", function () { openSheet("helpSheet"); });
   bind("helpClose", closeSheets);
+  function fillZooPanel(z) {
+    var panel = $("zooPanel");
+    var el = $("zooWallet");
+    if (!panel) return;
+    if (!z || !z.wallet) {
+      panel.style.display = "none";
+      return;
+    }
+    panel.style.display = "block";
+    if (el) el.textContent = z.wallet;
+  }
+  function refreshZoo() {
+    var p = ($("cloudProvider") && $("cloudProvider").value) || "";
+    var panel = $("zooPanel");
+    if (panel) panel.style.display = p === "zoo" ? "block" : "none";
+    if (p !== "zoo") return;
+    fetch("/api/zoo").then(function (r) { return r.json(); }).then(function (d) {
+      fillZooPanel(d);
+    }).catch(function () {});
+  }
   bind("btnSettings", function () {
     refreshHealth();
+    refreshZoo();
     openSheet("settingsSheet");
   });
   bind("settingsClose", closeSheets);
+  if ($("cloudProvider")) {
+    $("cloudProvider").addEventListener("change", refreshZoo);
+  }
   bind("cloudOff", function () {
     api("/api/cloud", { action: "off" }).then(function () {
       refreshHealth();
@@ -1246,10 +1270,19 @@
     var p = ($("cloudProvider") && $("cloudProvider").value) || "grok";
     api("/api/cloud", { action: "on", provider: p }).then(function (d) {
       if (!d || !d.ok) {
-        addMsg("bot", "Cloud on failed — set key: export XAI_API_KEY=… then `dotlab cloud on " + p + "`");
+        var hint = p === "zoo"
+          ? "OpenZoo wallet failed — `dotlab zoo wallet`"
+          : "set key: export XAI_API_KEY=… then `dotlab cloud on " + p + "`";
+        addMsg("bot", "Cloud on failed — " + hint);
         return;
       }
       refreshHealth();
+      if (p === "zoo") {
+        fillZooPanel(d.zoo);
+        var w = (d.zoo && d.zoo.wallet) || "";
+        addMsg("bot", "Cloud on · OpenZoo x402" + (w ? " · fund " + w : "") + " (wrap USDC/TOKEN first)");
+        return;
+      }
       addMsg("bot", "Cloud on · " + p + " (paid)");
     });
   });

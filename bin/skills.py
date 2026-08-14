@@ -365,6 +365,22 @@ def catalog() -> list[dict[str, Any]]:
             ("use grok", "paid model", "claude", "gemini", "openai"),
             {"cli": "cloud"},
         ),
+        _skill(
+            "openzoo",
+            "cli",
+            "OpenZoo x402 floor: leCore in front, pay the 402, long context is cheaper than direct.",
+            "gamemaster cloud on zoo",
+            (
+                "openzoo",
+                "open zoo",
+                "use openzoo",
+                "pay the 402",
+                "x402 floor",
+                "lecore memory",
+                "zoo stall",
+            ),
+            {"cli": "zoo"},
+        ),
     ]
     return agent + ops + cli
 

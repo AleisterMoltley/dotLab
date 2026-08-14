@@ -179,6 +179,12 @@ dotlab update --modelfile
 dotlab cloud on grok
 dotlab --cloud claude "Tighten coyote time"
 dotlab cloud off
+
+# OpenZoo — x402 floor, leCore in front (no API key)
+dotlab zoo status
+dotlab zoo wallet
+dotlab cloud on zoo
+dotlab --cloud zoo "Tighten coyote time"
 ```
 
 `./start` is the same CLI with a browser UI.

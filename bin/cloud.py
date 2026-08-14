@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Optional paid LLMs (Grok, Claude, OpenAI, Gemini).
+Optional paid LLMs (Grok, Claude, OpenAI, Gemini, OpenZoo).
 
 Local Ollama stays the default. Cloud is off until the user runs
 `gamemaster cloud on <provider>` or passes `--cloud grok` / GAMEMASTER_CLOUD.
 
 Keys: env var first, optional local config/cloud.json (gitignored). Never print a key.
+OpenZoo (`zoo`) pays with x402 + a local Solana wallet — no API key.
 """
 from __future__ import annotations
 
@@ -53,7 +54,24 @@ CATALOG: dict[str, dict[str, str]] = {
         "key_env": "GEMINI_API_KEY",
         "label": "Google Gemini",
     },
+    "zoo": {
+        "kind": "x402",
+        "base": "https://openzoo.fun/api/v1",
+        "model": "x-ai/grok-4.6",
+        "key_env": "",
+        "label": "OpenZoo (openzoo.fun)",
+    },
 }
+
+ALIASES = {
+    "openzoo": "zoo",
+    "open-zoo": "zoo",
+    "openzoo.fun": "zoo",
+}
+
+
+def canon(name: str) -> str:
+    return ALIASES.get((name or "").strip().lower(), (name or "").strip().lower())
 
 
 def config_path() -> Path:
@@ -101,7 +119,7 @@ def known_names() -> list[str]:
 
 
 def merged_provider(name: str) -> dict:
-    name = (name or "").strip().lower()
+    name = canon(name)
     base = dict(CATALOG.get(name) or {})
     stored = (load_config().get("providers") or {}).get(name) or {}
     if isinstance(stored, dict):
@@ -112,8 +130,19 @@ def merged_provider(name: str) -> dict:
     return base
 
 
+def is_x402(name: str) -> bool:
+    return str(merged_provider(name).get("kind") or "") == "x402"
+
+
 def provider_key(name: str) -> str:
     p = merged_provider(name)
+    if is_x402(name):
+        try:
+            import zoo
+
+            return zoo.wallet_public() or "x402"
+        except Exception:
+            return "x402"
     env_name = str(p.get("key_env") or "")
     if env_name:
         env = os.environ.get(env_name, "").strip()
@@ -132,7 +161,7 @@ def mask_key(key: str) -> str:
 
 def active_provider() -> str:
     """Empty unless the user opted in. A key sitting in the env is not enough."""
-    forced = os.environ.get("GAMEMASTER_CLOUD", "").strip().lower()
+    forced = canon(os.environ.get("GAMEMASTER_CLOUD", ""))
     if forced in ("0", "off", "false", "local", "ollama"):
         return ""
     if forced:
@@ -140,7 +169,7 @@ def active_provider() -> str:
     cfg = load_config()
     if not cfg.get("enabled"):
         return ""
-    return str(cfg.get("default") or "").strip().lower()
+    return canon(str(cfg.get("default") or ""))
 
 
 def require_backend() -> None:
@@ -150,6 +179,8 @@ def require_backend() -> None:
         return
     if name not in known_names() and name not in CATALOG:
         raise SystemExit(f"Unknown cloud provider '{name}'. Use: {', '.join(CATALOG)}")
+    if is_x402(name):
+        return
     if not provider_key(name):
         env = merged_provider(name).get("key_env") or "API key"
         raise SystemExit(
@@ -238,6 +269,10 @@ def gemini_payload(messages: list[dict], temperature: float, num_predict: int) -
 def _cloud_chat(name: str, messages: list[dict], model: str, temperature: float, num_predict: int) -> str:
     p = merged_provider(name)
     kind = str(p.get("kind") or "openai")
+    if kind == "x402":
+        import zoo
+
+        return zoo.chat(messages, model=model, temperature=temperature, num_predict=num_predict)
     key = provider_key(name)
     if not key:
         raise RuntimeError(f"no API key for {name}")
@@ -468,25 +503,33 @@ def cmd_status() -> int:
     st = status_dict()
     if st["local"]:
         print("Cloud: OFF  (local Ollama, $0)")
-        print("  Opt in:  gamemaster cloud on grok|claude|openai|gemini")
-        print("  One shot: gamemaster --cloud grok \"…\"")
+        print("  Opt in:  gamemaster cloud on grok|claude|openai|gemini|zoo")
+        print("  One shot: gamemaster --cloud zoo \"…\"")
     else:
         print(f"Cloud: ON  provider={st['provider']}  model={st['model']}  (paid)")
         print("  Off:     gamemaster cloud off")
     print("Providers:")
     for n, p in st["providers"].items():
         mark = "*" if n == st["provider"] else " "
-        key = "key" if p["has_key"] else "no-key"
-        print(f"  {mark} {n:8} {p['model']:22} {key:7} {p['key_preview']}  (${p['key_env']})")
+        key = "wallet" if p.get("kind") == "x402" else ("key" if p["has_key"] else "no-key")
+        env = p.get("key_env") or ("x402" if p.get("kind") == "x402" else "")
+        print(f"  {mark} {n:8} {str(p['model'] or ''):22} {key:7} {p['key_preview']}  ({env})")
     return 0
 
 
 def cmd_on(name: str) -> int:
-    name = name.strip().lower()
+    name = canon(name)
     if name not in CATALOG and name not in (load_config().get("providers") or {}):
         print(f"Unknown provider '{name}'. Choose: {', '.join(CATALOG)}", file=sys.stderr)
         return 1
-    if not provider_key(name):
+    if is_x402(name):
+        import zoo
+
+        info = zoo.ensure_wallet()
+        print(f"OpenZoo wallet {info['public']}")
+        print(f"  chat     {zoo.SITE_CHAT}")
+        print(f"  Fund + wrap: {zoo.HELP}")
+    elif not provider_key(name):
         env = merged_provider(name).get("key_env") or "API_KEY"
         print(f"No key for {name}. export {env}=…  or  gamemaster cloud set {name} --key …", file=sys.stderr)
         return 1
@@ -507,7 +550,7 @@ def cmd_off() -> int:
 
 
 def cmd_set(args: argparse.Namespace) -> int:
-    name = args.name.strip().lower()
+    name = canon(args.name)
     cfg = load_config()
     slot = dict((cfg.get("providers") or {}).get(name) or {})
     if args.model:
@@ -547,6 +590,7 @@ def cmd_set(args: argparse.Namespace) -> int:
 
 
 def cmd_unset(name: str) -> int:
+    name = canon(name)
     cfg = load_config()
     (cfg.get("providers") or {}).pop(name, None)
     if cfg.get("default") == name:
@@ -584,7 +628,7 @@ def cmd_complete(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Optional paid cloud LLMs (off by default)")
+    ap = argparse.ArgumentParser(description="Optional paid cloud LLMs (off by default). zoo = OpenZoo x402.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     sub.add_parser("active")
@@ -597,7 +641,7 @@ def main() -> int:
     p_set.add_argument("--key-env", default="")
     p_set.add_argument("--model", default="")
     p_set.add_argument("--base", default="")
-    p_set.add_argument("--kind", choices=["openai", "anthropic", "gemini"], default="")
+    p_set.add_argument("--kind", choices=["openai", "anthropic", "gemini", "x402"], default="")
     p_set.add_argument("--on", action="store_true", help="also enable this provider")
     p_un = sub.add_parser("unset")
     p_un.add_argument("name")

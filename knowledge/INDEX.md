@@ -33,6 +33,7 @@ Turbo (`bin/turbo.py`) injects a **subset** by keyword. Keep packs dense; first 
 | `shaders-glsl-tsl.md` | GLSL / Shadertoy / TSL |
 | `multipass.md` | multipass shader lab |
 | `solana-seeker.md` | MWA, Seeker UX, same Three.js game |
+| `openzoo.md` | OpenZoo x402 floor, leCore spill, pay-the-402 |
 | `agent-protocol.md` | tool-call format |
 | `playtest-harness.md` | metrics hooks |
 | `prefs-and-playtest.md` | preference memory |

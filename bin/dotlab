@@ -45,13 +45,14 @@ dotLab — local Three.js game studio (Ollama, $0)
   gamemaster skills list|suggest|route|card|check
   gamemaster rlm -p DIR "deepen the slice"
   gamemaster verify -p DIR
-  gamemaster cloud status|on|off|set   # optional paid Grok/Claude/OpenAI/Gemini
+  gamemaster cloud status|on|off|set   # optional paid Grok/Claude/OpenAI/Gemini/zoo
+  gamemaster zoo status|ping|models|quote|wallet|stall   # OpenZoo (openzoo.fun)
 
 Options:
   -f, --file PATH          attach file context
   -p, --project DIR        project context / agent root
   -m, --model NAME         force model
-  --cloud grok|claude|openai|gemini   one-shot paid provider (default: local)
+  --cloud grok|claude|openai|gemini|zoo   one-shot paid provider (default: local)
   --tier flash|max|dense   force quality tier (default auto)
   --agent                  file agent (requires -p)
   --no-knowledge           disable knowledge packs
@@ -74,7 +75,8 @@ Examples:
   gamemaster github login
   gamemaster ship -p ./Wilds -m "open-world village slice"
   gamemaster cloud on grok
-  gamemaster --cloud claude "Tighten coyote time"
+  gamemaster cloud on zoo
+  gamemaster --cloud zoo "Tighten coyote time"
 EOF
 }
 
@@ -107,6 +109,12 @@ collect_project() {
   local budget=160000
   local used=0
   local out=""
+  local backend
+  backend=$(python3 "$ROOT/bin/cloud.py" active 2>/dev/null || true)
+  if [[ "$backend" == "zoo" || "$backend" == "openzoo" ]]; then
+    # leCore sits in front of the floor — long bodies are the cheap path
+    budget="${ZOO_CONTEXT_BUDGET:-2000000}"
+  fi
   while IFS= read -r -d '' f; do
     local sz
     sz=$(wc -c <"$f" | tr -d ' ')
@@ -350,6 +358,10 @@ if [[ $# -gt 0 ]]; then
     cloud)
       shift
       exec python3 "$ROOT/bin/cloud.py" "$@"
+      ;;
+    zoo|openzoo)
+      shift
+      exec python3 "$ROOT/bin/zoo.py" "$@"
       ;;
     genres)
       exec python3 "$ROOT/bin/scaffold.py" list-genres

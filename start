@@ -86,6 +86,8 @@ if [[ $# -gt 0 ]]; then
       shift; exec python3 "$ROOT/bin/github.py" ship "$@" ;;
     cloud)
       shift; exec python3 "$ROOT/bin/cloud.py" "$@" ;;
+    zoo|openzoo)
+      shift; exec python3 "$ROOT/bin/zoo.py" "$@" ;;
   esac
 fi
 

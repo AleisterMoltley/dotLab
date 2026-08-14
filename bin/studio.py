@@ -1033,7 +1033,7 @@ def main() -> int:
     ap.add_argument("-p", "--project", required=True, help="Project directory")
     ap.add_argument("brief", nargs="+", help="What to make / improve")
     ap.add_argument("-m", "--model", default=DEFAULT_MODEL)
-    ap.add_argument("--cloud", default="", help="Optional paid provider: grok|claude|openai|gemini")
+    ap.add_argument("--cloud", default="", help="Optional paid provider: grok|claude|openai|gemini|zoo")
     ap.add_argument(
         "--build",
         action="store_true",

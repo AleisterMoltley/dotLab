@@ -612,7 +612,7 @@ def main() -> int:
     ap.add_argument("-p", "--project", required=True, help="Project root")
     ap.add_argument("prompt", nargs="+", help="Aufgabe")
     ap.add_argument("-m", "--model", default=DEFAULT_MODEL)
-    ap.add_argument("--cloud", default="", help="Optional paid provider: grok|claude|openai|gemini")
+    ap.add_argument("--cloud", default="", help="Optional paid provider: grok|claude|openai|gemini|zoo")
     ap.add_argument("--steps", type=int, default=MAX_STEPS)
     ap.add_argument("--no-knowledge", action="store_true")
     ap.add_argument(
